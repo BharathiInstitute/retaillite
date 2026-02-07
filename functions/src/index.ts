@@ -1,0 +1,221 @@
+/**
+ * Firebase Cloud Functions for LITE Retail App
+ * 
+ * Includes:
+ * - createPaymentLink: Creates Razorpay payment links for sharing
+ */
+
+import * as functions from "firebase-functions";
+import * as admin from "firebase-admin";
+
+admin.initializeApp();
+
+// Razorpay API credentials (set via Firebase config)
+// Run: firebase functions:config:set razorpay.key_id="rzp_xxx" razorpay.key_secret="xxx"
+const getRazorpayConfig = () => {
+    const config = functions.config();
+    return {
+        keyId: config.razorpay?.key_id || process.env.RAZORPAY_KEY_ID || "",
+        keySecret: config.razorpay?.key_secret || process.env.RAZORPAY_KEY_SECRET || "",
+    };
+};
+
+interface PaymentLinkRequest {
+    amount: number; // Amount in rupees
+    customerName: string;
+    customerPhone: string;
+    customerEmail?: string;
+    description: string;
+    billId?: string;
+    shopName?: string;
+}
+
+interface PaymentLinkResponse {
+    success: boolean;
+    paymentLink?: string;
+    paymentLinkId?: string;
+    shortUrl?: string;
+    error?: string;
+}
+
+/**
+ * Create a Razorpay Payment Link
+ * 
+ * This function creates a shareable payment link that customers can use
+ * to pay via UPI, cards, or netbanking.
+ */
+export const createPaymentLink = functions.https.onCall(
+    async (data: PaymentLinkRequest, context): Promise<PaymentLinkResponse> => {
+        // Verify authentication (optional but recommended)
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                "unauthenticated",
+                "User must be authenticated to create payment links"
+            );
+        }
+
+        // Validate input
+        if (!data.amount || data.amount <= 0) {
+            throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Amount must be greater than 0"
+            );
+        }
+
+        if (!data.customerName || !data.customerPhone) {
+            throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Customer name and phone are required"
+            );
+        }
+
+        const razorpayConfig = getRazorpayConfig();
+
+        // Check if Razorpay is configured
+        if (!razorpayConfig.keyId || !razorpayConfig.keySecret) {
+            console.error("Razorpay not configured:", {
+                hasKeyId: !!razorpayConfig.keyId,
+                hasKeySecret: !!razorpayConfig.keySecret
+            });
+            throw new functions.https.HttpsError(
+                "failed-precondition",
+                "Razorpay is not configured. Set razorpay.key_id and razorpay.key_secret"
+            );
+        }
+
+        try {
+            // Convert amount to paise
+            const amountInPaise = Math.round(data.amount * 100);
+
+            // Create payment link via Razorpay API
+            const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
+
+            console.log("Creating Razorpay payment link for amount:", data.amount);
+
+            const response = await fetch("https://api.razorpay.com/v1/payment_links", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Basic ${auth}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    amount: amountInPaise,
+                    currency: "INR",
+                    description: data.description || `Payment to ${data.shopName || "Store"}`,
+                    customer: {
+                        name: data.customerName,
+                        contact: data.customerPhone.startsWith("+91")
+                            ? data.customerPhone
+                            : `+91${data.customerPhone.replace(/\D/g, "").slice(-10)}`,
+                    },
+                    notify: {
+                        sms: true,
+                        email: false,
+                    },
+                    reminder_enable: true,
+                    notes: {
+                        bill_id: data.billId || "",
+                        shop_name: data.shopName || "",
+                    },
+                }),
+            });
+
+            const result = await response.json() as Record<string, unknown>;
+
+            if (!response.ok) {
+                console.error("Razorpay API error:", result);
+                const errorDesc = (result.error as Record<string, unknown>)?.description as string || "Failed to create payment link";
+                return {
+                    success: false,
+                    error: errorDesc,
+                };
+            }
+
+            console.log("Razorpay payment link created:", result.short_url);
+
+            // Log the transaction (optional)
+            try {
+                await admin.firestore().collection("payment_links").add({
+                    paymentLinkId: result.id,
+                    amount: data.amount,
+                    customerName: data.customerName,
+                    customerPhone: data.customerPhone,
+                    billId: data.billId || null,
+                    createdBy: context.auth.uid,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    status: "created",
+                    shortUrl: result.short_url,
+                });
+            } catch (dbError) {
+                console.warn("Failed to log payment link:", dbError);
+            }
+
+            return {
+                success: true,
+                paymentLink: result.short_url as string,
+                paymentLinkId: result.id as string,
+                shortUrl: result.short_url as string,
+            };
+        } catch (error) {
+            console.error("Error creating payment link:", error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : "Unknown error",
+            };
+        }
+    }
+);
+
+/**
+ * Webhook handler for Razorpay payment status updates
+ * 
+ * Configure this URL in Razorpay Dashboard -> Settings -> Webhooks
+ */
+export const razorpayWebhook = functions.https.onRequest(async (req, res) => {
+    if (req.method !== "POST") {
+        res.status(405).send("Method not allowed");
+        return;
+    }
+
+    try {
+        const event = req.body;
+
+        console.log("Received webhook event:", event.event);
+
+        // Handle payment events
+        switch (event.event) {
+            case "payment_link.paid":
+                const paymentLinkId = event.payload.payment_link?.entity?.id;
+                if (paymentLinkId) {
+                    // Update payment link status in Firestore
+                    const snapshot = await admin.firestore()
+                        .collection("payment_links")
+                        .where("paymentLinkId", "==", paymentLinkId)
+                        .get();
+
+                    if (!snapshot.empty) {
+                        const doc = snapshot.docs[0];
+                        await doc.ref.update({
+                            status: "paid",
+                            paidAt: admin.firestore.FieldValue.serverTimestamp(),
+                            paymentId: event.payload.payment?.entity?.id,
+                        });
+                        console.log("Payment link marked as paid:", paymentLinkId);
+                    }
+                }
+                break;
+
+            case "payment_link.expired":
+                console.log("Payment link expired");
+                break;
+
+            default:
+                console.log("Unhandled webhook event:", event.event);
+        }
+
+        res.status(200).send("OK");
+    } catch (error) {
+        console.error("Webhook error:", error);
+        res.status(500).send("Internal error");
+    }
+});

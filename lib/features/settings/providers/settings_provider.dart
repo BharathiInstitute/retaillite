@@ -1,0 +1,365 @@
+/// Settings providers for app preferences
+library;
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/data_retention_service.dart';
+
+/// App settings state
+class AppSettings {
+  final bool isDarkMode;
+  final Locale locale;
+  final String languageCode;
+  final int retentionDays;
+  final bool autoCleanupEnabled;
+
+  const AppSettings({
+    this.isDarkMode = false,
+    this.locale = const Locale('en'),
+    this.languageCode = 'en',
+    this.retentionDays = 90,
+    this.autoCleanupEnabled = true,
+  });
+
+  RetentionPeriod get retentionPeriod =>
+      RetentionPeriod.fromDays(retentionDays);
+
+  AppSettings copyWith({
+    bool? isDarkMode,
+    Locale? locale,
+    String? languageCode,
+    int? retentionDays,
+    bool? autoCleanupEnabled,
+  }) {
+    return AppSettings(
+      isDarkMode: isDarkMode ?? this.isDarkMode,
+      locale: locale ?? this.locale,
+      languageCode: languageCode ?? this.languageCode,
+      retentionDays: retentionDays ?? this.retentionDays,
+      autoCleanupEnabled: autoCleanupEnabled ?? this.autoCleanupEnabled,
+    );
+  }
+}
+
+/// Main settings provider
+final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>(
+  (ref) => SettingsNotifier(),
+);
+
+class SettingsNotifier extends StateNotifier<AppSettings> {
+  SettingsNotifier() : super(const AppSettings()) {
+    _loadSettings();
+  }
+
+  Future<void> _loadSettings() async {
+    final isDark =
+        OfflineStorageService.getSetting<bool>(
+          SettingsKeys.isDarkMode,
+          defaultValue: false,
+        ) ??
+        false;
+
+    final langCode =
+        OfflineStorageService.getSetting<String>(
+          SettingsKeys.language,
+          defaultValue: 'en',
+        ) ??
+        'en';
+
+    final retDays =
+        OfflineStorageService.getSetting<int>(
+          SettingsKeys.retentionDays,
+          defaultValue: 90,
+        ) ??
+        90;
+
+    final autoCleanup =
+        OfflineStorageService.getSetting<bool>(
+          SettingsKeys.autoCleanupEnabled,
+          defaultValue: true,
+        ) ??
+        true;
+
+    state = AppSettings(
+      isDarkMode: isDark,
+      locale: Locale(langCode),
+      languageCode: langCode,
+      retentionDays: retDays,
+      autoCleanupEnabled: autoCleanup,
+    );
+  }
+
+  void toggleDarkMode() {
+    state = state.copyWith(isDarkMode: !state.isDarkMode);
+    OfflineStorageService.saveSetting(
+      SettingsKeys.isDarkMode,
+      state.isDarkMode,
+    );
+  }
+
+  void setDarkMode(bool isDark) {
+    state = state.copyWith(isDarkMode: isDark);
+    OfflineStorageService.saveSetting(SettingsKeys.isDarkMode, isDark);
+  }
+
+  void setLanguage(String languageCode) {
+    state = state.copyWith(
+      languageCode: languageCode,
+      locale: Locale(languageCode),
+    );
+    OfflineStorageService.saveSetting(SettingsKeys.language, languageCode);
+  }
+
+  void setRetentionPeriod(RetentionPeriod period) {
+    state = state.copyWith(retentionDays: period.days);
+    OfflineStorageService.saveSetting(SettingsKeys.retentionDays, period.days);
+  }
+
+  void setAutoCleanup(bool enabled) {
+    state = state.copyWith(autoCleanupEnabled: enabled);
+    OfflineStorageService.saveSetting(SettingsKeys.autoCleanupEnabled, enabled);
+  }
+}
+
+/// Language options
+enum AppLanguage {
+  english('en', 'English'),
+  hindi('hi', 'हिंदी'),
+  telugu('te', 'తెలుగు');
+
+  final String code;
+  final String displayName;
+
+  const AppLanguage(this.code, this.displayName);
+
+  static AppLanguage fromCode(String code) {
+    return AppLanguage.values.firstWhere(
+      (l) => l.code == code,
+      orElse: () => AppLanguage.english,
+    );
+  }
+}
+
+/// Theme mode provider (legacy, use settingsProvider instead)
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, ThemeMode>(
+  (ref) => ThemeModeNotifier(),
+);
+
+class ThemeModeNotifier extends StateNotifier<ThemeMode> {
+  ThemeModeNotifier() : super(ThemeMode.system);
+
+  void setThemeMode(ThemeMode mode) {
+    state = mode;
+  }
+
+  void toggleDarkMode() {
+    if (state == ThemeMode.dark) {
+      state = ThemeMode.light;
+    } else {
+      state = ThemeMode.dark;
+    }
+  }
+
+  bool get isDarkMode => state == ThemeMode.dark;
+}
+
+/// Language provider (legacy, use settingsProvider instead)
+final languageProvider = StateNotifierProvider<LanguageNotifier, AppLanguage>(
+  (ref) => LanguageNotifier(),
+);
+
+class LanguageNotifier extends StateNotifier<AppLanguage> {
+  LanguageNotifier() : super(AppLanguage.english);
+
+  void setLanguage(AppLanguage language) {
+    state = language;
+  }
+}
+
+/// Printer font size enum
+enum PrinterFontSize {
+  small(0, 'Small', 'Compact - fits more text'),
+  normal(1, 'Normal', 'Default size'),
+  large(2, 'Large', 'Easier to read');
+
+  final int value;
+  final String label;
+  final String description;
+
+  const PrinterFontSize(this.value, this.label, this.description);
+
+  static PrinterFontSize fromValue(int value) {
+    return PrinterFontSize.values.firstWhere(
+      (f) => f.value == value,
+      orElse: () => PrinterFontSize.normal,
+    );
+  }
+}
+
+/// Printer state
+class PrinterState {
+  final bool isConnected;
+  final String? printerName;
+  final String? printerAddress;
+  final int paperSizeIndex; // 0 = 58mm, 1 = 80mm
+  final int fontSizeIndex; // 0 = Small, 1 = Normal, 2 = Large
+  final int customWidth; // 0 = auto, 28-52 = custom chars per line
+  final bool isScanning;
+  final String? error;
+
+  const PrinterState({
+    this.isConnected = false,
+    this.printerName,
+    this.printerAddress,
+    this.paperSizeIndex = 1, // Default 80mm
+    this.fontSizeIndex = 1, // Default Normal
+    this.customWidth = 0, // Default auto
+    this.isScanning = false,
+    this.error,
+  });
+
+  String get paperSizeLabel => paperSizeIndex == 0 ? '58mm' : '80mm';
+
+  PrinterFontSize get fontSize => PrinterFontSize.fromValue(fontSizeIndex);
+
+  /// Get effective characters per line
+  int get effectiveWidth {
+    if (customWidth > 0) return customWidth;
+    // Default widths based on paper size
+    return paperSizeIndex == 0 ? 32 : 48;
+  }
+
+  String get widthLabel {
+    if (customWidth > 0) return '$customWidth chars';
+    return 'Auto ($effectiveWidth chars)';
+  }
+
+  PrinterState copyWith({
+    bool? isConnected,
+    String? printerName,
+    String? printerAddress,
+    int? paperSizeIndex,
+    int? fontSizeIndex,
+    int? customWidth,
+    bool? isScanning,
+    String? error,
+  }) {
+    return PrinterState(
+      isConnected: isConnected ?? this.isConnected,
+      printerName: printerName ?? this.printerName,
+      printerAddress: printerAddress ?? this.printerAddress,
+      paperSizeIndex: paperSizeIndex ?? this.paperSizeIndex,
+      fontSizeIndex: fontSizeIndex ?? this.fontSizeIndex,
+      customWidth: customWidth ?? this.customWidth,
+      isScanning: isScanning ?? this.isScanning,
+      error: error,
+    );
+  }
+}
+
+final printerProvider = StateNotifierProvider<PrinterNotifier, PrinterState>(
+  (ref) => PrinterNotifier(),
+);
+
+class PrinterNotifier extends StateNotifier<PrinterState> {
+  PrinterNotifier() : super(const PrinterState()) {
+    _loadSavedPrinter();
+  }
+
+  /// Load saved printer from storage
+  void _loadSavedPrinter() {
+    final savedPrinter = PrinterStorage.getSavedPrinter();
+    final paperSize = PrinterStorage.getSavedPaperSize();
+    final fontSize = PrinterStorage.getSavedFontSize();
+    final customWidth = PrinterStorage.getSavedCustomWidth();
+
+    if (savedPrinter != null) {
+      state = PrinterState(
+        printerName: savedPrinter['name'],
+        printerAddress: savedPrinter['address'],
+        paperSizeIndex: paperSize,
+        fontSizeIndex: fontSize,
+        customWidth: customWidth,
+        isConnected: false, // Will check connection later
+      );
+    } else {
+      state = PrinterState(
+        paperSizeIndex: paperSize,
+        fontSizeIndex: fontSize,
+        customWidth: customWidth,
+      );
+    }
+  }
+
+  /// Set paper size
+  Future<void> setPaperSize(int sizeIndex) async {
+    await PrinterStorage.savePaperSize(sizeIndex);
+    state = state.copyWith(paperSizeIndex: sizeIndex);
+  }
+
+  /// Set font size
+  Future<void> setFontSize(int fontSizeIndex) async {
+    await PrinterStorage.saveFontSize(fontSizeIndex);
+    state = state.copyWith(fontSizeIndex: fontSizeIndex);
+  }
+
+  /// Set custom width (0 = auto)
+  Future<void> setCustomWidth(int width) async {
+    await PrinterStorage.saveCustomWidth(width);
+    state = state.copyWith(customWidth: width);
+  }
+
+  /// Save and connect to printer
+  Future<bool> connectPrinter(String name, String address) async {
+    state = state.copyWith(isScanning: true, error: null);
+
+    // Save to storage
+    await PrinterStorage.savePrinter(name, address);
+
+    state = PrinterState(
+      isConnected: true,
+      printerName: name,
+      printerAddress: address,
+      paperSizeIndex: state.paperSizeIndex,
+      fontSizeIndex: state.fontSizeIndex,
+      customWidth: state.customWidth,
+      isScanning: false,
+    );
+
+    return true;
+  }
+
+  /// Check current connection status
+  Future<void> checkConnection() async {
+    // This would be called to verify Bluetooth connection
+    // For now, we just update state based on saved printer
+    final savedPrinter = PrinterStorage.getSavedPrinter();
+    if (savedPrinter == null) {
+      state = state.copyWith(isConnected: false);
+    }
+  }
+
+  /// Disconnect and clear saved printer
+  Future<void> disconnectPrinter() async {
+    await PrinterStorage.clearSavedPrinter();
+    state = PrinterState(
+      paperSizeIndex: state.paperSizeIndex,
+      fontSizeIndex: state.fontSizeIndex,
+      customWidth: state.customWidth,
+    );
+  }
+
+  /// Set error state
+  void setError(String error) {
+    state = state.copyWith(error: error, isScanning: false);
+  }
+
+  /// Clear error
+  void clearError() {
+    state = state.copyWith(error: null);
+  }
+}
+
+/// Settings loading state
+final settingsLoadingProvider = StateProvider<bool>((ref) => false);

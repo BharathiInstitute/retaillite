@@ -1,0 +1,86 @@
+{
+  "project_info": {
+    "project_number": "576503526807",
+    "project_id": "login-radha",
+    "storage_bucket": "login-radha.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576503526807:android:e97b23f27db682422300d2",
+        "android_client_info": {
+          "package_name": "com.example.dataset"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576503526807:android:4d2584d1051292ad2300d2",
+        "android_client_info": {
+          "package_name": "com.example.jiomart"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576503526807:android:8b01290c6a28c6c32300d2",
+        "android_client_info": {
+          "package_name": "com.example.retaillite"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576503526807:android:b3f9f9027d2309a62300d2",
+        "android_client_info": {
+          "package_name": "com.example.webbuilder"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
