@@ -19,7 +19,11 @@ service cloud.firestore {
         request.auth.token.email in [
           'kehsaram001@gmail.com',
           'admin@retaillite.com',
-          'bharathiinstitute1@gmail.com'
+          'bharathiinstitute1@gmail.com',
+          'bharahiinstitute1@gmail.com',
+          'shivamsingh8556@gmail.com',
+          'admin@lite.app',
+          'kehsihba@gmail.com'
         ];
     }
     
@@ -51,11 +55,21 @@ service cloud.firestore {
       allow delete: if false;
       
       // ===================
+      // SETTINGS (sub-collection for user preferences sync)
+      // ===================
+      match /settings/{settingId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // ===================
       // PRODUCTS (sub-collection)
       // ===================
       match /products/{productId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        allow write: if isAuthenticated() && isOwner(userId);
+        allow create, update: if isAuthenticated() && isOwner(userId)
+          && hasString(request.resource.data.name)
+          && isPositive(request.resource.data.price);
         allow delete: if isAuthenticated() && isOwner(userId);
       }
       
@@ -64,8 +78,12 @@ service cloud.firestore {
       // ===================
       match /bills/{billId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        // Allow create for new bills
-        allow create: if isAuthenticated() && isOwner(userId);
+        // Allow create for new bills with field validation
+        allow create: if isAuthenticated() && isOwner(userId)
+          && request.resource.data.total is number
+          && request.resource.data.total >= 0
+          && request.resource.data.items is list
+          && request.resource.data.items.size() > 0;
         // Bills are immutable - no update or delete
         allow update: if false;
         allow delete: if false;
@@ -89,6 +107,16 @@ service cloud.firestore {
           allow update: if false;
           allow delete: if false;
         }
+      }
+      
+      // ===================
+      // EXPENSES (sub-collection)
+      // ===================
+      match /expenses/{expenseId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId);
+        allow update: if isAuthenticated() && isOwner(userId);
+        allow delete: if isAuthenticated() && isOwner(userId);
       }
       
       // ===================
@@ -146,10 +174,11 @@ service cloud.firestore {
     // PAYMENT REQUESTS (for payment links)
     // ===================
     match /payment_requests/{requestId} {
-      // Anyone authenticated can create payment requests
+      // Authenticated users can create payment requests
       allow create: if isAuthenticated();
-      // Only the creator or admin can read
-      allow read: if isAuthenticated();
+      // Only the creator or admin can read (restrict to owner)
+      allow read: if isAuthenticated() && 
+        (resource.data.createdBy == request.auth.uid || isAdmin());
       // Only admin can update (for status changes from webhooks)
       allow update: if isAdmin();
       allow delete: if false;

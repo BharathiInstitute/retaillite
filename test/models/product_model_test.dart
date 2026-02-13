@@ -9,8 +9,7 @@ void main() {
         name: 'Test Product',
         price: 100.0,
         stock: 50,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(product.id, 'test-id');
@@ -27,8 +26,7 @@ void main() {
         price: 100.0,
         purchasePrice: 70.0,
         stock: 50,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(product.profit, 30.0);
@@ -41,8 +39,7 @@ void main() {
         name: 'Test Product',
         price: 100.0,
         stock: 50,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(product.profit, isNull);
@@ -56,8 +53,7 @@ void main() {
         price: 100.0,
         stock: 3,
         lowStockAlert: 5,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final normalStockProduct = ProductModel(
@@ -66,8 +62,7 @@ void main() {
         price: 100.0,
         stock: 50,
         lowStockAlert: 5,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(lowStockProduct.isLowStock, true);
@@ -80,11 +75,10 @@ void main() {
         name: 'Test Product',
         price: 100.0,
         stock: 0,
-        unit: ProductUnit.piece,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
-      expect(outOfStockProduct.isLowStock, true);
+      expect(outOfStockProduct.isOutOfStock, true);
       expect(outOfStockProduct.stock, 0);
     });
 
@@ -98,7 +92,7 @@ void main() {
         lowStockAlert: 5,
         unit: ProductUnit.kg,
         barcode: '1234567890',
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final map = product.toFirestore();
@@ -126,14 +120,14 @@ void main() {
     });
 
     test('should have correct short names', () {
-      expect(ProductUnit.piece.shortName, 'pc');
+      expect(ProductUnit.piece.shortName, 'pcs');
       expect(ProductUnit.kg.shortName, 'kg');
       expect(ProductUnit.gram.shortName, 'g');
       expect(ProductUnit.liter.shortName, 'L');
       expect(ProductUnit.ml.shortName, 'ml');
       expect(ProductUnit.dozen.shortName, 'dz');
       expect(ProductUnit.box.shortName, 'box');
-      expect(ProductUnit.pack.shortName, 'pk');
+      expect(ProductUnit.pack.shortName, 'pack');
     });
   });
 }

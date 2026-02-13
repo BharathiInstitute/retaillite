@@ -60,13 +60,13 @@ enum ExportRange {
           end: now,
         );
       case ExportRange.thisMonth:
-        return DateTimeRange(start: DateTime(now.year, now.month, 1), end: now);
+        return DateTimeRange(start: DateTime(now.year, now.month), end: now);
       case ExportRange.lastMonth:
-        final lastMonth = DateTime(now.year, now.month - 1, 1);
+        final lastMonth = DateTime(now.year, now.month - 1);
         final endOfLastMonth = DateTime(now.year, now.month, 0);
         return DateTimeRange(start: lastMonth, end: endOfLastMonth);
       case ExportRange.allTime:
-        return DateTimeRange(start: DateTime(2020, 1, 1), end: now);
+        return DateTimeRange(start: DateTime(2020), end: now);
     }
   }
 }
@@ -94,7 +94,7 @@ class DataExportService {
       final bills = await _getBillsInRange(range.dateRange);
 
       if (bills.isEmpty) {
-        return ExportResult(
+        return const ExportResult(
           success: false,
           error: 'No bills found in the selected date range',
         );
@@ -165,7 +165,7 @@ class DataExportService {
       final bills = await _getBillsInRange(range.dateRange);
 
       if (bills.isEmpty) {
-        return ExportResult(
+        return const ExportResult(
           success: false,
           error: 'No bills found in the selected date range',
         );
@@ -203,7 +203,7 @@ class DataExportService {
     required int month,
   }) async {
     try {
-      final startDate = DateTime(year, month, 1);
+      final startDate = DateTime(year, month);
       final endDate = DateTime(year, month + 1, 0, 23, 59, 59);
       final range = DateTimeRange(start: startDate, end: endDate);
 
@@ -214,7 +214,7 @@ class DataExportService {
       double cashAmount = 0;
       double upiAmount = 0;
       double udharAmount = 0;
-      int billCount = bills.length;
+      final int billCount = bills.length;
 
       for (final bill in bills) {
         totalSales += bill.total;
@@ -228,6 +228,8 @@ class DataExportService {
           case PaymentMethod.udhar:
             udharAmount += bill.total;
             break;
+          case PaymentMethod.unknown:
+            break;
         }
       }
 
@@ -238,7 +240,7 @@ class DataExportService {
       csvContent.writeln('Monthly Summary Report');
       csvContent.writeln('Period,$monthName $year');
       csvContent.writeln('Generated,${DateTime.now().toIso8601String()}');
-      csvContent.writeln('');
+      csvContent.writeln();
       csvContent.writeln('Metric,Value');
       csvContent.writeln('Total Bills,$billCount');
       csvContent.writeln('Total Sales,₹${totalSales.toStringAsFixed(2)}');
@@ -308,23 +310,6 @@ class DataExportService {
     await file.writeAsString(content);
 
     return file.path;
-  }
-
-  BillModel _billFromMap(Map<String, dynamic> map) {
-    return BillModel(
-      id: map['id'] ?? '',
-      billNumber: map['billNumber'] ?? 0,
-      items: ((map['items'] as List?) ?? [])
-          .map((i) => CartItem.fromMap(Map<String, dynamic>.from(i)))
-          .toList(),
-      total: (map['total'] ?? 0).toDouble(),
-      paymentMethod: PaymentMethod.fromString(map['paymentMethod'] ?? 'cash'),
-      customerId: map['customerId'],
-      customerName: map['customerName'],
-      receivedAmount: map['receivedAmount']?.toDouble(),
-      createdAt: DateTime.tryParse(map['createdAt'] ?? '') ?? DateTime.now(),
-      date: map['date'] ?? '',
-    );
   }
 
   String _prettyPrintJson(List<Map<String, dynamic>> data) {

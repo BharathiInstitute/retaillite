@@ -45,9 +45,7 @@ class _BarcodeScannerModalState extends State<_BarcodeScannerModal> {
   void initState() {
     super.initState();
     _controller = MobileScannerController(
-      detectionSpeed: DetectionSpeed.normal,
-      facing: CameraFacing.back,
-      torchEnabled: false,
+      
     );
   }
 
@@ -173,10 +171,7 @@ class _BarcodeScannerModalState extends State<_BarcodeScannerModal> {
         content: TextField(
           controller: controller,
           keyboardType: TextInputType.number,
-          decoration: const InputDecoration(
-            hintText: 'Enter barcode number',
-            border: OutlineInputBorder(),
-          ),
+          decoration: const InputDecoration(hintText: 'Enter barcode number'),
           autofocus: true,
         ),
         actions: [

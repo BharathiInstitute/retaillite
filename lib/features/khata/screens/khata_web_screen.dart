@@ -5,19 +5,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
-import 'package:retaillite/core/theme/responsive_helper.dart';
-import 'package:retaillite/core/theme/web_theme.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
+import 'package:retaillite/features/khata/widgets/give_udhaar_modal.dart';
 import 'package:retaillite/features/khata/widgets/record_payment_modal.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:share_plus/share_plus.dart';
 
 class KhataWebScreen extends ConsumerStatefulWidget {
   const KhataWebScreen({super.key});
@@ -38,30 +38,35 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
     final sortOption = ref.watch(customerSortProvider);
     final isDesktop = ResponsiveHelper.isDesktop(context);
     final isTablet = ResponsiveHelper.isTablet(context);
-    final isMobile = !isDesktop && !isTablet;
+    final screenWidth = MediaQuery.of(context).size.width;
+    // At narrow tablet (< 768px), master-detail layout is too cramped.
+    // Use mobile layout (list only) instead.
+    final useMasterDetail = (isDesktop || isTablet) && screenWidth >= 768;
+    final isMobile = !useMasterDetail;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8FAFC),
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Padding(
-        padding: EdgeInsets.all(isMobile ? 16 : 24),
+        padding: EdgeInsets.all(isMobile ? 12 : 16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             // Header
-            _buildHeader(l10n),
-            const SizedBox(height: 24),
+            _buildHeader(l10n, isMobile),
+            SizedBox(height: isMobile ? 10 : 12),
 
             // Summary Cards
             statsAsync.when(
-              data: (stats) => _buildSummaryCards(stats, isDesktop, isTablet),
-              loading: () => const SizedBox(height: 100),
-              error: (e, _) => const SizedBox(height: 100),
+              data: (stats) =>
+                  _buildSummaryCards(stats, isDesktop, isTablet, isMobile),
+              loading: () => const SizedBox(height: 80),
+              error: (e, _) => const SizedBox(height: 80),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: isMobile ? 10 : 12),
 
             // Search and Sort Bar
-            _buildSearchSortBar(sortOption),
-            const SizedBox(height: 16),
+            _buildSearchSortBar(sortOption, isMobile),
+            SizedBox(height: isMobile ? 8 : 10),
 
             // Main Content - Master Detail or List only
             Expanded(
@@ -115,95 +120,235 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
     );
   }
 
-  Widget _buildHeader(AppLocalizations l10n) {
+  Widget _buildHeader(AppLocalizations l10n, bool isMobile) {
+    if (isMobile) {
+      return Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () => _downloadReport(),
+              icon: const Icon(Icons.download, size: 16),
+              label: const Text(
+                'Download Report',
+                style: TextStyle(fontSize: 12),
+              ),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: ElevatedButton.icon(
+              onPressed: _showAddCustomerModal,
+              icon: const Icon(Icons.person_add, size: 16),
+              label: const Text(
+                'Add New Customer',
+                style: TextStyle(fontSize: 12),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 10,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
         OutlinedButton.icon(
-          onPressed: () {
-            // TODO: Download report
-          },
-          icon: const Icon(Icons.download, size: 18),
-          label: const Text('Download Report'),
+          onPressed: () => _downloadReport(),
+          icon: const Icon(Icons.download, size: 16),
+          label: const Text('Download Report', style: TextStyle(fontSize: 13)),
           style: OutlinedButton.styleFrom(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
         ),
-        const SizedBox(width: 12),
+        const SizedBox(width: 8),
         ElevatedButton.icon(
           onPressed: _showAddCustomerModal,
-          icon: const Icon(Icons.person_add, size: 18),
-          label: const Text('Add New Customer'),
+          icon: const Icon(Icons.person_add, size: 16),
+          label: const Text('Add New Customer', style: TextStyle(fontSize: 13)),
           style: ElevatedButton.styleFrom(
-            backgroundColor: WebTheme.primary,
+            backgroundColor: AppColors.primary,
             foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           ),
         ),
       ],
     );
   }
 
-  Widget _buildSummaryCards(KhataStats stats, bool isDesktop, bool isTablet) {
+  /// Generate and download khata report
+  void _downloadReport() {
+    final customersAsync = ref.read(sortedCustomersProvider);
+    final statsAsync = ref.read(khataStatsProvider);
+
+    customersAsync.whenData((customers) {
+      statsAsync.whenData((stats) {
+        final now = DateTime.now();
+        final timestamp =
+            '${now.day}/${now.month}/${now.year} ${now.hour}:${now.minute.toString().padLeft(2, '0')}';
+
+        final buffer = StringBuffer();
+        buffer.writeln('=' * 50);
+        buffer.writeln('          KHATA REPORT - CUSTOMER LEDGER');
+        buffer.writeln('=' * 50);
+        buffer.writeln('Generated: $timestamp');
+        buffer.writeln();
+        buffer.writeln('─' * 50);
+        buffer.writeln('SUMMARY');
+        buffer.writeln('─' * 50);
+        buffer.writeln(
+          'Total Outstanding:   ${Formatters.currency(stats.totalOutstanding)}',
+        );
+        buffer.writeln('Customers with Due:  ${stats.customersWithDue}');
+        buffer.writeln('Active Customers:    ${stats.activeCustomers}');
+        buffer.writeln(
+          'Collected Today:     ${Formatters.currency(stats.collectedToday)}',
+        );
+        buffer.writeln();
+
+        // List customers with due balance
+        final customersWithDue = customers.where((c) => c.balance > 0).toList();
+        if (customersWithDue.isNotEmpty) {
+          buffer.writeln('─' * 50);
+          buffer.writeln('CUSTOMERS WITH PENDING BALANCE');
+          buffer.writeln('─' * 50);
+          buffer.writeln();
+
+          for (int i = 0; i < customersWithDue.length; i++) {
+            final c = customersWithDue[i];
+            buffer.writeln('${i + 1}. ${c.name}');
+            buffer.writeln('   Phone: ${c.phone}');
+            buffer.writeln('   Balance Due: ${Formatters.currency(c.balance)}');
+            if (c.lastTransactionAt != null) {
+              buffer.writeln(
+                '   Last Activity: ${DateFormat('dd/MM/yyyy').format(c.lastTransactionAt!)}',
+              );
+            }
+            buffer.writeln();
+          }
+        }
+
+        buffer.writeln('=' * 50);
+        buffer.writeln('Generated by LITE Billing App');
+        buffer.writeln('=' * 50);
+
+        // Share the report
+        Share.share(
+          buffer.toString(),
+          subject: 'Khata Report - ${DateFormat('dd MMM yyyy').format(now)}',
+        );
+      });
+    });
+  }
+
+  Widget _buildSummaryCards(
+    KhataStats stats,
+    bool isDesktop,
+    bool isTablet,
+    bool isMobile,
+  ) {
+    final cards = [
+      _SummaryCard(
+        title: isMobile ? 'Outstanding' : 'Total Outstanding (Udhaar)',
+        value: Formatters.currency(stats.totalOutstanding),
+        icon: Icons.trending_up,
+        iconColor: AppColors.error,
+        subtitle: '${stats.customersWithDue} customers with due',
+        compact: isMobile,
+      ),
+      _SummaryCard(
+        title: isMobile ? 'Collected' : 'Collected Today',
+        value: Formatters.currency(stats.collectedToday),
+        icon: Icons.account_balance_wallet,
+        iconColor: AppColors.success,
+        subtitle: 'Payments received',
+        compact: isMobile,
+      ),
+      _SummaryCard(
+        title: isMobile ? 'Customers' : 'Active Customers',
+        value: '${stats.activeCustomers}',
+        icon: Icons.people,
+        iconColor: AppColors.primary,
+        subtitle: 'Total customer base',
+        compact: isMobile,
+      ),
+    ];
+
+    if (isMobile) {
+      return SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: cards
+              .map(
+                (card) => Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: SizedBox(width: 140, child: card),
+                ),
+              )
+              .toList(),
+        ),
+      );
+    }
+
     return Row(
       children: [
-        Expanded(
-          child: _SummaryCard(
-            title: 'Total Outstanding (Udhaar)',
-            value: Formatters.currency(stats.totalOutstanding),
-            icon: Icons.trending_up,
-            iconColor: AppColors.error,
-            subtitle: '${stats.customersWithDue} customers with due',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _SummaryCard(
-            title: 'Collected Today',
-            value: Formatters.currency(stats.collectedToday),
-            icon: Icons.account_balance_wallet,
-            iconColor: AppColors.success,
-            subtitle: 'Payments received',
-          ),
-        ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _SummaryCard(
-            title: 'Active Customers',
-            value: '${stats.activeCustomers}',
-            icon: Icons.people,
-            iconColor: AppColors.primary,
-            subtitle: 'Total customer base',
-          ),
-        ),
+        Expanded(child: cards[0]),
+        const SizedBox(width: 10),
+        Expanded(child: cards[1]),
+        const SizedBox(width: 10),
+        Expanded(child: cards[2]),
       ],
     );
   }
 
-  Widget _buildSearchSortBar(CustomerSortOption sortOption) {
+  Widget _buildSearchSortBar(CustomerSortOption sortOption, bool isMobile) {
     return Row(
       children: [
         Expanded(
           child: Container(
-            constraints: const BoxConstraints(maxWidth: 400),
+            constraints: BoxConstraints(
+              maxWidth: isMobile ? double.infinity : 400,
+            ),
             child: TextField(
+              style: TextStyle(fontSize: isMobile ? 13 : 14),
               decoration: InputDecoration(
-                hintText: 'Search by Name or Mobile Number...',
-                prefixIcon: const Icon(Icons.search, color: Colors.grey),
+                hintText: isMobile
+                    ? 'Search...'
+                    : 'Search by Name or Mobile Number...',
+                hintStyle: TextStyle(fontSize: isMobile ? 13 : 14),
+                prefixIcon: Icon(
+                  Icons.search,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  size: isMobile ? 18 : 24,
+                ),
                 filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                fillColor: Theme.of(context).cardColor,
+                contentPadding: EdgeInsets.symmetric(
+                  vertical: isMobile ? 8 : 12,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                  borderSide: BorderSide.none,
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
+                  borderSide: BorderSide.none,
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  borderSide: BorderSide(color: WebTheme.primary),
+                  borderSide: BorderSide(color: AppColors.primary),
                 ),
               ),
               onChanged: (value) =>
@@ -211,34 +356,38 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: isMobile ? 8 : 16),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: const Color(0xFFE5E7EB)),
+            boxShadow: AppShadows.small,
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<CustomerSortOption>(
               value: sortOption,
-              icon: const Icon(Icons.keyboard_arrow_down),
-              items: const [
+              icon: Icon(Icons.keyboard_arrow_down, size: isMobile ? 18 : 24),
+              style: TextStyle(
+                fontSize: isMobile ? 12 : 14,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+              items: [
                 DropdownMenuItem(
                   value: CustomerSortOption.highestDebt,
-                  child: Text('Highest Debt First'),
+                  child: Text(isMobile ? 'Highest Debt' : 'Highest Debt First'),
                 ),
                 DropdownMenuItem(
                   value: CustomerSortOption.recentlyActive,
-                  child: Text('Recently Active'),
+                  child: Text(isMobile ? 'Recent' : 'Recently Active'),
                 ),
                 DropdownMenuItem(
                   value: CustomerSortOption.alphabetical,
-                  child: Text('Alphabetical A-Z'),
+                  child: Text(isMobile ? 'A-Z' : 'Alphabetical A-Z'),
                 ),
                 DropdownMenuItem(
                   value: CustomerSortOption.oldestDue,
-                  child: Text('Oldest Due First'),
+                  child: Text(isMobile ? 'Oldest Due' : 'Oldest Due First'),
                 ),
               ],
               onChanged: (value) {
@@ -256,9 +405,9 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
   Widget _buildCustomerList(List<CustomerModel> customers, String? selectedId) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: AppShadows.medium,
       ),
       child: ListView.separated(
         padding: const EdgeInsets.all(8),
@@ -288,19 +437,28 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
   Widget _buildSelectCustomerPrompt() {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: AppShadows.medium,
       ),
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.people_outline, size: 64, color: Colors.grey[300]),
+            Icon(
+              Icons.people_outline,
+              size: 64,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+            ),
             const SizedBox(height: 16),
             Text(
               'Select a customer to view details',
-              style: TextStyle(fontSize: 16, color: WebTheme.textSecondary),
+              style: TextStyle(
+                fontSize: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
             ),
           ],
         ),
@@ -328,12 +486,12 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
     }).toList();
   }
 
-  void _showAddCustomerModal() {
+  void _showAddCustomerModal({CustomerModel? customer}) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (context) => const AddCustomerModal(),
+      builder: (context) => AddCustomerModal(customer: customer),
     );
   }
 }
@@ -345,6 +503,7 @@ class _SummaryCard extends StatelessWidget {
   final IconData icon;
   final Color iconColor;
   final String? subtitle;
+  final bool compact;
 
   const _SummaryCard({
     required this.title,
@@ -352,16 +511,17 @@ class _SummaryCard extends StatelessWidget {
     required this.icon,
     required this.iconColor,
     this.subtitle,
+    this.compact = false,
   });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(compact ? 12 : 16),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: AppShadows.small,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,34 +529,44 @@ class _SummaryCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                title,
-                style: TextStyle(fontSize: 13, color: WebTheme.textSecondary),
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: compact ? 11 : 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: EdgeInsets.all(compact ? 6 : 8),
                 decoration: BoxDecoration(
                   color: iconColor.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Icon(icon, size: 20, color: iconColor),
+                child: Icon(icon, size: compact ? 16 : 20, color: iconColor),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: compact ? 8 : 8),
           Text(
             value,
             style: TextStyle(
-              fontSize: 28,
+              fontSize: compact ? 20 : 24,
               fontWeight: FontWeight.bold,
-              color: WebTheme.textPrimary,
+              color: Theme.of(context).colorScheme.onSurface,
             ),
           ),
           if (subtitle != null) ...[
-            const SizedBox(height: 4),
+            SizedBox(height: compact ? 2 : 2),
             Text(
               subtitle!,
-              style: TextStyle(fontSize: 12, color: WebTheme.textMuted),
+              style: TextStyle(
+                fontSize: compact ? 10 : 12,
+                color: Theme.of(context).colorScheme.outline,
+              ),
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ],
@@ -419,11 +589,11 @@ class _CustomerCard extends StatelessWidget {
 
   Color _getAvatarColor(String name) {
     final colors = [
-      const Color(0xFF10B981), // green
+      AppColors.primary, // green
       const Color(0xFF8B5CF6), // purple
-      const Color(0xFFF59E0B), // amber
-      const Color(0xFFEF4444), // red
-      const Color(0xFF3B82F6), // blue
+      AppColors.warning, // amber
+      AppColors.error, // red
+      AppColors.info, // blue
       const Color(0xFFEC4899), // pink
     ];
     final index = name.isNotEmpty ? name.codeUnitAt(0) % colors.length : 0;
@@ -463,31 +633,33 @@ class _CustomerCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isSelected ? const Color(0xFFF0FDF4) : Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isSelected ? AppColors.success : const Color(0xFFE5E7EB),
-            width: isSelected ? 2 : 1,
-          ),
+          color: isSelected
+              ? AppColors.success.withValues(alpha: 0.12)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(10),
+          border: isSelected
+              ? Border.all(color: AppColors.success, width: 2)
+              : null,
+          boxShadow: isSelected ? null : AppShadows.small,
         ),
         child: Row(
           children: [
             // Avatar
             CircleAvatar(
-              radius: 24,
+              radius: 20,
               backgroundColor: avatarColor.withValues(alpha: 0.15),
               child: Text(
                 _getInitials(customer.name),
                 style: TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 14,
+                  fontSize: 13,
                   color: avatarColor,
                 ),
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 10),
             // Name & Phone
             Expanded(
               child: Column(
@@ -497,19 +669,25 @@ class _CustomerCard extends StatelessWidget {
                     customer.name,
                     style: const TextStyle(
                       fontWeight: FontWeight.w600,
-                      fontSize: 15,
+                      fontSize: 14,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                   const SizedBox(height: 2),
                   Row(
                     children: [
-                      Icon(Icons.phone, size: 12, color: WebTheme.textMuted),
+                      Icon(
+                        Icons.phone,
+                        size: 11,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                       const SizedBox(width: 4),
                       Text(
                         '+91 ${Formatters.phoneShort(customer.phone)}',
                         style: TextStyle(
-                          fontSize: 13,
-                          color: WebTheme.textSecondary,
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -524,8 +702,8 @@ class _CustomerCard extends StatelessWidget {
                 Text(
                   'DUE BALANCE',
                   style: TextStyle(
-                    fontSize: 10,
-                    color: WebTheme.textMuted,
+                    fontSize: 9,
+                    color: Theme.of(context).colorScheme.outline,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -533,7 +711,7 @@ class _CustomerCard extends StatelessWidget {
                 Text(
                   hasDue ? Formatters.currency(customer.balance) : '₹0',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontSize: 15,
                     fontWeight: FontWeight.bold,
                     color: hasDue ? AppColors.error : AppColors.success,
                   ),
@@ -544,8 +722,10 @@ class _CustomerCard extends StatelessWidget {
                       ? 'Last: ${_getLastActivityText(customer.lastTransactionAt)}'
                       : 'Settled',
                   style: TextStyle(
-                    fontSize: 11,
-                    color: hasDue ? WebTheme.textMuted : AppColors.success,
+                    fontSize: 10,
+                    color: hasDue
+                        ? Theme.of(context).colorScheme.outline
+                        : AppColors.success,
                   ),
                 ),
               ],
@@ -558,24 +738,30 @@ class _CustomerCard extends StatelessWidget {
 }
 
 // ============ CUSTOMER DETAIL PANEL ============
-class _CustomerDetailPanel extends ConsumerWidget {
+class _CustomerDetailPanel extends ConsumerStatefulWidget {
   final String customerId;
   final VoidCallback onClose;
 
   const _CustomerDetailPanel({required this.customerId, required this.onClose});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final customerAsync = ref.watch(customerProvider(customerId));
+  ConsumerState<_CustomerDetailPanel> createState() =>
+      _CustomerDetailPanelState();
+}
+
+class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
+  @override
+  Widget build(BuildContext context) {
+    final customerAsync = ref.watch(customerProvider(widget.customerId));
     final transactionsAsync = ref.watch(
-      customerTransactionsProvider(customerId),
+      customerTransactionsProvider(widget.customerId),
     );
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Theme.of(context).cardColor,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        boxShadow: AppShadows.medium,
       ),
       child: customerAsync.when(
         data: (customer) {
@@ -612,22 +798,22 @@ class _CustomerDetailPanel extends ConsumerWidget {
     final avatarColor = _getAvatarColor(customer.name);
 
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(16),
       child: Row(
         children: [
           CircleAvatar(
-            radius: 28,
+            radius: 24,
             backgroundColor: avatarColor.withValues(alpha: 0.15),
             child: Text(
               _getInitials(customer.name),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
-                fontSize: 18,
+                fontSize: 16,
                 color: avatarColor,
               ),
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -635,14 +821,19 @@ class _CustomerDetailPanel extends ConsumerWidget {
                 Text(
                   customer.name,
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 16,
                     fontWeight: FontWeight.bold,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Text(
                   '+91 ${Formatters.phoneShort(customer.phone)}',
-                  style: TextStyle(fontSize: 14, color: WebTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -659,6 +850,106 @@ class _CustomerDetailPanel extends ConsumerWidget {
             icon: Icon(Icons.phone, color: AppColors.primary),
             tooltip: 'Call',
           ),
+          // Edit button
+          IconButton(
+            onPressed: () => _showAddCustomerModal(customer: customer),
+            icon: const Icon(Icons.edit),
+            tooltip: 'Edit Details',
+          ),
+          // Delete menu
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'delete') {
+                _showDeleteConfirmation(context, ref, customer);
+              }
+            },
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'delete',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete, color: AppColors.error),
+                    SizedBox(width: 8),
+                    Text(
+                      'Delete Customer',
+                      style: TextStyle(color: AppColors.error),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddCustomerModal({CustomerModel? customer}) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AddCustomerModal(customer: customer),
+    );
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    WidgetRef ref,
+    CustomerModel customer,
+  ) {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Customer?'),
+        content: Text(
+          'Are you sure you want to delete ${customer.name}? '
+          'This action cannot be undone and will remove all their transaction history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext); // Close dialog
+
+              try {
+                // Delete
+                await ref
+                    .read(khataServiceProvider)
+                    .deleteCustomer(customer.id);
+
+                // Close panel
+                widget.onClose();
+
+                // Refresh list
+                ref.invalidate(customersProvider);
+
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Customer deleted successfully'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete customer: $e'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('DELETE'),
+          ),
         ],
       ),
     );
@@ -667,18 +958,21 @@ class _CustomerDetailPanel extends ConsumerWidget {
   Widget _buildOutstandingSection(CustomerModel customer) {
     final hasDue = customer.balance > 0;
     return Padding(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(
             'Current Outstanding',
-            style: TextStyle(fontSize: 15, color: WebTheme.textSecondary),
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
           ),
           Text(
             hasDue ? Formatters.currency(customer.balance) : '₹0',
             style: TextStyle(
-              fontSize: 28,
+              fontSize: 24,
               fontWeight: FontWeight.bold,
               color: hasDue ? AppColors.error : AppColors.success,
             ),
@@ -702,7 +996,7 @@ class _CustomerDetailPanel extends ConsumerWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: WebTheme.textMuted,
+              color: Theme.of(context).colorScheme.outline,
               letterSpacing: 0.5,
             ),
           ),
@@ -714,7 +1008,9 @@ class _CustomerDetailPanel extends ConsumerWidget {
                 return Center(
                   child: Text(
                     'No transactions yet',
-                    style: TextStyle(color: WebTheme.textMuted),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.outline,
+                    ),
                   ),
                 );
               }
@@ -738,23 +1034,21 @@ class _CustomerDetailPanel extends ConsumerWidget {
 
   Widget _buildActionButtons(BuildContext context, CustomerModel customer) {
     return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: const BoxDecoration(
-        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        border: Border(top: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: Row(
         children: [
           Expanded(
             child: OutlinedButton.icon(
-              onPressed: () {
-                // TODO: Give Udhaar flow
-              },
-              icon: const Icon(Icons.remove_circle_outline),
+              onPressed: () => _showUdhaarModal(context, customer),
+              icon: const Icon(Icons.remove_circle_outline, size: 18),
               label: const Text('Give Udhaar'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AppColors.error,
-                side: BorderSide(color: AppColors.error),
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                side: const BorderSide(color: AppColors.error),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -762,12 +1056,12 @@ class _CustomerDetailPanel extends ConsumerWidget {
           Expanded(
             child: ElevatedButton.icon(
               onPressed: () => _showPaymentModal(context, customer),
-              icon: const Icon(Icons.check_circle_outline),
+              icon: const Icon(Icons.check_circle_outline, size: 18),
               label: const Text('Receive Pay'),
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppColors.success,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
+                padding: const EdgeInsets.symmetric(vertical: 12),
               ),
             ),
           ),
@@ -782,6 +1076,15 @@ class _CustomerDetailPanel extends ConsumerWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => RecordPaymentModal(customer: customer),
+    );
+  }
+
+  void _showUdhaarModal(BuildContext context, CustomerModel customer) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GiveUdhaarModal(customer: customer),
     );
   }
 
@@ -801,11 +1104,11 @@ class _CustomerDetailPanel extends ConsumerWidget {
 
   Color _getAvatarColor(String name) {
     final colors = [
-      const Color(0xFF10B981),
+      AppColors.primary,
       const Color(0xFF8B5CF6),
-      const Color(0xFFF59E0B),
-      const Color(0xFFEF4444),
-      const Color(0xFF3B82F6),
+      AppColors.warning,
+      AppColors.error,
+      AppColors.info,
       const Color(0xFFEC4899),
     ];
     final index = name.isNotEmpty ? name.codeUnitAt(0) % colors.length : 0;
@@ -869,7 +1172,12 @@ class _TransactionItem extends StatelessWidget {
                 Text(
                   transaction.note ??
                       (isPurchase ? 'Credit purchase' : 'Cash Payment'),
-                  style: TextStyle(fontSize: 12, color: WebTheme.textMuted),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
@@ -889,7 +1197,10 @@ class _TransactionItem extends StatelessWidget {
               const SizedBox(height: 2),
               Text(
                 DateFormat('MMM dd, hh:mm a').format(transaction.createdAt),
-                style: TextStyle(fontSize: 11, color: WebTheme.textMuted),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(context).colorScheme.outline,
+                ),
               ),
             ],
           ),

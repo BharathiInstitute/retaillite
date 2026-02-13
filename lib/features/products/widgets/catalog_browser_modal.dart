@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/product_catalog_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
@@ -41,12 +41,14 @@ class _CatalogBrowserModalState extends ConsumerState<CatalogBrowserModal> {
           // Header
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.dividerLight)),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
+              ),
             ),
             child: Row(
               children: [
-                const Icon(Icons.store, color: AppColors.primary),
+                Icon(Icons.store, color: AppColors.primary),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
@@ -83,7 +85,7 @@ class _CatalogBrowserModalState extends ConsumerState<CatalogBrowserModal> {
 
           // Search bar
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(ResponsiveHelper.modalPadding(context)),
             child: TextField(
               decoration: InputDecoration(
                 hintText: l10n.searchProducts,
@@ -152,7 +154,9 @@ class _CatalogBrowserModalState extends ConsumerState<CatalogBrowserModal> {
                           subtitle: Text(
                             '${product.suggestedPrice.asCurrency} / ${product.unit.shortName}',
                             style: TextStyle(
-                              color: AppColors.textSecondaryLight,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurfaceVariant,
                             ),
                           ),
                           secondary: Container(
@@ -250,7 +254,7 @@ class _CatalogBrowserModalState extends ConsumerState<CatalogBrowserModal> {
       int added = 0;
 
       for (final catalogProduct in _selectedProducts) {
-        final product = catalogProduct.toProductModel(stock: 0);
+        final product = catalogProduct.toProductModel();
         await service.addProduct(product);
         added++;
       }

@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
 class CostsScreen extends ConsumerWidget {
@@ -202,7 +203,7 @@ class CostsScreen extends ConsumerWidget {
                 decoration: BoxDecoration(
                   color: Colors.grey.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.grey.shade200),
+                  boxShadow: AppShadows.small,
                 ),
                 child: Row(
                   children: [
@@ -257,10 +258,10 @@ class CostsScreen extends ConsumerWidget {
 
   Widget _buildEstimatedCostsCard(dynamic stats) {
     // Use real MRR data from Firestore
-    final revenuePerUser = stats.totalUsers > 0
+    final revenuePerUser = (stats.totalUsers as int) > 0
         ? stats.mrr / stats.totalUsers
         : 0.0;
-    final paidUsersRatio = stats.totalUsers > 0
+    final paidUsersRatio = (stats.totalUsers as int) > 0
         ? ((stats.proUsers + stats.businessUsers) / stats.totalUsers * 100)
         : 0.0;
 

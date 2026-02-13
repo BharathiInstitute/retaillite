@@ -1,0 +1,351 @@
+/// Windows Zero-Click Auto-Update Service
+///
+/// Fully automatic background updates — zero user interaction required.
+///
+/// Update flow:
+///   1. App starts → checks if a previous update is pending (fallback)
+///   2. Background: fetches version.json from Firebase Storage
+///   3. If newer → downloads installer silently while user works
+///   4. Creates a watchdog script that monitors this process
+///   5. User closes app naturally → watchdog detects exit
+///   6. Watchdog runs installer /VERYSILENT → files replaced
+///   7. Next app launch → updated. Zero clicks, zero interruption.
+library;
+
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
+
+/// Version info from remote server
+class AppVersionInfo {
+  final String version;
+  final int buildNumber;
+  final String downloadUrl;
+  final String changelog;
+  final bool forceUpdate;
+
+  const AppVersionInfo({
+    required this.version,
+    required this.buildNumber,
+    required this.downloadUrl,
+    this.changelog = '',
+    this.forceUpdate = false,
+  });
+
+  factory AppVersionInfo.fromJson(Map<String, dynamic> json) {
+    return AppVersionInfo(
+      version: json['version'] as String,
+      buildNumber: json['buildNumber'] as int,
+      downloadUrl: json['downloadUrl'] as String,
+      changelog: (json['changelog'] as String?) ?? '',
+      forceUpdate: (json['forceUpdate'] as bool?) ?? false,
+    );
+  }
+}
+
+/// Update check result
+enum UpdateStatus { upToDate, updateAvailable, error }
+
+class UpdateCheckResult {
+  final UpdateStatus status;
+  final AppVersionInfo? versionInfo;
+  final String? error;
+
+  const UpdateCheckResult({required this.status, this.versionInfo, this.error});
+}
+
+class WindowsUpdateService {
+  // Firebase Storage URL for version manifest
+  static const String _versionUrl =
+      'https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2Fversion.json?alt=media';
+
+  // ─── Directory & marker helpers ──────────────────────────────
+
+  /// Persistent update directory: %LOCALAPPDATA%/LiteRetail/updates/
+  static Future<Directory> _updateDir() async {
+    final appSupport = await getApplicationSupportDirectory();
+    final dir = Directory('${appSupport.path}\\updates');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir;
+  }
+
+  static Future<File> _markerFile() async {
+    final dir = await _updateDir();
+    return File('${dir.path}\\pending_update.json');
+  }
+
+  // ─── Public API ──────────────────────────────────────────────
+
+  /// Call once from main.dart after init — fire-and-forget.
+  /// Handles the entire lifecycle: pending check → version check → download → watchdog.
+  static Future<void> runBackgroundUpdateCheck() async {
+    // dart:io Platform is not available on web
+    if (kIsWeb) return;
+    if (!Platform.isWindows) return;
+
+    try {
+      // 1. Check if a previous download is pending (watchdog may have failed)
+      final installed = await _installPendingIfNeeded();
+      if (installed) return; // app will exit — installer is running
+
+      // 2. Check remote for a new version
+      final result = await checkForUpdate();
+      if (result.status != UpdateStatus.updateAvailable) return;
+
+      // 3. Download silently in background
+      await _downloadAndStage(result.versionInfo!);
+    } catch (e) {
+      debugPrint('⚠️ Background update check failed (non-fatal): $e');
+    }
+  }
+
+  /// Check if an update is available
+  static Future<UpdateCheckResult> checkForUpdate() async {
+    if (!Platform.isWindows) {
+      return const UpdateCheckResult(status: UpdateStatus.upToDate);
+    }
+
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+
+      debugPrint(
+        '🔄 Checking for updates... Current: v${packageInfo.version}+$currentBuild',
+      );
+
+      final response = await http
+          .get(Uri.parse(_versionUrl))
+          .timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) {
+        debugPrint('❌ Update check failed: HTTP ${response.statusCode}');
+        return UpdateCheckResult(
+          status: UpdateStatus.error,
+          error: 'Server returned ${response.statusCode}',
+        );
+      }
+
+      final json = jsonDecode(response.body) as Map<String, dynamic>;
+      final remoteVersion = AppVersionInfo.fromJson(json);
+
+      if (remoteVersion.buildNumber > currentBuild) {
+        debugPrint(
+          '✅ Update available: v${remoteVersion.version}+${remoteVersion.buildNumber}',
+        );
+        return UpdateCheckResult(
+          status: UpdateStatus.updateAvailable,
+          versionInfo: remoteVersion,
+        );
+      }
+
+      debugPrint('✅ App is up to date');
+      return const UpdateCheckResult(status: UpdateStatus.upToDate);
+    } catch (e) {
+      debugPrint('❌ Update check error: $e');
+      return UpdateCheckResult(status: UpdateStatus.error, error: e.toString());
+    }
+  }
+
+  // ─── Public download API (used by UpdateDialog) ─────────────
+
+  /// Download and install update with progress reporting.
+  /// Returns true if download succeeded and watchdog was started.
+  static Future<bool> downloadAndInstall(
+    AppVersionInfo info, {
+    void Function(double progress)? onProgress,
+  }) async {
+    try {
+      await _downloadAndStage(info, onProgress: onProgress);
+      return true;
+    } catch (e) {
+      debugPrint('❌ Download and install failed: $e');
+      return false;
+    }
+  }
+
+  // ─── Background download + watchdog ──────────────────────────
+
+  /// Download installer to persistent directory, write marker, start watchdog.
+  static Future<void> _downloadAndStage(
+    AppVersionInfo info, {
+    void Function(double progress)? onProgress,
+  }) async {
+    final dir = await _updateDir();
+    final installerPath = '${dir.path}\\LiteRetail_Update.exe';
+    final installerFile = File(installerPath);
+
+    debugPrint('⬇️ Downloading update v${info.version} in background...');
+
+    // Stream download
+    final request = http.Request('GET', Uri.parse(info.downloadUrl));
+    final streamedResponse = await request.send();
+    final totalBytes = streamedResponse.contentLength ?? 0;
+    var receivedBytes = 0;
+
+    final sink = installerFile.openWrite();
+    await for (final chunk in streamedResponse.stream) {
+      sink.add(chunk);
+      receivedBytes += chunk.length;
+      if (totalBytes > 0) {
+        final progress = receivedBytes / totalBytes;
+        final pct = (progress * 100).toInt();
+        if (pct % 25 == 0) debugPrint('   ⬇️ Download: $pct%');
+        onProgress?.call(progress);
+      }
+    }
+    await sink.close();
+
+    debugPrint(
+      '✅ Update downloaded: $installerPath (${installerFile.lengthSync()} bytes)',
+    );
+
+    // Write pending-update marker
+    final marker = await _markerFile();
+    await marker.writeAsString(
+      jsonEncode({
+        'installerPath': installerPath,
+        'version': info.version,
+        'buildNumber': info.buildNumber,
+        'downloadedAt': DateTime.now().toIso8601String(),
+      }),
+    );
+
+    // Start watchdog — it monitors our PID, installs after we exit
+    await _startWatchdog(installerPath);
+    debugPrint('👀 Watchdog started — update will install when app closes');
+  }
+
+  /// Creates and launches a background .bat script that:
+  ///   - Polls every 3 s until this process (PID) exits
+  ///   - Times out after 2 hours (safety)
+  ///   - Runs the Inno Setup installer /VERYSILENT
+  ///   - Cleans up its own files
+  static Future<void> _startWatchdog(String installerPath) async {
+    final dir = await _updateDir();
+    final batPath = '${dir.path}\\update_watchdog.bat';
+    final markerPath = (await _markerFile()).path;
+    final appPid = pid; // current Dart process PID
+
+    // Escape backslashes for batch
+    final escapedInstaller = installerPath.replaceAll('/', '\\');
+    final escapedMarker = markerPath.replaceAll('/', '\\');
+    final escapedBat = batPath.replaceAll('/', '\\');
+
+    final script =
+        '''@echo off
+setlocal
+set COUNTER=0
+
+:wait
+if %COUNTER% GEQ 2400 goto cleanup
+tasklist /FI "PID eq $appPid" /FI "IMAGENAME eq retaillite.exe" 2>NUL | find /I "$appPid" >NUL
+if "%ERRORLEVEL%"=="0" (
+  set /a COUNTER+=1
+  timeout /t 3 /nobreak >NUL
+  goto wait
+)
+
+rem Process exited — wait a moment for file handles to release
+timeout /t 2 /nobreak >NUL
+
+rem Run installer silently
+start "" "$escapedInstaller" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+
+rem Clean up marker and self
+timeout /t 5 /nobreak >NUL
+del "$escapedMarker" 2>NUL
+del "$escapedBat" 2>NUL
+
+:cleanup
+endlocal
+exit
+''';
+
+    await File(batPath).writeAsString(script);
+
+    // Launch watchdog detached — it runs independently of this process
+    await Process.start('cmd.exe', [
+      '/c',
+      batPath,
+    ], mode: ProcessStartMode.detached);
+  }
+
+  // ─── Pending update fallback (runs on next app start) ────────
+
+  /// If a previous download exists but wasn't installed (watchdog failed,
+  /// system restarted, etc.), install it now. Returns true if installing.
+  static Future<bool> _installPendingIfNeeded() async {
+    final marker = await _markerFile();
+    if (!marker.existsSync()) return false;
+
+    try {
+      final data =
+          jsonDecode(await marker.readAsString()) as Map<String, dynamic>;
+      final installerPath = data['installerPath'] as String;
+      final stagedBuild = data['buildNumber'] as int;
+
+      // Compare with current build — if we're already at or above the staged
+      // version, the update was applied successfully → clean up.
+      final packageInfo = await PackageInfo.fromPlatform();
+      final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+
+      if (currentBuild >= stagedBuild) {
+        debugPrint(
+          '✅ Pending update v${data['version']} already applied — cleaning up',
+        );
+        await _cleanupUpdateFiles(marker, installerPath);
+        return false;
+      }
+
+      // Installer exists but update wasn't applied — run it now (brief interruption)
+      final installer = File(installerPath);
+      if (!installer.existsSync()) {
+        debugPrint('⚠️ Staged installer missing — deleting stale marker');
+        await marker.delete();
+        return false;
+      }
+
+      debugPrint(
+        '🔄 Pending update found — installing v${data['version']} now...',
+      );
+      await Process.start(installerPath, [
+        '/VERYSILENT',
+        '/SUPPRESSMSGBOXES',
+        '/NORESTART',
+        '/CLOSEAPPLICATIONS',
+        '/RESTARTAPPLICATIONS',
+      ], mode: ProcessStartMode.detached);
+
+      // Exit so installer can replace files — app will restart automatically
+      exit(0);
+    } catch (e) {
+      debugPrint('⚠️ Pending update check failed: $e');
+      // Don't block app start for update errors
+      return false;
+    }
+  }
+
+  /// Remove downloaded installer and marker file
+  static Future<void> _cleanupUpdateFiles(
+    File marker,
+    String installerPath,
+  ) async {
+    try {
+      await marker.delete();
+    } catch (_) {}
+    try {
+      final installer = File(installerPath);
+      if (installer.existsSync()) await installer.delete();
+    } catch (_) {}
+    // Delete any leftover watchdog script
+    try {
+      final dir = await _updateDir();
+      final bat = File('${dir.path}\\update_watchdog.bat');
+      if (bat.existsSync()) await bat.delete();
+    } catch (_) {}
+  }
+}

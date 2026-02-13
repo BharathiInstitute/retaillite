@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/validators.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
@@ -11,7 +11,9 @@ import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
 
 class AddCustomerModal extends ConsumerStatefulWidget {
-  const AddCustomerModal({super.key});
+  final CustomerModel? customer; // For edit mode
+
+  const AddCustomerModal({super.key, this.customer});
 
   @override
   ConsumerState<AddCustomerModal> createState() => _AddCustomerModalState();
@@ -25,6 +27,20 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
   final _balanceController = TextEditingController(text: '0');
   bool _owesMe = true;
   bool _isLoading = false;
+
+  bool get _isEditMode => widget.customer != null;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.customer != null) {
+      _nameController.text = widget.customer!.name;
+      _phoneController.text = widget.customer!.phone;
+      _addressController.text = widget.customer!.address ?? '';
+      _balanceController.text = widget.customer!.balance.abs().toString();
+      _owesMe = widget.customer!.balance >= 0;
+    }
+  }
 
   @override
   void dispose() {
@@ -46,24 +62,38 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
       final balance = double.tryParse(_balanceController.text) ?? 0;
 
       final customer = CustomerModel(
-        id: '',
+        id: widget.customer?.id ?? '',
         name: _nameController.text.trim(),
         phone: _phoneController.text.trim(),
         address: _addressController.text.trim().isEmpty
             ? null
             : _addressController.text.trim(),
         balance: _owesMe ? balance : -balance,
-        createdAt: DateTime.now(),
+        createdAt: widget.customer?.createdAt ?? DateTime.now(),
+        updatedAt: _isEditMode ? DateTime.now() : null,
       );
 
-      // Demo mode check
-      await service.addCustomer(customer);
+      if (_isEditMode) {
+        await service.updateCustomer(customer);
+      } else {
+        await service.addCustomer(customer);
+      }
+
+      // Refresh the customers list
+      ref.invalidate(customersProvider);
+      if (_isEditMode) {
+        ref.invalidate(customerProvider(customer.id));
+      }
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Customer added successfully'),
+          SnackBar(
+            content: Text(
+              _isEditMode
+                  ? 'Customer updated successfully'
+                  : 'Customer added successfully',
+            ),
             backgroundColor: AppColors.success,
           ),
         );
@@ -72,7 +102,9 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to add customer: $e'),
+            content: Text(
+              'Failed to ${_isEditMode ? 'update' : 'add'} customer: $e',
+            ),
             backgroundColor: AppColors.error,
           ),
         );
@@ -94,10 +126,12 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: ResponsiveHelper.modalPadding(context),
+            right: ResponsiveHelper.modalPadding(context),
+            top: ResponsiveHelper.modalPadding(context),
+            bottom:
+                MediaQuery.of(context).viewInsets.bottom +
+                ResponsiveHelper.modalPadding(context),
           ),
           child: Form(
             key: _formKey,
@@ -108,10 +142,13 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
                 // Header
                 Row(
                   children: [
-                    const Icon(Icons.person_add, color: AppColors.primary),
+                    Icon(
+                      _isEditMode ? Icons.edit : Icons.person_add,
+                      color: AppColors.primary,
+                    ),
                     const SizedBox(width: 8),
                     Text(
-                      'Add New Customer',
+                      _isEditMode ? 'Edit Customer' : 'Add New Customer',
                       style: Theme.of(context).textTheme.titleLarge,
                     ),
                     const Spacer(),
@@ -130,7 +167,7 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
                   controller: _nameController,
                   textInputAction: TextInputAction.next,
                   prefixIcon: const Icon(Icons.person_outline),
-                  validator: (v) => Validators.name(v, 'Name'),
+                  validator: (v) => Validators.name(v),
                 ),
                 const SizedBox(height: 16),
 
@@ -167,7 +204,7 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
 
                 // Submit button
                 AppButton(
-                  label: '✅ ADD CUSTOMER',
+                  label: _isEditMode ? '✅ UPDATE CUSTOMER' : '✅ ADD CUSTOMER',
                   onPressed: _submit,
                   isLoading: _isLoading,
                 ),

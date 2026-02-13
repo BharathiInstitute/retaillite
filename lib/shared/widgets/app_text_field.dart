@@ -3,7 +3,6 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
 
 class AppTextField extends StatelessWidget {
   final String? label;
@@ -61,7 +60,7 @@ class AppTextField extends StatelessWidget {
           Text(
             label!,
             style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: AppColors.textSecondaryLight,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),

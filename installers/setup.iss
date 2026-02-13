@@ -3,30 +3,36 @@
 
 #define MyAppName "Lite Retail"
 #define MyAppVersion "1.0.0"
-#define MyAppPublisher "Lite App"
+#define MyAppPublisher "TULASI ERP"
 #define MyAppURL "https://liteapp.in/"
 #define MyAppExeName "retaillite.exe"
 
 [Setup]
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers for other applications.
-; (To generate a new GUID, click Tools | Generate GUID inside the IDE.)
 AppId={{C80B0F70-5F16-4338-9B48-8980D2165279}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}
-;AppVerName={#MyAppName} {#MyAppVersion}
+AppVerName={#MyAppName} {#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}
 AppSupportURL={#MyAppURL}
 AppUpdatesURL={#MyAppURL}
 DefaultDirName={autopf}\{#MyAppName}
 DisableProgramGroupPage=yes
-; Uncomment the following line to run in non administrative install mode (install for current user only.)
-;PrivilegesRequired=lowest
+; Allow silent install and update without admin for current user
+PrivilegesRequiredOverridesAllowed=dialog
 OutputDir=..\build\windows\installer
-OutputBaseFilename=LiteRetail_Setup_v1.0.0
+OutputBaseFilename=LiteRetail_Setup_v{#MyAppVersion}
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
+; Silent install support — used by auto-updater
+CloseApplications=force
+RestartApplications=yes
+CloseApplicationsFilter=retaillite.exe
+; Uninstall info
+UninstallDisplayIcon={app}\{#MyAppExeName}
+UninstallDisplayName={#MyAppName}
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

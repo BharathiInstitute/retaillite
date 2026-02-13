@@ -9,6 +9,7 @@ class SalesSummary {
   final double upiAmount;
   final double udharAmount;
   final double avgBillValue;
+  final double totalExpenses;
   final DateTime startDate;
   final DateTime endDate;
 
@@ -19,9 +20,13 @@ class SalesSummary {
     required this.upiAmount,
     required this.udharAmount,
     required this.avgBillValue,
+    this.totalExpenses = 0,
     required this.startDate,
     required this.endDate,
   });
+
+  /// Net profit = total sales - expenses
+  double get profit => totalSales - totalExpenses;
 
   factory SalesSummary.empty() => SalesSummary(
     totalSales: 0,
@@ -96,7 +101,7 @@ class DateRange {
   /// This month
   factory DateRange.thisMonth() {
     final now = DateTime.now();
-    final start = DateTime(now.year, now.month, 1);
+    final start = DateTime(now.year, now.month);
     final lastDay = DateTime(now.year, now.month + 1, 0).day;
     final end = DateTime(now.year, now.month, lastDay, 23, 59, 59);
     return DateRange(start: start, end: end);
@@ -163,7 +168,7 @@ enum ReportPeriod {
         );
       case ReportPeriod.month:
         final now = DateTime.now();
-        final targetMonth = DateTime(now.year, now.month + offset, 1);
+        final targetMonth = DateTime(now.year, now.month + offset);
         final lastDay = DateTime(
           targetMonth.year,
           targetMonth.month + 1,

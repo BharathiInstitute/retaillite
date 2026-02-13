@@ -6,12 +6,15 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
 
-/// Super admin email whitelist
+/// Super admin email whitelist (single source of truth)
 const List<String> superAdminEmails = [
   'kehsaram001@gmail.com',
   'admin@retaillite.com',
   'bharathiinstitute1@gmail.com',
   'bharahiinstitute1@gmail.com',
+  'shivamsingh8556@gmail.com',
+  'admin@lite.app',
+  'kehsihba@gmail.com',
 ];
 
 /// Check if current user is a super admin
@@ -44,12 +47,12 @@ final allUsersProvider =
 
 /// Simple all users provider (for initial load)
 final usersListProvider = FutureProvider<List<AdminUser>>((ref) async {
-  return AdminFirestoreService.getAllUsers(limit: 100);
+  return AdminFirestoreService.getAllUsers();
 });
 
 /// Recent users for dashboard
 final recentUsersProvider = FutureProvider<List<AdminUser>>((ref) async {
-  return AdminFirestoreService.getRecentUsers(limit: 5);
+  return AdminFirestoreService.getRecentUsers();
 });
 
 /// Single user detail provider
@@ -64,7 +67,7 @@ final userDetailProvider = FutureProvider.family<AdminUser?, String>((
 final expiringSubscriptionsProvider = FutureProvider<List<AdminUser>>((
   ref,
 ) async {
-  return AdminFirestoreService.getExpiringSubscriptions(daysAhead: 7);
+  return AdminFirestoreService.getExpiringSubscriptions();
 });
 
 /// Query parameters for users list
@@ -100,7 +103,6 @@ final filteredUsersProvider = FutureProvider<List<AdminUser>>((ref) async {
   final planFilter = ref.watch(usersPlanFilterProvider);
 
   return AdminFirestoreService.getAllUsers(
-    limit: 100,
     searchQuery: searchQuery.isEmpty ? null : searchQuery,
     planFilter: planFilter,
   );

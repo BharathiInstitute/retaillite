@@ -12,7 +12,8 @@ enum ProductUnit {
   ml('Milliliter', 'ml'),
   pack('Pack', 'pack'),
   box('Box', 'box'),
-  dozen('Dozen', 'dz');
+  dozen('Dozen', 'dz'),
+  unknown('Unknown', '?');
 
   final String displayName;
   final String shortName;
@@ -22,7 +23,7 @@ enum ProductUnit {
   static ProductUnit fromString(String value) {
     return ProductUnit.values.firstWhere(
       (e) => e.name == value || e.shortName == value,
-      orElse: () => ProductUnit.piece,
+      orElse: () => ProductUnit.unknown,
     );
   }
 }
@@ -36,6 +37,7 @@ class ProductModel {
   final int? lowStockAlert;
   final String? barcode;
   final String? imageUrl;
+  final String? category;
   final ProductUnit unit;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -49,6 +51,7 @@ class ProductModel {
     this.lowStockAlert,
     this.barcode,
     this.imageUrl,
+    this.category,
     this.unit = ProductUnit.piece,
     required this.createdAt,
     this.updatedAt,
@@ -72,14 +75,15 @@ class ProductModel {
     final data = doc.data() as Map<String, dynamic>;
     return ProductModel(
       id: doc.id,
-      name: data['name'] ?? '',
-      price: (data['price'] ?? 0).toDouble(),
-      purchasePrice: data['purchasePrice']?.toDouble(),
-      stock: data['stock'] ?? 0,
-      lowStockAlert: data['lowStockAlert'],
-      barcode: data['barcode'],
-      imageUrl: data['imageUrl'],
-      unit: ProductUnit.fromString(data['unit'] ?? 'piece'),
+      name: (data['name'] as String?) ?? '',
+      price: (data['price'] as num?)?.toDouble() ?? 0.0,
+      purchasePrice: (data['purchasePrice'] as num?)?.toDouble(),
+      stock: (data['stock'] as int?) ?? 0,
+      lowStockAlert: data['lowStockAlert'] as int?,
+      barcode: data['barcode'] as String?,
+      imageUrl: data['imageUrl'] as String?,
+      category: data['category'] as String?,
+      unit: ProductUnit.fromString((data['unit'] as String?) ?? 'piece'),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -94,6 +98,7 @@ class ProductModel {
       'lowStockAlert': lowStockAlert,
       'barcode': barcode,
       'imageUrl': imageUrl,
+      'category': category,
       'unit': unit.name,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
@@ -108,6 +113,7 @@ class ProductModel {
     int? lowStockAlert,
     String? barcode,
     String? imageUrl,
+    String? category,
     ProductUnit? unit,
   }) {
     return ProductModel(
@@ -119,6 +125,7 @@ class ProductModel {
       lowStockAlert: lowStockAlert ?? this.lowStockAlert,
       barcode: barcode ?? this.barcode,
       imageUrl: imageUrl ?? this.imageUrl,
+      category: category ?? this.category,
       unit: unit ?? this.unit,
       createdAt: createdAt,
       updatedAt: DateTime.now(),

@@ -76,14 +76,14 @@ class UserUsage {
   factory UserUsage.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return UserUsage(
-      odUserId: data['userId'] ?? doc.id,
-      email: data['email'],
-      isAdmin: data['isAdmin'] ?? false,
-      firestoreReads: data['firestoreReads'] ?? 0,
-      firestoreWrites: data['firestoreWrites'] ?? 0,
-      firestoreDeletes: data['firestoreDeletes'] ?? 0,
-      storageBytes: data['storageBytes'] ?? 0,
-      functionCalls: data['functionCalls'] ?? 0,
+      odUserId: (data['userId'] as String?) ?? doc.id,
+      email: data['email'] as String?,
+      isAdmin: (data['isAdmin'] as bool?) ?? false,
+      firestoreReads: (data['firestoreReads'] as int?) ?? 0,
+      firestoreWrites: (data['firestoreWrites'] as int?) ?? 0,
+      firestoreDeletes: (data['firestoreDeletes'] as int?) ?? 0,
+      storageBytes: (data['storageBytes'] as int?) ?? 0,
+      functionCalls: (data['functionCalls'] as int?) ?? 0,
       lastUpdated:
           (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
       periodStart:
@@ -202,7 +202,7 @@ class UserUsageService {
         } else {
           // Create new
           final now = DateTime.now();
-          final periodStart = DateTime(now.year, now.month, 1);
+          final periodStart = DateTime(now.year, now.month);
 
           transaction.set(docRef, {
             'userId': userId,
@@ -324,11 +324,7 @@ class UserUsageService {
     try {
       final snapshot = await _firestore.collection('user_usage').get();
       final batch = _firestore.batch();
-      final periodStart = DateTime(
-        DateTime.now().year,
-        DateTime.now().month,
-        1,
-      );
+      final periodStart = DateTime(DateTime.now().year, DateTime.now().month);
 
       for (final doc in snapshot.docs) {
         batch.update(doc.reference, {

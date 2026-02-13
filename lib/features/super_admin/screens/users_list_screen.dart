@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
@@ -72,6 +73,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                           : null,
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide.none,
                       ),
                       filled: true,
                       fillColor: Colors.white,
@@ -88,7 +90,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                   decoration: BoxDecoration(
                     color: Colors.white,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.grey.shade300),
+                    boxShadow: AppShadows.small,
                   ),
                   child: DropdownButton<SubscriptionPlan?>(
                     value: planFilter,
@@ -96,7 +98,6 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                     underline: const SizedBox(),
                     items: [
                       const DropdownMenuItem(
-                        value: null,
                         child: Text('All Plans'),
                       ),
                       ...SubscriptionPlan.values.map(

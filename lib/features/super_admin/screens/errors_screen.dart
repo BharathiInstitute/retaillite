@@ -9,7 +9,7 @@ import 'package:retaillite/core/services/error_logging_service.dart';
 
 /// Provider for error logs
 final errorLogsProvider = FutureProvider<List<ErrorLogEntry>>((ref) async {
-  return ErrorLoggingService.getRecentErrors(limit: 50);
+  return ErrorLoggingService.getRecentErrors();
 });
 
 /// Provider for health summary
@@ -97,10 +97,10 @@ class ErrorsScreen extends ConsumerWidget {
   }
 
   Widget _buildHealthSummary(Map<String, dynamic> health) {
-    final sessions = health['sessionsLast24h'] ?? 0;
-    final errors = health['errorsLast24h'] ?? 0;
-    final avgStartup = (health['avgStartupTimeMs'] ?? 0).toDouble();
-    final errorRate = (health['errorRate'] ?? 0).toDouble();
+    final sessions = (health['sessionsLast24h'] as int?) ?? 0;
+    final errors = (health['errorsLast24h'] as int?) ?? 0;
+    final avgStartup = ((health['avgStartupTimeMs'] as num?) ?? 0).toDouble();
+    final errorRate = ((health['errorRate'] as num?) ?? 0).toDouble();
 
     return Card(
       child: Container(
@@ -284,7 +284,7 @@ class ErrorsScreen extends ConsumerWidget {
               style: const TextStyle(fontSize: 11),
             ),
             const SizedBox(width: 12),
-            Icon(Icons.access_time, size: 14, color: Colors.grey),
+            const Icon(Icons.access_time, size: 14, color: Colors.grey),
             const SizedBox(width: 4),
             Text(
               dateFormat.format(error.timestamp),

@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/billing/providers/cart_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
@@ -37,15 +37,11 @@ class CartSection extends ConsumerWidget {
           // Header
           if (showHeader) ...[
             Container(
-              padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                border: Border(
-                  bottom: BorderSide(color: AppColors.dividerLight),
-                ),
-              ),
+              padding: EdgeInsets.all(ResponsiveHelper.modalPadding(context)),
+              decoration: const BoxDecoration(),
               child: Row(
                 children: [
-                  const Icon(Icons.shopping_cart, color: AppColors.primary),
+                  Icon(Icons.shopping_cart, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text('Cart', style: Theme.of(context).textTheme.titleMedium),
                   const Spacer(),
@@ -101,20 +97,20 @@ class CartSection extends ConsumerWidget {
                     Icon(
                       Icons.shopping_cart_outlined,
                       size: 48,
-                      color: AppColors.textTertiaryLight,
+                      color: Theme.of(context).colorScheme.outline,
                     ),
                     const SizedBox(height: 12),
                     Text(
                       'Cart is empty',
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                        color: AppColors.textSecondaryLight,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Tap products to add',
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AppColors.textTertiaryLight,
+                        color: Theme.of(context).colorScheme.outline,
                       ),
                     ),
                   ],
@@ -127,7 +123,7 @@ class CartSection extends ConsumerWidget {
                 child: ListView.separated(
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: cart.items.length,
-                  separatorBuilder: (e, _) => const Divider(height: 1),
+                  separatorBuilder: (e, _) => const SizedBox(height: 4),
                   itemBuilder: (context, index) =>
                       _CartItemTile(item: cart.items[index]),
                 ),
@@ -139,7 +135,7 @@ class CartSection extends ConsumerWidget {
                   shrinkWrap: true,
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: cart.items.length,
-                  separatorBuilder: (e, _) => const Divider(height: 1),
+                  separatorBuilder: (e, _) => const SizedBox(height: 4),
                   itemBuilder: (context, index) =>
                       _CartItemTile(item: cart.items[index]),
                 ),
@@ -148,9 +144,7 @@ class CartSection extends ConsumerWidget {
             // Total and Pay button
             Container(
               padding: const EdgeInsets.all(16),
-              decoration: const BoxDecoration(
-                border: Border(top: BorderSide(color: AppColors.dividerLight)),
-              ),
+              decoration: const BoxDecoration(),
               child: Column(
                 children: [
                   Row(
@@ -210,7 +204,7 @@ class _CartItemTile extends ConsumerWidget {
                 Text(
                   '${Formatters.currency(item.price)} × ${item.quantity}',
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AppColors.textSecondaryLight,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
               ],
@@ -220,8 +214,9 @@ class _CartItemTile extends ConsumerWidget {
           // Quantity controls
           Container(
             decoration: BoxDecoration(
-              border: Border.all(color: AppColors.dividerLight),
+              color: Theme.of(context).cardColor,
               borderRadius: BorderRadius.circular(8),
+              boxShadow: AppShadows.small,
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,

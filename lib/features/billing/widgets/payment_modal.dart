@@ -1,10 +1,11 @@
 /// Payment modal for completing bills
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
-import 'package:retaillite/core/services/bill_sharing_service.dart';
+import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
@@ -17,6 +18,7 @@ import 'package:retaillite/features/reports/providers/reports_provider.dart';
 
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/customer_model.dart';
+import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
 
@@ -108,6 +110,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         ref.invalidate(periodBillsProvider);
         ref.invalidate(salesSummaryProvider);
         ref.invalidate(topProductsProvider);
+        ref.invalidate(filteredBillsProvider);
 
         // Invalidate customers if Udhar payment was made
         if (_selectedMethod == PaymentMethod.udhar) {
@@ -235,11 +238,11 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   color: AppColors.upi.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Row(
+                child: const Row(
                   children: [
-                    const Icon(Icons.info_outline, color: AppColors.upi),
-                    const SizedBox(width: 8),
-                    const Expanded(
+                    Icon(Icons.info_outline, color: AppColors.upi),
+                    SizedBox(width: 8),
+                    Expanded(
                       child: Text(
                         'Send the link to customer. Mark as paid after customer confirms payment.',
                         style: TextStyle(fontSize: 12),
@@ -330,6 +333,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         ref.invalidate(periodBillsProvider);
         ref.invalidate(salesSummaryProvider);
         ref.invalidate(topProductsProvider);
+        ref.invalidate(filteredBillsProvider);
 
         ref.read(cartProvider.notifier).clearCart();
         Navigator.of(context).pop();
@@ -396,6 +400,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        final scaffoldMessenger = ScaffoldMessenger.of(context);
                         Navigator.pop(dialogContext);
                         try {
                           await ReceiptService.printReceipt(
@@ -406,11 +411,9 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                             gstNumber: user?.gstNumber,
                           );
                         } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Print failed: $e')),
-                            );
-                          }
+                          scaffoldMessenger.showSnackBar(
+                            SnackBar(content: Text('Print failed: $e')),
+                          );
                         }
                       },
                       icon: const Icon(Icons.print),
@@ -428,22 +431,13 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         Navigator.pop(dialogContext);
-                        // Get customer phone
                         final phone = _selectedCustomer?.phone;
                         if (phone != null && phone.isNotEmpty) {
-                          final success = await BillSharingService.sendWhatsApp(
-                            phone: phone,
-                            bill: bill,
-                            shopName: user?.shopName,
+                          await BillShareService.shareViaWhatsApp(
+                            bill,
+                            phone,
+                            context: context,
                           );
-                          if (!success && context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                content: Text('Could not open WhatsApp'),
-                                backgroundColor: AppColors.error,
-                              ),
-                            );
-                          }
                         } else {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -464,26 +458,18 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   ),
                   const SizedBox(width: 8),
                   // SMS button (only on mobile)
-                  if (BillSharingService.isSmsAvailable)
+                  if (!kIsWeb)
                     Expanded(
                       child: OutlinedButton.icon(
                         onPressed: () async {
                           Navigator.pop(dialogContext);
                           final phone = _selectedCustomer?.phone;
                           if (phone != null && phone.isNotEmpty) {
-                            final success = await BillSharingService.sendSMS(
-                              phone: phone,
-                              bill: bill,
-                              shopName: user?.shopName,
+                            await BillShareService.shareViaSms(
+                              bill,
+                              phone,
+                              context: context,
                             );
-                            if (!success && context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text('Could not open SMS'),
-                                  backgroundColor: AppColors.error,
-                                ),
-                              );
-                            }
                           } else {
                             if (context.mounted) {
                               ScaffoldMessenger.of(context).showSnackBar(
@@ -495,38 +481,29 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                             }
                           }
                         },
-                        icon: const Icon(Icons.sms, color: AppColors.primary),
+                        icon: Icon(Icons.sms, color: AppColors.primary),
                         label: const Text('SMS'),
                         style: OutlinedButton.styleFrom(
                           foregroundColor: AppColors.primary,
                         ),
                       ),
                     ),
-                  if (BillSharingService.isSmsAvailable)
-                    const SizedBox(width: 8),
-                  // Email button
+                  if (!kIsWeb) const SizedBox(width: 8),
+                  // PDF Download button
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
                         Navigator.pop(dialogContext);
-                        try {
-                          await BillSharingService.sendEmail(
-                            bill: bill,
-                            shopName: user?.shopName,
-                          );
-                        } catch (e) {
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Could not open email: $e'),
-                                backgroundColor: AppColors.error,
-                              ),
-                            );
-                          }
-                        }
+                        await BillShareService.downloadPdf(
+                          bill,
+                          context: context,
+                        );
                       },
-                      icon: const Icon(Icons.email, color: AppColors.upi),
-                      label: const Text('Email'),
+                      icon: const Icon(
+                        Icons.picture_as_pdf,
+                        color: AppColors.upi,
+                      ),
+                      label: const Text('PDF'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: AppColors.upi,
                       ),
@@ -558,22 +535,24 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           return Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: AppColors.textSecondaryLight.withValues(alpha: 0.1),
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurfaceVariant.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppColors.dividerLight),
+              boxShadow: AppShadows.small,
             ),
             child: Row(
               children: [
                 Icon(
                   Icons.info_outline,
                   size: 18,
-                  color: AppColors.textSecondaryLight,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 const SizedBox(width: 8),
                 Text(
                   'No customers in Khata. Add from Khata screen.',
                   style: TextStyle(
-                    color: AppColors.textSecondaryLight,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                     fontSize: 12,
                   ),
                 ),
@@ -585,8 +564,9 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         return Container(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
+            color: Theme.of(context).cardColor,
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: AppColors.dividerLight),
+            boxShadow: AppShadows.small,
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<CustomerModel?>(
@@ -595,12 +575,14 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                 children: [
                   Icon(
                     Icons.person_outline,
-                    color: AppColors.textSecondaryLight,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                   const SizedBox(width: 8),
                   Text(
                     'Select customer',
-                    style: TextStyle(color: AppColors.textSecondaryLight),
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ],
               ),
@@ -608,18 +590,19 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
               items: [
                 // Option to clear selection
                 DropdownMenuItem<CustomerModel?>(
-                  value: null,
                   child: Row(
                     children: [
                       Icon(
                         Icons.cancel_outlined,
                         size: 20,
-                        color: AppColors.textSecondaryLight,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                       const SizedBox(width: 8),
                       Text(
                         'No customer',
-                        style: TextStyle(color: AppColors.textSecondaryLight),
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -632,12 +615,14 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                       children: [
                         CircleAvatar(
                           radius: 14,
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                          backgroundColor: AppColors.primary.withValues(
+                            alpha: 0.1,
+                          ),
                           child: Text(
                             customer.name.isNotEmpty
                                 ? customer.name[0].toUpperCase()
                                 : '?',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               color: AppColors.primary,
                             ),
@@ -659,7 +644,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                               if (customer.balance > 0)
                                 Text(
                                   'Balance: ${customer.balance.asCurrency}',
-                                  style: TextStyle(
+                                  style: const TextStyle(
                                     fontSize: 11,
                                     color: AppColors.udhar,
                                   ),
@@ -685,7 +670,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       ),
       error: (e, _) => Container(
         padding: const EdgeInsets.all(12),
-        child: Text(
+        child: const Text(
           'Could not load customers',
           style: TextStyle(color: AppColors.error),
         ),
@@ -706,10 +691,10 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       child: SafeArea(
         child: Padding(
           padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 20,
-            bottom: MediaQuery.of(context).viewInsets.bottom + 20,
+            left: 16,
+            right: 16,
+            top: 12,
+            bottom: MediaQuery.of(context).viewInsets.bottom + 12,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -718,7 +703,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.payment, color: AppColors.primary),
+                  Icon(Icons.payment, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text(
                     'Payment',
@@ -731,14 +716,17 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
 
               // Total
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -746,32 +734,31 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                     const Text('Total: '),
                     Text(
                       cart.total.asCurrency,
-                      style: Theme.of(context).textTheme.headlineMedium
-                          ?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: AppColors.primary,
-                          ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                      ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               // Customer selection
               Text(
                 'Customer (Optional)',
                 style: Theme.of(context).textTheme.labelLarge,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               _buildCustomerSelector(),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               // Payment method selection
               Text(
                 'Payment Method',
                 style: Theme.of(context).textTheme.labelLarge,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 4),
               Row(
                 children: PaymentMethod.values.map((method) {
                   final isSelected = _selectedMethod == method;
@@ -789,7 +776,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 12),
 
               // Cash received (only for cash)
               if (_selectedMethod == PaymentMethod.cash) ...[
@@ -798,7 +785,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                   controller: _receivedController,
                   onChanged: (_) => setState(() {}),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 // Quick amount buttons
                 Wrap(
                   spacing: 8,
@@ -824,9 +811,12 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                       ),
                 ),
                 if (_receivedAmount >= cart.total) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
                     decoration: BoxDecoration(
                       color: AppColors.success.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -837,7 +827,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                         const Text('Return: '),
                         Text(
                           change.asCurrency,
-                          style: Theme.of(context).textTheme.titleLarge
+                          style: Theme.of(context).textTheme.titleMedium
                               ?.copyWith(
                                 color: AppColors.success,
                                 fontWeight: FontWeight.bold,
@@ -847,7 +837,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 20),
+                const SizedBox(height: 12),
               ],
 
               // Udhar warning/validation
@@ -933,6 +923,8 @@ class _PaymentMethodButton extends StatelessWidget {
         return AppColors.upi;
       case PaymentMethod.udhar:
         return AppColors.udhar;
+      case PaymentMethod.unknown:
+        return Colors.grey;
     }
   }
 
@@ -945,21 +937,19 @@ class _PaymentMethodButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: isSelected ? _color : AppColors.dividerLight,
-              width: isSelected ? 2 : 1,
-            ),
+            borderRadius: BorderRadius.circular(10),
+            border: isSelected ? Border.all(color: _color, width: 2) : null,
+            boxShadow: isSelected ? null : AppShadows.small,
           ),
           child: Column(
             children: [
-              Text(method.emoji, style: const TextStyle(fontSize: 24)),
-              const SizedBox(height: 4),
+              Text(method.emoji, style: const TextStyle(fontSize: 20)),
+              const SizedBox(height: 2),
               Text(
                 method.displayName,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
                   color: isSelected ? _color : null,
                   fontWeight: isSelected ? FontWeight.bold : null,
                 ),

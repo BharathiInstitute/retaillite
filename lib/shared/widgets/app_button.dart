@@ -2,7 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 
 class AppButton extends StatelessWidget {
   final String label;

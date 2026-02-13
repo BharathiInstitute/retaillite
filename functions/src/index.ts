@@ -3,20 +3,23 @@
  * 
  * Includes:
  * - createPaymentLink: Creates Razorpay payment links for sharing
+ * - razorpayWebhook: Handles Razorpay payment status updates (signature-verified)
  */
 
 import * as functions from "firebase-functions";
 import * as admin from "firebase-admin";
+import * as crypto from "crypto";
 
 admin.initializeApp();
 
 // Razorpay API credentials (set via Firebase config)
-// Run: firebase functions:config:set razorpay.key_id="rzp_xxx" razorpay.key_secret="xxx"
+// Run: firebase functions:config:set razorpay.key_id="rzp_xxx" razorpay.key_secret="xxx" razorpay.webhook_secret="xxx"
 const getRazorpayConfig = () => {
     const config = functions.config();
     return {
         keyId: config.razorpay?.key_id || process.env.RAZORPAY_KEY_ID || "",
         keySecret: config.razorpay?.key_secret || process.env.RAZORPAY_KEY_SECRET || "",
+        webhookSecret: config.razorpay?.webhook_secret || process.env.RAZORPAY_WEBHOOK_SECRET || "",
     };
 };
 
@@ -44,7 +47,10 @@ interface PaymentLinkResponse {
  * This function creates a shareable payment link that customers can use
  * to pay via UPI, cards, or netbanking.
  */
-export const createPaymentLink = functions.https.onCall(
+export const createPaymentLink = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 30, memory: "256MB" })
+    .https.onCall(
     async (data: PaymentLinkRequest, context): Promise<PaymentLinkResponse> => {
         // Verify authentication (optional but recommended)
         if (!context.auth) {
@@ -170,14 +176,50 @@ export const createPaymentLink = functions.https.onCall(
  * Webhook handler for Razorpay payment status updates
  * 
  * Configure this URL in Razorpay Dashboard -> Settings -> Webhooks
+ * IMPORTANT: Set the webhook secret via:
+ *   firebase functions:config:set razorpay.webhook_secret="your_webhook_secret"
  */
-export const razorpayWebhook = functions.https.onRequest(async (req, res) => {
+export const razorpayWebhook = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 30, memory: "256MB" })
+    .https.onRequest(async (req, res) => {
     if (req.method !== "POST") {
         res.status(405).send("Method not allowed");
         return;
     }
 
     try {
+        // ─── Verify Razorpay webhook signature ───
+        const razorpayConfig = getRazorpayConfig();
+        const webhookSecret = razorpayConfig.webhookSecret;
+
+        if (!webhookSecret) {
+            console.error("Razorpay webhook secret not configured");
+            res.status(500).send("Webhook secret not configured");
+            return;
+        }
+
+        const signature = req.headers["x-razorpay-signature"] as string;
+        if (!signature) {
+            console.warn("Missing x-razorpay-signature header — rejecting request");
+            res.status(401).send("Unauthorized: missing signature");
+            return;
+        }
+
+        // Compute expected signature: HMAC-SHA256 of raw body with webhook secret
+        const rawBody = typeof req.body === "string" ? req.body : JSON.stringify(req.body);
+        const expectedSignature = crypto
+            .createHmac("sha256", webhookSecret)
+            .update(rawBody)
+            .digest("hex");
+
+        if (signature !== expectedSignature) {
+            console.warn("Invalid webhook signature — possible spoofing attempt");
+            res.status(401).send("Unauthorized: invalid signature");
+            return;
+        }
+        // ─── Signature verified ───
+
         const event = req.body;
 
         console.log("Received webhook event:", event.event);

@@ -138,10 +138,11 @@ class PerformanceScreen extends ConsumerWidget {
     Map<String, dynamic>? screenStats,
     Map<String, dynamic>? networkStats,
   ) {
-    final crashFree = crashStats['crashFreePercent'] ?? 100.0;
-    final avgScreenLoad = screenStats?['avgLoadTime'] ?? 0;
-    final avgNetworkLatency = networkStats?['avgLatency'] ?? 0;
-    final networkSuccessRate = networkStats?['successRate'] ?? 100;
+    final crashFree =
+        (crashStats['crashFreePercent'] as num?)?.toDouble() ?? 100.0;
+    final avgScreenLoad = (screenStats?['avgLoadTime'] as int?) ?? 0;
+    final avgNetworkLatency = (networkStats?['avgLatency'] as int?) ?? 0;
+    final networkSuccessRate = (networkStats?['successRate'] as int?) ?? 100;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -189,7 +190,7 @@ class PerformanceScreen extends ConsumerWidget {
     final isWarning = percent >= 95 && percent < 99;
 
     // Use MaterialColor for gradient
-    MaterialColor materialColor = isHealthy
+    final MaterialColor materialColor = isHealthy
         ? Colors.green
         : (isWarning ? Colors.orange : Colors.red);
 
@@ -236,7 +237,9 @@ class PerformanceScreen extends ConsumerWidget {
     final isGood = avgMs < 300;
     final isOkay = avgMs >= 300 && avgMs < 600;
 
-    Color color = isGood ? Colors.blue : (isOkay ? Colors.orange : Colors.red);
+    final Color color = isGood
+        ? Colors.blue
+        : (isOkay ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -271,7 +274,9 @@ class PerformanceScreen extends ConsumerWidget {
     final isGood = avgMs < 200;
     final isOkay = avgMs >= 200 && avgMs < 500;
 
-    Color color = isGood ? Colors.teal : (isOkay ? Colors.orange : Colors.red);
+    final Color color = isGood
+        ? Colors.teal
+        : (isOkay ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -306,7 +311,9 @@ class PerformanceScreen extends ConsumerWidget {
     final isGood = rate >= 99;
     final isOkay = rate >= 95 && rate < 99;
 
-    Color color = isGood ? Colors.green : (isOkay ? Colors.orange : Colors.red);
+    final Color color = isGood
+        ? Colors.green
+        : (isOkay ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -580,12 +587,12 @@ class PerformanceScreen extends ConsumerWidget {
     }
 
     // Color based on success rate
-    Color rateColor = successRate >= 99
+    final Color rateColor = successRate >= 99
         ? Colors.green
         : (successRate >= 95 ? Colors.orange : Colors.red);
 
     // Color based on latency
-    Color latencyColor = avgLatency < 200
+    final Color latencyColor = avgLatency < 200
         ? Colors.green
         : (avgLatency < 500 ? Colors.orange : Colors.red);
 

@@ -1,15 +1,16 @@
 /// Razorpay configuration
 ///
-/// Get your API keys from: https://dashboard.razorpay.com/app/keys
+/// API key is injected via --dart-define at build time:
+///   flutter run --dart-define=RAZORPAY_KEY_ID=rzp_test_xxx
+///   flutter build apk --dart-define=RAZORPAY_KEY_ID=rzp_live_xxx
 library;
 
 class RazorpayConfig {
-  // Razorpay Key ID (Test Mode)
-  // Switch to rzp_live_xxx for production
-  static const String keyId = 'rzp_test_SBggB4lYrbT8Sr';
+  // Razorpay Key ID — injected via --dart-define, never hardcoded
+  static const String keyId = String.fromEnvironment('RAZORPAY_KEY_ID');
 
   // App info shown on Razorpay checkout
-  static const String appName = 'LITE Retail';
+  static const String appName = 'Tulasi Shop Lite';
   static const String description = 'Payment for purchase';
 
   // Theme colors
@@ -20,4 +21,7 @@ class RazorpayConfig {
 
   /// Check if using test mode
   static bool get isTestMode => keyId.startsWith('rzp_test_');
+
+  /// Check if Razorpay is configured
+  static bool get isConfigured => keyId.isNotEmpty;
 }

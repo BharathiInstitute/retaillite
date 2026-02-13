@@ -50,18 +50,18 @@ class ErrorLogEntry {
   factory ErrorLogEntry.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return ErrorLogEntry(
-      message: data['message'] ?? 'Unknown error',
-      stackTrace: data['stackTrace'],
-      platform: data['platform'] ?? 'unknown',
-      userId: data['userId'],
-      appVersion: data['appVersion'] ?? '0.0.0',
+      message: (data['message'] as String?) ?? 'Unknown error',
+      stackTrace: data['stackTrace'] as String?,
+      platform: (data['platform'] as String?) ?? 'unknown',
+      userId: data['userId'] as String?,
+      appVersion: (data['appVersion'] as String?) ?? '0.0.0',
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
       severity: ErrorSeverity.values.firstWhere(
         (e) => e.name == data['severity'],
         orElse: () => ErrorSeverity.error,
       ),
-      screenName: data['screenName'],
-      metadata: data['metadata'],
+      screenName: data['screenName'] as String?,
+      metadata: data['metadata'] as Map<String, dynamic>?,
     );
   }
 }

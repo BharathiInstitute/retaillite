@@ -179,7 +179,7 @@ class UsageTrackingService {
 
   /// Get monthly summary
   static Map<String, dynamic> getMonthlySummary() {
-    final summaries = getUsageSummary(days: 30);
+    final summaries = getUsageSummary();
     final totalOps = summaries.fold(0, (sum, u) => sum + u.totalOperations);
     final totalCost = summaries.fold(0.0, (sum, u) => sum + u.estimatedCost);
 

@@ -43,3 +43,23 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ─── Security-sensitive files (NEVER commit) ───
+# Android signing keys
+*.jks
+*.keystore
+android/key.properties
+
+# Environment files
+.env
+.env.*
+*.env
+
+# Firebase service account keys
+*-service-account*.json
+*-admin-sdk*.json
+firebase-adminsdk*.json
+
+# Debug info from obfuscated builds
+build/debug-info/
+*.symbols

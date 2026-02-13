@@ -1,10 +1,12 @@
 /// Demo mode banner widget
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
@@ -37,10 +39,10 @@ class DemoModeBanner extends ConsumerWidget {
         children: [
           const Icon(Icons.science_outlined, color: Colors.white, size: 20),
           const SizedBox(width: 8),
-          Expanded(
+          const Expanded(
             child: Text(
               'Demo Mode - Register to save your data',
-              style: const TextStyle(
+              style: TextStyle(
                 color: Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
@@ -94,7 +96,7 @@ class DemoModeBanner extends ConsumerWidget {
               Navigator.pop(dialogContext);
               await OfflineStorageService.saveSetting('keep_demo_data', true);
               if (outerContext.mounted) {
-                outerContext.push('/register');
+                unawaited(outerContext.push('/register'));
               }
             },
             child: const Text('Keep Demo Data'),
@@ -105,7 +107,7 @@ class DemoModeBanner extends ConsumerWidget {
               Navigator.pop(dialogContext);
               await OfflineStorageService.saveSetting('keep_demo_data', false);
               if (outerContext.mounted) {
-                outerContext.push('/register');
+                unawaited(outerContext.push('/register'));
               }
             },
             style: ElevatedButton.styleFrom(

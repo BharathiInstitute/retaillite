@@ -6,6 +6,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/models/user_model.dart';
 
 /// Auth state
@@ -60,8 +63,9 @@ class AuthState {
 class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final Ref _ref;
 
-  FirebaseAuthNotifier() : super(const AuthState()) {
+  FirebaseAuthNotifier(this._ref) : super(const AuthState()) {
     _init();
   }
 
@@ -91,6 +95,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         final isShopSetupComplete =
             data['isShopSetupComplete'] as bool? ?? false;
 
+        // Load this user's cloud settings into local SharedPreferences
+        await OfflineStorageService.loadAllSettingsFromCloud();
+
         state = AuthState(
           status: AuthStatus.authenticated,
           firebaseUser: firebaseUser,
@@ -105,6 +112,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             phone: data['phone'] as String? ?? '',
             address: data['address'] as String?,
             gstNumber: data['gstNumber'] as String?,
+            shopLogoPath: data['shopLogoPath'] as String?,
             settings: const UserSettings(),
             createdAt:
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -116,7 +124,6 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.authenticated,
           firebaseUser: firebaseUser,
           isLoggedIn: true,
-          isShopSetupComplete: false,
           isLoading: false,
           user: UserModel(
             id: firebaseUser.uid,
@@ -135,7 +142,6 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         status: AuthStatus.authenticated,
         firebaseUser: firebaseUser,
         isLoggedIn: true,
-        isShopSetupComplete: false,
         isLoading: false,
         error: 'Failed to load user profile',
       );
@@ -155,7 +161,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
 
     try {
-      state = state.copyWith(isLoading: true, error: null);
+      state = state.copyWith(isLoading: true);
 
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -217,7 +223,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
 
     try {
-      state = state.copyWith(isLoading: true, error: null);
+      state = state.copyWith(isLoading: true);
 
       final credential = await _auth.signInWithEmailAndPassword(
         email: (email ?? phone)!.trim(),
@@ -261,6 +267,10 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Sign out
   Future<void> signOut() async {
     try {
+      // Clear local user-specific settings so they don't leak to next user
+      await OfflineStorageService.clearUserLocalSettings();
+      // Reset theme to default light immediately
+      _ref.read(themeSettingsProvider.notifier).resetToDefault();
       await _auth.signOut();
       state = const AuthState(isLoading: false);
     } catch (e) {
@@ -319,6 +329,49 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     );
   }
 
+  /// Update shop info with optional fields (for partial updates)
+  Future<bool> updateShopInfo({
+    String? shopName,
+    String? ownerName,
+    String? phone,
+    String? address,
+    String? gstNumber,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      final updates = <String, dynamic>{};
+      if (shopName != null) updates['shopName'] = shopName;
+      if (ownerName != null) updates['ownerName'] = ownerName;
+      if (phone != null) updates['phone'] = phone;
+      if (address != null) updates['address'] = address;
+      if (gstNumber != null) updates['gstNumber'] = gstNumber;
+
+      if (updates.isEmpty) return true;
+
+      await _firestore.collection('users').doc(user.uid).update(updates);
+
+      // Update local state
+      if (state.user != null) {
+        state = state.copyWith(
+          user: state.user!.copyWith(
+            shopName: shopName ?? state.user!.shopName,
+            ownerName: ownerName ?? state.user!.ownerName,
+            phone: phone ?? state.user!.phone,
+            address: address ?? state.user!.address,
+            gstNumber: gstNumber ?? state.user!.gstNumber,
+          ),
+        );
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('🔐 Error updating shop info: $e');
+      return false;
+    }
+  }
+
   /// Update shop logo
   Future<bool> updateShopLogo(String logoPath) async {
     try {
@@ -346,20 +399,26 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
   /// Clear error
   void clearError() {
-    state = state.copyWith(error: null);
+    state = state.copyWith();
   }
 
   /// Check if user is registered (for forgot password)
+  /// Note: fetchSignInMethodsForEmail was removed in firebase_auth 6.x
+  /// for security (email enumeration protection). We now attempt to send
+  /// a password reset email — if it fails, the user likely doesn't exist.
   Future<bool> isUserRegistered(String emailOrPhone) async {
     try {
-      // Try to fetch sign-in methods for the email
-      final methods = await _auth.fetchSignInMethodsForEmail(
-        emailOrPhone.trim(),
-      );
-      return methods.isNotEmpty;
+      await _auth.sendPasswordResetEmail(email: emailOrPhone.trim());
+      // If no exception, the user exists (reset email was sent)
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'user-not-found') return false;
+      // Other errors (network, etc.) — assume registered to avoid blocking
+      debugPrint('🔐 Error checking if user registered: $e');
+      return true;
     } catch (e) {
       debugPrint('🔐 Error checking if user registered: $e');
-      return false;
+      return true;
     }
   }
 
@@ -374,8 +433,38 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Change password (requires re-authentication)
+  Future<void> changePassword(
+    String currentPassword,
+    String newPassword,
+  ) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      throw Exception('User not logged in');
+    }
+
+    // Re-authenticate with current password
+    final credential = EmailAuthProvider.credential(
+      email: user.email!,
+      password: currentPassword,
+    );
+
+    try {
+      await user.reauthenticateWithCredential(credential);
+      await user.updatePassword(newPassword);
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'wrong-password') {
+        throw Exception('Current password is incorrect');
+      }
+      throw Exception('Failed to change password: ${e.message}');
+    }
+  }
+
   /// Start demo mode (keeps local data for demo)
   Future<void> startDemoMode() async {
+    // Load demo data BEFORE setting state
+    DemoDataService.loadDemoData();
+
     state = AuthState(
       status: AuthStatus.authenticated,
       isLoggedIn: true,
@@ -396,7 +485,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
   /// Exit demo mode
   Future<void> exitDemoMode() async {
-    state = const AuthState(isLoading: false, isDemoMode: false);
+    // Clear demo data
+    DemoDataService.clearDemoData();
+    state = const AuthState(isLoading: false);
   }
 
   /// Register from demo mode (placeholder - needs implementation)
@@ -417,7 +508,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 /// Auth provider (Firebase mode)
 final authNotifierProvider =
     StateNotifierProvider<FirebaseAuthNotifier, AuthState>(
-      (ref) => FirebaseAuthNotifier(),
+      (ref) => FirebaseAuthNotifier(ref),
     );
 
 /// Current user provider

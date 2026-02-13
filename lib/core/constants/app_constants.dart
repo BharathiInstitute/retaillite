@@ -5,7 +5,7 @@ class AppConstants {
   AppConstants._();
 
   // App Info
-  static const String appName = 'LITE';
+  static const String appName = 'Tulasi Shop Lite';
   static const String appTagline = 'भारत का सबसे आसान बिलिंग ऐप';
   static const String version = '1.0.0';
 

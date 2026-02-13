@@ -10,12 +10,14 @@ import 'package:retaillite/features/auth/screens/register_screen.dart';
 import 'package:retaillite/features/auth/screens/forgot_password_screen.dart';
 import 'package:retaillite/features/auth/screens/shop_setup_screen.dart';
 import 'package:retaillite/features/billing/screens/billing_screen.dart';
-import 'package:retaillite/features/khata/screens/khata_screen.dart';
+import 'package:retaillite/features/billing/screens/bills_history_screen.dart';
+import 'package:retaillite/features/khata/screens/khata_web_screen.dart';
 import 'package:retaillite/features/khata/screens/customer_detail_screen.dart';
-import 'package:retaillite/features/products/screens/products_screen.dart';
+import 'package:retaillite/features/products/screens/products_web_screen.dart';
 import 'package:retaillite/features/products/screens/product_detail_screen.dart';
-import 'package:retaillite/features/reports/screens/reports_screen.dart';
-import 'package:retaillite/features/settings/screens/settings_screen.dart';
+import 'package:retaillite/features/reports/screens/dashboard_web_screen.dart';
+import 'package:retaillite/features/settings/screens/settings_web_screen.dart';
+import 'package:retaillite/features/settings/screens/theme_settings_screen.dart';
 import 'package:retaillite/features/shell/app_shell.dart';
 import 'package:retaillite/features/super_admin/screens/super_admin_dashboard_screen.dart';
 import 'package:retaillite/features/super_admin/screens/users_list_screen.dart';
@@ -26,11 +28,15 @@ import 'package:retaillite/features/super_admin/screens/errors_screen.dart';
 import 'package:retaillite/features/super_admin/screens/performance_screen.dart';
 import 'package:retaillite/features/super_admin/screens/user_costs_screen.dart';
 import 'package:retaillite/features/super_admin/screens/super_admin_login_screen.dart';
+import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/widgets/splash_screen.dart';
 
 /// Route paths
 class AppRoutes {
   AppRoutes._();
 
+  static const String loading = '/loading';
   static const String login = '/login';
   static const String register = '/register';
   static const String forgotPassword = '/forgot-password';
@@ -41,7 +47,10 @@ class AppRoutes {
   static const String products = '/products';
   static const String productDetail = '/product/:id';
   static const String dashboard = '/dashboard';
+  static const String bills = '/bills';
   static const String settings = '/settings';
+  static const String settingsTab = '/settings/:tab';
+  static const String themeSettings = '/settings/theme';
 
   // Super Admin routes
   static const String superAdminLogin = '/super-admin/login';
@@ -55,37 +64,88 @@ class AppRoutes {
   static const String superAdminUserCosts = '/super-admin/user-costs';
 }
 
-/// Super admin emails whitelist (used for routing)
-const List<String> _superAdminEmails = [
-  'kehsaram001@gmail.com',
-  'admin@retaillite.com',
-  'bharathiinstitute1@gmail.com',
-  'bharahiinstitute1@gmail.com',
-];
+// Super admin emails imported from super_admin_provider.dart (single source of truth)
+
+/// Bridge between Riverpod auth state and GoRouter's refreshListenable.
+/// This notifies GoRouter to re-evaluate redirects when auth state changes,
+/// WITHOUT recreating the entire GoRouter instance.
+class _AuthChangeNotifier extends ChangeNotifier {
+  _AuthChangeNotifier(Ref ref) {
+    ref.listen<AuthState>(authNotifierProvider, (_, _) {
+      notifyListeners();
+    });
+  }
+}
+
+/// Key for persisting the last route in SharedPreferences
+const String _lastRouteKey = 'last_route';
+
+/// Read the last saved route from SharedPreferences (sync, prefs already init'd)
+String _getRestoredInitialLocation() {
+  final saved = OfflineStorageService.prefs?.getString(_lastRouteKey);
+  if (saved != null && saved.isNotEmpty && saved.startsWith('/')) {
+    debugPrint('🔄 Restoring initial location from SharedPreferences: $saved');
+    return saved;
+  }
+  return AppRoutes.billing;
+}
 
 /// Router provider
 final routerProvider = Provider<GoRouter>((ref) {
-  final authState = ref.watch(authNotifierProvider);
-  final isLoggedIn = authState.isLoggedIn;
-  final isShopSetupComplete = authState.isShopSetupComplete;
-  final isLoading = authState.isLoading;
+  final authChangeNotifier = _AuthChangeNotifier(ref);
+  ref.onDispose(() => authChangeNotifier.dispose());
 
-  // Check if current user is a super admin (check email against whitelist)
-  final userEmail = authState.user?.email?.toLowerCase().trim() ?? '';
-  final isSuperAdminUser = _superAdminEmails.contains(userEmail);
+  // Use the last saved route as initialLocation.
+  // On fresh install this is /billing; after that, it's whatever page the user was on.
+  final restoredLocation = _getRestoredInitialLocation();
+
+  // In-memory variable to remember the pre-loading URL during auth initialization.
+  // Because initialLocation = restoredLocation, the first redirect sees the correct path.
+  String? pendingRedirect;
 
   return GoRouter(
-    initialLocation: AppRoutes.login,
+    initialLocation: restoredLocation,
     debugLogDiagnostics: true,
+    // Re-evaluate redirects when auth state changes (no GoRouter recreation)
+    refreshListenable: authChangeNotifier,
 
     redirect: (context, state) {
-      // Wait for auth to initialize
-      if (isLoading) {
-        return null;
-      }
+      // Read auth state inside redirect (not watch — GoRouter is not recreated)
+      final authState = ref.read(authNotifierProvider);
+      final isLoggedIn = authState.isLoggedIn;
+      final isShopSetupComplete = authState.isShopSetupComplete;
+      final isLoading = authState.isLoading;
+      final userEmail = authState.user?.email?.toLowerCase().trim() ?? '';
+      final isSuperAdminUser = superAdminEmails.contains(userEmail);
 
       final currentPath = state.matchedLocation;
       final fullUri = state.uri.toString();
+      final isLoadingRoute = currentPath == AppRoutes.loading;
+
+      // While auth is initializing, show the loading screen.
+      // Capture the current URL so we can restore after auth resolves.
+      if (isLoading) {
+        if (!isLoadingRoute) {
+          pendingRedirect = fullUri;
+        }
+        return isLoadingRoute ? null : AppRoutes.loading;
+      }
+
+      // Auth is resolved — leave the loading screen
+      if (isLoadingRoute) {
+        if (!isLoggedIn) return AppRoutes.login;
+        if (!isShopSetupComplete && !isSuperAdminUser) {
+          return AppRoutes.shopSetup;
+        }
+        // Restore the route we captured before going to /loading
+        final target = pendingRedirect ?? restoredLocation;
+        pendingRedirect = null;
+        // If the restored target is a super-admin route, only allow if admin
+        if (target.startsWith('/super-admin') && !isSuperAdminUser) {
+          return AppRoutes.billing;
+        }
+        return target;
+      }
 
       final isAuthRoute =
           currentPath == AppRoutes.login ||
@@ -104,19 +164,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         return AppRoutes.login;
       }
 
-      // IMPORTANT: Always allow super admin routes for logged in users
-      // The SuperAdminDashboardScreen itself will verify admin privileges
+      // Allow super admin routes only for authorized admin emails
       if (isSuperAdminRoute || isGoingToSuperAdmin) {
-        return null;
-      }
-
-      // Super admin user - redirect to admin dashboard when on auth/setup routes
-      if (isSuperAdminUser) {
-        if (isAuthRoute || isShopSetupRoute) {
-          return AppRoutes.superAdmin; // Redirect super admin to admin panel
-        }
-        // Allow other routes
-        return null;
+        if (isSuperAdminUser) return null; // Authorized — allow
+        return AppRoutes.billing; // Not authorized — send to store
       }
 
       // Regular user: Logged in but shop setup not complete
@@ -137,10 +188,25 @@ final routerProvider = Provider<GoRouter>((ref) {
         return AppRoutes.billing;
       }
 
+      // ── Persist current route for restoration after web refresh ──
+      // Only save "normal" app routes (not auth, loading, or super-admin)
+      if (isLoggedIn &&
+          isShopSetupComplete &&
+          !isAuthRoute &&
+          !isSuperAdminRoute) {
+        OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
+      }
+
       return null;
     },
 
     routes: [
+      // Loading route — shown while Firebase Auth initializes
+      GoRoute(
+        path: AppRoutes.loading,
+        builder: (context, state) => const SplashScreen(message: 'Loading...'),
+      ),
+
       // Auth routes (outside shell)
       GoRoute(
         path: AppRoutes.login,
@@ -171,19 +237,33 @@ final routerProvider = Provider<GoRouter>((ref) {
           GoRoute(
             path: AppRoutes.khata,
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: KhataScreen()),
+                const NoTransitionPage(child: KhataWebScreen()),
           ),
           GoRoute(
             path: AppRoutes.products,
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: ProductsScreen()),
+                const NoTransitionPage(child: ProductsWebScreen()),
           ),
           GoRoute(
             path: AppRoutes.dashboard,
             pageBuilder: (context, state) =>
-                const NoTransitionPage(child: ReportsScreen()),
+                const NoTransitionPage(child: DashboardWebScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.bills,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: BillsHistoryScreen()),
           ),
         ],
+      ),
+
+      // Settings — full-width (outside shell, has its own side nav)
+      GoRoute(
+        path: AppRoutes.settingsTab,
+        pageBuilder: (context, state) {
+          final tab = state.pathParameters['tab'] ?? 'general';
+          return NoTransitionPage(child: SettingsWebScreen(initialTab: tab));
+        },
       ),
 
       // Detail screens (outside shell)
@@ -201,9 +281,14 @@ final routerProvider = Provider<GoRouter>((ref) {
           return ProductDetailScreen(productId: productId);
         },
       ),
+      // Redirect bare /settings to /settings/general
       GoRoute(
         path: AppRoutes.settings,
-        builder: (context, state) => const SettingsScreen(),
+        redirect: (context, state) => '/settings/general',
+      ),
+      GoRoute(
+        path: AppRoutes.themeSettings,
+        builder: (context, state) => const ThemeSettingsScreen(),
       ),
 
       // Super Admin routes

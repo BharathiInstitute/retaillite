@@ -4,6 +4,64 @@ library;
 class Validators {
   Validators._();
 
+  // ─── HTML / script tag stripping for all text input ───
+  static final RegExp _htmlTagsPattern = RegExp(r'<[^>]*>');
+  static final RegExp _scriptPattern = RegExp(
+    r'<script[^>]*>.*?</script>',
+    caseSensitive: false,
+    dotAll: true,
+  );
+  static final RegExp _sqlInjectionPattern = RegExp(
+    r"(--|;|'|\bOR\b|\bAND\b|\bDROP\b|\bSELECT\b|\bINSERT\b|\bDELETE\b|\bUPDATE\b)",
+    caseSensitive: false,
+  );
+
+  /// Sanitize text input — strip HTML tags, script tags, SQL patterns
+  static String sanitize(String input) {
+    var cleaned = input;
+    cleaned = cleaned.replaceAll(_scriptPattern, '');
+    cleaned = cleaned.replaceAll(_htmlTagsPattern, '');
+    // Don't strip SQL patterns — just flag them during validation
+    return cleaned.trim();
+  }
+
+  /// Check if text contains suspicious injection patterns
+  static bool containsSuspiciousInput(String value) {
+    return _sqlInjectionPattern.hasMatch(value) ||
+        _scriptPattern.hasMatch(value);
+  }
+
+  /// Validate email address
+  static String? email(String? value) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Email is required';
+    }
+    final emailRegex = RegExp(
+      r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$',
+    );
+    if (!emailRegex.hasMatch(value.trim())) {
+      return 'Enter a valid email address';
+    }
+    return null;
+  }
+
+  /// Validate password strength (min 8 chars, at least 1 letter + 1 number)
+  static String? password(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Password is required';
+    }
+    if (value.length < 8) {
+      return 'Password must be at least 8 characters';
+    }
+    if (!RegExp(r'[a-zA-Z]').hasMatch(value)) {
+      return 'Password must contain at least one letter';
+    }
+    if (!RegExp(r'[0-9]').hasMatch(value)) {
+      return 'Password must contain at least one number';
+    }
+    return null;
+  }
+
   /// Validate Indian mobile number (10 digits)
   static String? phone(String? value) {
     if (value == null || value.isEmpty) {

@@ -6,7 +6,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 /// Transaction type
 enum TransactionType {
   purchase('Purchase', '🛒', true), // Customer bought on credit
-  payment('Payment', '💵', false); // Customer made payment
+  payment('Payment', '💵', false), // Customer made payment
+  unknown('Unknown', '❓', false);
 
   final String displayName;
   final String emoji;
@@ -17,7 +18,7 @@ enum TransactionType {
   static TransactionType fromString(String value) {
     return TransactionType.values.firstWhere(
       (e) => e.name == value,
-      orElse: () => TransactionType.purchase,
+      orElse: () => TransactionType.unknown,
     );
   }
 }
@@ -50,12 +51,12 @@ class TransactionModel {
     final data = doc.data() as Map<String, dynamic>;
     return TransactionModel(
       id: doc.id,
-      customerId: data['customerId'] ?? '',
-      type: TransactionType.fromString(data['type'] ?? 'purchase'),
-      amount: (data['amount'] ?? 0).toDouble(),
-      billId: data['billId'],
-      note: data['note'],
-      paymentMode: data['paymentMode'],
+      customerId: (data['customerId'] as String?) ?? '',
+      type: TransactionType.fromString((data['type'] as String?) ?? 'purchase'),
+      amount: (data['amount'] as num?)?.toDouble() ?? 0.0,
+      billId: data['billId'] as String?,
+      note: data['note'] as String?,
+      paymentMode: data['paymentMode'] as String?,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
     );
   }

@@ -10,7 +10,7 @@ void main() {
         name: 'Test Customer',
         phone: '9876543210',
         balance: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(customer.id, 'cust-1');
@@ -25,15 +25,14 @@ void main() {
         name: 'Test Customer',
         phone: '9876543210',
         balance: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final customerPaid = CustomerModel(
         id: 'cust-2',
         name: 'Test Customer 2',
         phone: '9876543211',
-        balance: 0.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(customerWithDue.hasDue, true);
@@ -47,7 +46,7 @@ void main() {
         name: 'Test Customer',
         phone: '9876543210',
         balance: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         lastTransactionAt: now.subtract(const Duration(days: 5)),
       );
 
@@ -61,7 +60,7 @@ void main() {
         name: 'Test Customer',
         phone: '9876543210',
         balance: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         lastTransactionAt: now.subtract(const Duration(days: 35)),
       );
 
@@ -75,7 +74,7 @@ void main() {
         phone: '9876543210',
         address: '123 Test Street',
         balance: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final map = customer.toFirestore();
@@ -94,7 +93,7 @@ void main() {
         customerId: 'cust-1',
         type: TransactionType.purchase,
         amount: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(transaction.id, 'txn-1');
@@ -109,7 +108,7 @@ void main() {
         customerId: 'cust-1',
         type: TransactionType.purchase,
         amount: 500.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final payment = TransactionModel(
@@ -117,7 +116,7 @@ void main() {
         customerId: 'cust-1',
         type: TransactionType.payment,
         amount: 300.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       expect(purchase.signedAmount, 500.0); // Positive for purchase
@@ -132,7 +131,7 @@ void main() {
         amount: 500.0,
         note: 'Test payment',
         billId: 'bill-1',
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
       );
 
       final map = transaction.toFirestore();

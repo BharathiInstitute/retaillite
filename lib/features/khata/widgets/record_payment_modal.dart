@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/razorpay_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
@@ -203,7 +203,7 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.currency_rupee, color: AppColors.primary),
+                  Icon(Icons.currency_rupee, color: AppColors.primary),
                   const SizedBox(width: 8),
                   Text(
                     'Record Payment',
@@ -267,13 +267,10 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d+\.?\d{0,2}')),
                 ],
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Amount Received',
                   prefixText: '₹ ',
                   hintText: '0.00',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
                 onChanged: (_) => setState(() {}),
               ),
@@ -358,14 +355,10 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
               // Note input
               TextField(
                 controller: _noteController,
-                decoration: InputDecoration(
+                decoration: const InputDecoration(
                   labelText: 'Note (Optional)',
                   hintText: 'e.g., Partial payment',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
                 ),
-                maxLines: 1,
               ),
               const SizedBox(height: 24),
 
@@ -463,7 +456,9 @@ class _PaymentModeButton extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: isSelected ? AppColors.primary : AppColors.dividerLight,
+              color: isSelected
+                  ? AppColors.primary
+                  : Theme.of(context).dividerColor,
               width: isSelected ? 2 : 1,
             ),
           ),

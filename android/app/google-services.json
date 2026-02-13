@@ -80,6 +80,25 @@
           "other_platform_oauth_client": []
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:576503526807:android:82ea72b56f1d80262300d2",
+        "android_client_info": {
+          "package_name": "in.liteapp.retaillite"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
     }
   ],
   "configuration_version": "1"

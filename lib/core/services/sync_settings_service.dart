@@ -3,9 +3,14 @@
 /// Manages sync intervals and tracks sync status
 library;
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:retaillite/core/services/web_persistence_stub.dart'
+    if (dart.library.html) 'package:retaillite/core/services/web_persistence.dart';
 
 /// Sync interval options
 enum SyncInterval {
@@ -39,22 +44,31 @@ class SyncSettingsService {
   static bool get isInitialized => _prefs != null;
 
   /// Initialize the service
+  /// Called early from main() BEFORE any other Firestore access
+  static Future<void> initializeFirestorePersistence() async {
+    try {
+      if (kIsWeb) {
+        await enableWebPersistence();
+      } else {
+        FirebaseFirestore.instance.settings = const Settings(
+          persistenceEnabled: true,
+          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+        );
+        debugPrint('✅ Firebase offline mode enabled with unlimited cache');
+      }
+    } catch (e) {
+      debugPrint('⚠️ Firestore persistence setup: $e');
+    }
+  }
+
   static Future<void> initialize() async {
     try {
       _prefs = await SharedPreferences.getInstance();
       _loadLastSyncTime();
       _pendingSyncCount = _prefs?.getInt(_pendingSyncKey) ?? 0;
 
-      // Enable Firebase offline persistence with unlimited cache
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
-
-      debugPrint('✅ Firebase offline mode enabled with unlimited cache');
-
       // Check if auto-sync is needed (run in background, don't block)
-      checkAndAutoSync();
+      unawaited(checkAndAutoSync());
     } catch (e) {
       debugPrint('❌ SyncSettingsService init error: $e');
     }

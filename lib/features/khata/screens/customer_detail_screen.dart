@@ -3,17 +3,18 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
+import 'package:retaillite/features/khata/widgets/give_udhaar_modal.dart';
 import 'package:retaillite/features/khata/widgets/record_payment_modal.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:retaillite/core/theme/responsive_helper.dart';
 
 class CustomerDetailScreen extends ConsumerWidget {
   final String customerId;
@@ -27,28 +28,52 @@ class CustomerDetailScreen extends ConsumerWidget {
       customerTransactionsProvider(customerId),
     );
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Customer Details'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.edit),
-            onPressed: () {
-              // TODO: Edit customer
-            },
+    return customerAsync.when(
+      data: (customer) {
+        if (customer == null) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('Customer Details')),
+            body: const Center(child: Text('Customer not found')),
+          );
+        }
+
+        final isMobile = ResponsiveHelper.isMobile(context);
+        final maxWidth = isMobile ? double.infinity : 800.0;
+
+        return Scaffold(
+          appBar: AppBar(
+            title: const Text('Customer Details'),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: () => _showEditModal(context, customer),
+                tooltip: 'Edit Details',
+              ),
+              PopupMenuButton<String>(
+                onSelected: (value) {
+                  if (value == 'delete') {
+                    _showDeleteConfirmation(context, ref, customer);
+                  }
+                },
+                itemBuilder: (context) => [
+                  const PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, color: AppColors.error),
+                        SizedBox(width: 8),
+                        Text(
+                          'Delete Customer',
+                          style: TextStyle(color: AppColors.error),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
-      body: customerAsync.when(
-        data: (customer) {
-          if (customer == null) {
-            return const Center(child: Text('Customer not found'));
-          }
-
-          final isMobile = ResponsiveHelper.isMobile(context);
-          final maxWidth = isMobile ? double.infinity : 800.0;
-
-          return Center(
+          body: Center(
             child: ConstrainedBox(
               constraints: BoxConstraints(maxWidth: maxWidth),
               child: SingleChildScrollView(
@@ -69,7 +94,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                               ),
                               child: Text(
                                 customer.name[0].toUpperCase(),
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 32,
                                   fontWeight: FontWeight.bold,
                                   color: AppColors.primary,
@@ -80,13 +105,17 @@ class CustomerDetailScreen extends ConsumerWidget {
                             Text(
                               customer.name,
                               style: Theme.of(context).textTheme.headlineSmall,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 4),
                             Text(
                               '📞 ${Formatters.phone(customer.phone)}',
                               style: Theme.of(context).textTheme.bodyMedium
                                   ?.copyWith(
-                                    color: AppColors.textSecondaryLight,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                             ),
                             if (customer.address != null) ...[
@@ -95,8 +124,12 @@ class CustomerDetailScreen extends ConsumerWidget {
                                 '📍 ${customer.address}',
                                 style: Theme.of(context).textTheme.bodySmall
                                     ?.copyWith(
-                                      color: AppColors.textTertiaryLight,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.outline,
                                     ),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
                               ),
                             ],
                           ],
@@ -146,7 +179,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                     Text(
                       'TRANSACTIONS',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppColors.textSecondaryLight,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                     const SizedBox(height: 12),
@@ -184,57 +217,74 @@ class CustomerDetailScreen extends ConsumerWidget {
                 ),
               ),
             ),
-          );
-        },
-        loading: () => const LoadingIndicator(),
-        error: (e, _) => const ErrorState(message: 'Failed to load customer'),
+          ),
+          bottomSheet: _buildBottomSheet(context, ref, customer),
+        );
+      },
+      loading: () => Scaffold(
+        appBar: AppBar(title: const Text('Customer Details')),
+        body: const LoadingIndicator(),
       ),
-      bottomSheet: customerAsync.when(
-        data: (customer) {
-          if (customer == null) return const SizedBox.shrink();
-          return Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Theme.of(context).cardColor,
-              boxShadow: AppShadows.medium,
-            ),
-            child: SafeArea(
-              child: Row(
-                children: [
-                  if (customer.hasDue)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            _sendPaymentLink(context, ref, customer),
-                        icon: const Icon(Icons.link),
-                        label: const Text('PAY LINK'),
-                      ),
-                    ),
-                  if (customer.hasDue) const SizedBox(width: 8),
-                  if (customer.hasDue)
-                    Expanded(
-                      child: OutlinedButton.icon(
-                        onPressed: () =>
-                            _sendWhatsAppReminder(context, customer),
-                        icon: const Icon(Icons.message),
-                        label: const Text('REMIND'),
-                      ),
-                    ),
-                  if (customer.hasDue) const SizedBox(width: 8),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => _showPaymentModal(context, customer),
-                      icon: const Icon(Icons.currency_rupee),
-                      label: const Text('PAYMENT'),
-                    ),
-                  ),
-                ],
+      error: (e, _) => Scaffold(
+        appBar: AppBar(title: const Text('Customer Details')),
+        body: const ErrorState(message: 'Failed to load customer'),
+      ),
+    );
+  }
+
+  Widget _buildBottomSheet(
+    BuildContext context,
+    WidgetRef ref,
+    CustomerModel customer,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        boxShadow: AppShadows.medium,
+      ),
+      child: SafeArea(
+        child: Row(
+          children: [
+            if (customer.hasDue)
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _sendPaymentLink(context, ref, customer),
+                  icon: const Icon(Icons.link),
+                  label: const Text('PAY LINK'),
+                ),
+              ),
+            if (customer.hasDue) const SizedBox(width: 8),
+            if (customer.hasDue)
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _sendWhatsAppReminder(context, customer),
+                  icon: const Icon(Icons.message),
+                  label: const Text('REMIND'),
+                ),
+              ),
+            if (customer.hasDue) const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _showUdhaarModal(context, customer),
+                icon: const Icon(Icons.add_circle_outline),
+                label: const Text('UDHAAR'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.error,
+                  side: const BorderSide(color: AppColors.error),
+                ),
               ),
             ),
-          );
-        },
-        loading: () => const SizedBox.shrink(),
-        error: (e, _) => const SizedBox.shrink(),
+            const SizedBox(width: 8),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: () => _showPaymentModal(context, customer),
+                icon: const Icon(Icons.currency_rupee),
+                label: const Text('PAYMENT'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -272,12 +322,30 @@ class CustomerDetailScreen extends ConsumerWidget {
     }
   }
 
+  void _showEditModal(BuildContext context, CustomerModel customer) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => AddCustomerModal(customer: customer),
+    );
+  }
+
   void _showPaymentModal(BuildContext context, CustomerModel customer) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => RecordPaymentModal(customer: customer),
+    );
+  }
+
+  void _showUdhaarModal(BuildContext context, CustomerModel customer) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => GiveUdhaarModal(customer: customer),
     );
   }
 
@@ -347,6 +415,65 @@ class CustomerDetailScreen extends ConsumerWidget {
         ),
       );
     }
+  }
+
+  void _showDeleteConfirmation(
+    BuildContext context,
+    WidgetRef ref,
+    CustomerModel customer,
+  ) {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+    final navigator = Navigator.of(context);
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Delete Customer?'),
+        content: Text(
+          'Are you sure you want to delete ${customer.name}? '
+          'This action cannot be undone and will remove all their transaction history.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('CANCEL'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(dialogContext); // Close dialog
+
+              try {
+                await ref
+                    .read(khataServiceProvider)
+                    .deleteCustomer(customer.id);
+
+                ref.invalidate(customersProvider);
+
+                navigator.pop(); // Go back to list
+                scaffoldMessenger.showSnackBar(
+                  const SnackBar(
+                    content: Text('Customer deleted successfully'),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text('Failed to delete customer: $e'),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.error,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('DELETE'),
+          ),
+        ],
+      ),
+    );
   }
 }
 

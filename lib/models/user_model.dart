@@ -36,15 +36,17 @@ class UserModel {
     final data = doc.data() as Map<String, dynamic>;
     return UserModel(
       id: doc.id,
-      shopName: data['shopName'] ?? '',
-      ownerName: data['ownerName'] ?? '',
-      phone: data['phone'] ?? '',
-      email: data['email'],
-      address: data['address'],
-      gstNumber: data['gstNumber'],
-      shopLogoPath: data['shopLogoPath'],
-      settings: UserSettings.fromMap(data['settings'] ?? {}),
-      isPaid: data['isPaid'] ?? false,
+      shopName: (data['shopName'] as String?) ?? '',
+      ownerName: (data['ownerName'] as String?) ?? '',
+      phone: (data['phone'] as String?) ?? '',
+      email: data['email'] as String?,
+      address: data['address'] as String?,
+      gstNumber: data['gstNumber'] as String?,
+      shopLogoPath: data['shopLogoPath'] as String?,
+      settings: UserSettings.fromMap(
+        (data['settings'] as Map<String, dynamic>?) ?? {},
+      ),
+      isPaid: (data['isPaid'] as bool?) ?? false,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -123,17 +125,18 @@ class UserSettings {
 
   factory UserSettings.fromMap(Map<String, dynamic> map) {
     return UserSettings(
-      language: map['language'] ?? 'hi',
-      darkMode: map['darkMode'] ?? false,
-      autoPrint: map['autoPrint'] ?? false,
-      printPreview: map['printPreview'] ?? true,
-      soundEnabled: map['soundEnabled'] ?? true,
-      notificationsEnabled: map['notificationsEnabled'] ?? true,
-      printerAddress: map['printerAddress'],
-      billSize: map['billSize'] ?? '58mm',
-      gstEnabled: map['gstEnabled'] ?? true,
-      taxRate: (map['taxRate'] ?? 5.0).toDouble(),
-      receiptFooter: map['receiptFooter'] ?? 'Thank you for shopping!',
+      language: (map['language'] as String?) ?? 'hi',
+      darkMode: (map['darkMode'] as bool?) ?? false,
+      autoPrint: (map['autoPrint'] as bool?) ?? false,
+      printPreview: (map['printPreview'] as bool?) ?? true,
+      soundEnabled: (map['soundEnabled'] as bool?) ?? true,
+      notificationsEnabled: (map['notificationsEnabled'] as bool?) ?? true,
+      printerAddress: map['printerAddress'] as String?,
+      billSize: (map['billSize'] as String?) ?? '58mm',
+      gstEnabled: (map['gstEnabled'] as bool?) ?? true,
+      taxRate: (map['taxRate'] as num?)?.toDouble() ?? 5.0,
+      receiptFooter:
+          (map['receiptFooter'] as String?) ?? 'Thank you for shopping!',
     );
   }
 

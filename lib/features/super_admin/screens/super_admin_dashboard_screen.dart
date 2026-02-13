@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
@@ -73,7 +73,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
       body: Row(
         children: [
           // Sidebar for desktop
-          if (isWide) _buildSidebar(context),
+          if (isWide) _buildSidebar(context, ref),
 
           // Main content
           Expanded(
@@ -145,7 +145,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSidebar(BuildContext context) {
+  Widget _buildSidebar(BuildContext context, WidgetRef ref) {
     return Container(
       width: 220,
       color: Colors.grey.shade100,
@@ -235,7 +235,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
             child: SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _showLogoutDialog(context),
+                onPressed: () => _showLogoutDialog(context, ref),
                 icon: const Icon(Icons.logout, size: 18),
                 label: const Text('Logout'),
                 style: OutlinedButton.styleFrom(
@@ -595,7 +595,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
     }
   }
 
-  void _showLogoutDialog(BuildContext context) {
+  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -611,7 +611,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           TextButton(
             onPressed: () async {
               Navigator.pop(context);
-              await FirebaseAuth.instance.signOut();
+              await ref.read(authNotifierProvider.notifier).signOut();
               if (context.mounted) {
                 context.go('/login');
               }

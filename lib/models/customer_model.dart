@@ -41,10 +41,10 @@ class CustomerModel {
     final data = doc.data() as Map<String, dynamic>;
     return CustomerModel(
       id: doc.id,
-      name: data['name'] ?? '',
-      phone: data['phone'] ?? '',
-      address: data['address'],
-      balance: (data['balance'] ?? 0).toDouble(),
+      name: (data['name'] as String?) ?? '',
+      phone: (data['phone'] as String?) ?? '',
+      address: data['address'] as String?,
+      balance: (data['balance'] as num?)?.toDouble() ?? 0.0,
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
       lastTransactionAt: (data['lastTransactionAt'] as Timestamp?)?.toDate(),

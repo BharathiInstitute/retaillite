@@ -4,11 +4,13 @@
 /// Firebase Firestore offline persistence handles all local caching.
 library;
 
+import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/customer_model.dart';
+import 'package:retaillite/models/expense_model.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -120,6 +122,9 @@ class OfflineStorageService {
   static final _firestore = FirebaseFirestore.instance;
   static final _auth = FirebaseAuth.instance;
 
+  /// Expose prefs for direct access (e.g., route persistence)
+  static SharedPreferences? get prefs => _prefs;
+
   /// Get user's collection path
   static String get _basePath {
     final uid = _auth.currentUser?.uid;
@@ -154,13 +159,12 @@ class OfflineStorageService {
   static Future<List<ProductModel>> getCachedProductsAsync() async {
     if (_basePath.isEmpty) return [];
     try {
-      final snapshot = await _firestore
-          .collection('$_basePath/products')
-          .get(const GetOptions(source: Source.cache));
+      final snapshot = await _firestore.collection('$_basePath/products').get();
       return snapshot.docs
           .map((doc) => ProductModel.fromFirestore(doc))
           .toList();
     } catch (e) {
+      debugPrint('Error getting products: $e');
       return [];
     }
   }
@@ -208,7 +212,7 @@ class OfflineStorageService {
     return [];
   }
 
-  /// Get cached bills async
+  /// Get all bills (uses server when online, cache when offline)
   static Future<List<BillModel>> getCachedBillsAsync() async {
     if (_basePath.isEmpty) return [];
     try {
@@ -216,9 +220,10 @@ class OfflineStorageService {
           .collection('$_basePath/bills')
           .orderBy('createdAt', descending: true)
           .limit(100)
-          .get(const GetOptions(source: Source.cache));
+          .get();
       return snapshot.docs.map((doc) => BillModel.fromFirestore(doc)).toList();
     } catch (e) {
+      debugPrint('Error getting bills: $e');
       return [];
     }
   }
@@ -269,6 +274,40 @@ class OfflineStorageService {
     return snapshot.docs.length;
   }
 
+  // ==================== Expenses ====================
+
+  /// Save expense
+  static Future<void> saveExpense(ExpenseModel expense) async {
+    if (_basePath.isEmpty) return;
+    await _firestore
+        .doc('$_basePath/expenses/${expense.id}')
+        .set(expense.toFirestore());
+  }
+
+  /// Get all expenses (uses server when online, cache when offline)
+  static Future<List<ExpenseModel>> getCachedExpensesAsync() async {
+    if (_basePath.isEmpty) return [];
+    try {
+      final snapshot = await _firestore
+          .collection('$_basePath/expenses')
+          .orderBy('createdAt', descending: true)
+          .limit(100)
+          .get();
+      return snapshot.docs
+          .map((doc) => ExpenseModel.fromFirestore(doc))
+          .toList();
+    } catch (e) {
+      debugPrint('Error getting expenses: $e');
+      return [];
+    }
+  }
+
+  /// Delete expense
+  static Future<void> deleteExpense(String expenseId) async {
+    if (_basePath.isEmpty) return;
+    await _firestore.doc('$_basePath/expenses/$expenseId').delete();
+  }
+
   // ==================== Customers ====================
 
   /// Cache customers (no-op)
@@ -283,13 +322,13 @@ class OfflineStorageService {
     return [];
   }
 
-  /// Get cached customers async
+  /// Get cached customers async (uses default source for immediate consistency)
   static Future<List<CustomerModel>> getCachedCustomersAsync() async {
     if (_basePath.isEmpty) return [];
     try {
       final snapshot = await _firestore
           .collection('$_basePath/customers')
-          .get(const GetOptions(source: Source.cache));
+          .get();
       return snapshot.docs
           .map((doc) => CustomerModel.fromFirestore(doc))
           .toList();
@@ -306,7 +345,7 @@ class OfflineStorageService {
     try {
       final doc = await _firestore
           .doc('$_basePath/customers/$customerId')
-          .get(const GetOptions(source: Source.cache));
+          .get();
       if (!doc.exists) return null;
       return CustomerModel.fromFirestore(doc);
     } catch (e) {
@@ -333,14 +372,14 @@ class OfflineStorageService {
     await _firestore.doc('$_basePath/customers/$customerId').delete();
   }
 
-  /// Update customer balance
+  /// Update customer balance by delta (positive = increase, negative = decrease)
   static Future<void> updateCustomerBalance(
     String customerId,
-    double newBalance,
+    double delta,
   ) async {
     if (_basePath.isEmpty) return;
     await _firestore.doc('$_basePath/customers/$customerId').update({
-      'balance': newBalance,
+      'balance': FieldValue.increment(delta),
       'updatedAt': FieldValue.serverTimestamp(),
     });
   }
@@ -415,16 +454,30 @@ class OfflineStorageService {
     await _prefs?.setBool(SettingsKeys.dataInitialized, true);
   }
 
-  /// Get setting
+  /// Get setting from local SharedPreferences (for backward compatibility)
   static T? getSetting<T>(String key, {T? defaultValue}) {
     final value = _prefs?.get(key);
     if (value == null) return defaultValue;
-    return value as T?;
+    // Handle Map types stored as JSON strings
+    if (T == dynamic || value is T) {
+      return value as T?;
+    }
+    if (value is String) {
+      try {
+        final decoded = jsonDecode(value);
+        if (decoded is T) return decoded;
+      } catch (_) {
+        // Not valid JSON, return as-is or default
+      }
+    }
+    return defaultValue;
   }
 
-  /// Save setting
+  /// Save setting to both Firestore (for sync) and SharedPreferences (for local cache)
   static Future<void> saveSetting<T>(String key, T value) async {
     _prefs ??= await SharedPreferences.getInstance();
+
+    // Save to SharedPreferences for local cache
     if (value is String) {
       await _prefs?.setString(key, value);
     } else if (value is int) {
@@ -435,6 +488,73 @@ class OfflineStorageService {
       await _prefs?.setBool(key, value);
     } else if (value is List<String>) {
       await _prefs?.setStringList(key, value);
+    } else if (value is Map<String, dynamic>) {
+      // For maps, store as JSON string locally
+      await _prefs?.setString(key, jsonEncode(value));
+    }
+
+    // Also save to Firestore for cross-device sync
+    await saveSettingToCloud(key, value);
+  }
+
+  /// Save setting to Firestore for cloud sync
+  static Future<void> saveSettingToCloud<T>(String key, T value) async {
+    if (_basePath.isEmpty) return;
+    try {
+      await _firestore
+          .doc('$_basePath/settings/user_settings')
+          .set({key: value}, SetOptions(merge: true))
+          .timeout(const Duration(seconds: 5));
+    } catch (e) {
+      debugPrint('Error saving setting to cloud: $e');
+    }
+  }
+
+  /// Get setting from Firestore (async, for cloud sync)
+  static Future<T?> getSettingFromCloud<T>(String key) async {
+    if (_basePath.isEmpty) return null;
+    try {
+      final doc = await _firestore
+          .doc('$_basePath/settings/user_settings')
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (!doc.exists) return null;
+      return doc.data()?[key] as T?;
+    } catch (e) {
+      debugPrint('Error getting setting from cloud: $e');
+      return null;
+    }
+  }
+
+  /// Load all settings from cloud and cache locally
+  static Future<Map<String, dynamic>> loadAllSettingsFromCloud() async {
+    if (_basePath.isEmpty) return {};
+    try {
+      final doc = await _firestore
+          .doc('$_basePath/settings/user_settings')
+          .get()
+          .timeout(const Duration(seconds: 5));
+      if (!doc.exists) return {};
+      final data = doc.data() ?? {};
+
+      // Cache to SharedPreferences
+      for (final entry in data.entries) {
+        final value = entry.value;
+        if (value is String) {
+          await _prefs?.setString(entry.key, value);
+        } else if (value is int) {
+          await _prefs?.setInt(entry.key, value);
+        } else if (value is double) {
+          await _prefs?.setDouble(entry.key, value);
+        } else if (value is bool) {
+          await _prefs?.setBool(entry.key, value);
+        }
+      }
+
+      return data;
+    } catch (e) {
+      debugPrint('Error loading settings from cloud: $e');
+      return {};
     }
   }
 
@@ -464,9 +584,51 @@ class OfflineStorageService {
     return {'products': 0, 'bills': 0, 'customers': 0, 'total': 0};
   }
 
-  /// Clear all local cache (not recommended)
+  /// Clear all local cache
   static Future<void> clearAll() async {
-    debugPrint('clearAll: Not implemented for Firestore');
+    await _prefs?.clear();
+    debugPrint('✅ clearAll: SharedPreferences cleared');
+  }
+
+  /// Clear user-specific local settings on sign-out
+  /// Preserves device-level settings (printer config) but clears user data flags
+  static Future<void> clearUserLocalSettings() async {
+    _prefs ??= await SharedPreferences.getInstance();
+
+    // Keys that are user-specific and should be cleared on sign-out
+    final userKeys = [
+      SettingsKeys.dataInitialized,
+      SettingsKeys.isDarkMode,
+      SettingsKeys.language,
+      SettingsKeys.retentionDays,
+      SettingsKeys.lastCleanupTime,
+      SettingsKeys.lastExportTime,
+      SettingsKeys.autoCleanupEnabled,
+      SettingsKeys.settings,
+      // User metrics keys (prevent bill count / user ID leaking between users)
+      'bills_this_month',
+      'last_reset_month',
+      'user_id',
+      // Theme settings (each user has their own theme)
+      'theme_settings',
+      'theme_is_dark',
+      'theme_use_system',
+      // Route persistence (each user may have different last page)
+      'last_route',
+    ];
+
+    // Also clear any usage metrics and sync metadata
+    final allKeys = _prefs?.getKeys() ?? {};
+    for (final key in allKeys) {
+      if (key.startsWith('usage_') ||
+          key.startsWith('sync_') ||
+          key.startsWith('last_sync') ||
+          key.startsWith('pending_sync') ||
+          userKeys.contains(key)) {
+        await _prefs?.remove(key);
+      }
+    }
+    debugPrint('✅ User-specific local settings cleared');
   }
 
   /// Clear demo data (used when exiting demo mode)

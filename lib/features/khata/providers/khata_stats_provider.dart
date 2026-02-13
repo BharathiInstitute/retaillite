@@ -1,8 +1,12 @@
 /// Khata statistics providers for aggregated data
+/// Supports demo mode with local in-memory data
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 
@@ -28,9 +32,17 @@ class KhataStats {
   );
 }
 
-/// Provider for khata statistics
+/// Provider for khata statistics - supports demo mode
 final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
-  final customers = await OfflineStorageService.getCachedCustomersAsync();
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  debugPrint('📊 khataStatsProvider: isDemoMode=$isDemoMode');
+
+  List<CustomerModel> customers;
+  if (isDemoMode) {
+    customers = DemoDataService.getCustomers().toList();
+  } else {
+    customers = await OfflineStorageService.getCachedCustomersAsync();
+  }
 
   // Calculate total outstanding (sum of positive balances)
   final totalOutstanding = customers.fold<double>(
@@ -47,9 +59,14 @@ final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
   final startOfDay = DateTime(today.year, today.month, today.day);
 
   for (final customer in customers) {
-    final transactions = await OfflineStorageService.getCustomerTransactions(
-      customer.id,
-    );
+    List<TransactionModel> transactions;
+    if (isDemoMode) {
+      transactions = DemoDataService.getCustomerTransactions(customer.id);
+    } else {
+      transactions = await OfflineStorageService.getCustomerTransactions(
+        customer.id,
+      );
+    }
     for (final tx in transactions) {
       if (tx.type == TransactionType.payment &&
           tx.createdAt.isAfter(startOfDay)) {
@@ -57,6 +74,10 @@ final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
       }
     }
   }
+
+  debugPrint(
+    '📊 KhataStats: ${customers.length} customers, outstanding: $totalOutstanding',
+  );
 
   return KhataStats(
     totalOutstanding: totalOutstanding,
@@ -76,13 +97,22 @@ final customerSortProvider = StateProvider<CustomerSortOption>(
   (ref) => CustomerSortOption.highestDebt,
 );
 
-/// Sorted and filtered customers provider
+/// Sorted and filtered customers provider - supports demo mode
 final sortedCustomersProvider = FutureProvider<List<CustomerModel>>((
   ref,
 ) async {
-  final customers = await OfflineStorageService.getCachedCustomersAsync();
-  final sortOption = ref.watch(customerSortProvider);
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  debugPrint('📋 sortedCustomersProvider: isDemoMode=$isDemoMode');
 
+  List<CustomerModel> customers;
+  if (isDemoMode) {
+    customers = DemoDataService.getCustomers().toList();
+    debugPrint('📋 Got ${customers.length} demo customers');
+  } else {
+    customers = await OfflineStorageService.getCachedCustomersAsync();
+  }
+
+  final sortOption = ref.watch(customerSortProvider);
   final sorted = List<CustomerModel>.from(customers);
 
   switch (sortOption) {

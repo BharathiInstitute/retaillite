@@ -4,13 +4,12 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/features/products/widgets/add_product_modal.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
-import 'package:retaillite/core/theme/responsive_helper.dart';
 
 class ProductDetailScreen extends ConsumerWidget {
   final String productId;
@@ -110,7 +109,6 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
                 keyboardType: TextInputType.number,
                 decoration: InputDecoration(
                   labelText: 'Quantity',
-                  border: const OutlineInputBorder(),
                   prefixIcon: Icon(isAdd ? Icons.add : Icons.remove),
                 ),
                 autofocus: true,
@@ -118,7 +116,9 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
               const SizedBox(height: 8),
               Text(
                 'Current stock: ${widget.product.stock} ${widget.product.unit.displayName}',
-                style: TextStyle(color: AppColors.textSecondaryLight),
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -221,7 +221,7 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
                   title: Text('Adjust Stock'),
                 ),
               ),
-              PopupMenuItem(
+              const PopupMenuItem(
                 value: 'delete',
                 child: ListTile(
                   leading: Icon(Icons.delete, color: AppColors.error),
@@ -270,7 +270,7 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
                               color: AppColors.primary.withValues(alpha: 0.1),
                               borderRadius: BorderRadius.circular(12),
                             ),
-                            child: const Icon(
+                            child: Icon(
                               Icons.inventory_2,
                               color: AppColors.primary,
                               size: 32,
@@ -284,11 +284,15 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
                                 Text(
                                   product.name,
                                   style: Theme.of(context).textTheme.titleLarge,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
                                 Text(
                                   product.unit.displayName,
                                   style: TextStyle(
-                                    color: AppColors.textSecondaryLight,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
                                   ),
                                 ),
                               ],
@@ -489,11 +493,15 @@ class _InfoTile extends StatelessWidget {
               children: [
                 Icon(icon, size: 16, color: color),
                 const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondaryLight,
+                Flexible(
+                  child: Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
@@ -506,6 +514,8 @@ class _InfoTile extends StatelessWidget {
                 fontWeight: FontWeight.bold,
                 color: color,
               ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

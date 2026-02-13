@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/data_retention_service.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
 /// App settings state
 class AppSettings {
@@ -42,52 +43,107 @@ class AppSettings {
   }
 }
 
-/// Main settings provider
-final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>(
-  (ref) => SettingsNotifier(),
-);
+/// Main settings provider - rebuilds on user change
+final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
+  ref,
+) {
+  // Watch auth state so settings reload when a different user logs in
+  ref.watch(authNotifierProvider.select((s) => s.firebaseUser?.uid));
+  return SettingsNotifier();
+});
 
 class SettingsNotifier extends StateNotifier<AppSettings> {
   SettingsNotifier() : super(const AppSettings()) {
-    _loadSettings();
+    // Load local cache SYNCHRONOUSLY first to avoid flash of wrong theme
+    _loadLocalSync();
+    // Then sync from cloud in background
+    _loadFromCloud();
   }
 
-  Future<void> _loadSettings() async {
-    final isDark =
-        OfflineStorageService.getSetting<bool>(
-          SettingsKeys.isDarkMode,
-          defaultValue: false,
-        ) ??
-        false;
+  /// Synchronous load from SharedPreferences — instant, no flash
+  void _loadLocalSync() {
+    try {
+      final isDark =
+          OfflineStorageService.getSetting<bool>(
+            SettingsKeys.isDarkMode,
+            defaultValue: false,
+          ) ??
+          false;
 
-    final langCode =
-        OfflineStorageService.getSetting<String>(
-          SettingsKeys.language,
-          defaultValue: 'en',
-        ) ??
-        'en';
+      final langCode =
+          OfflineStorageService.getSetting<String>(
+            SettingsKeys.language,
+            defaultValue: 'en',
+          ) ??
+          'en';
 
-    final retDays =
-        OfflineStorageService.getSetting<int>(
-          SettingsKeys.retentionDays,
-          defaultValue: 90,
-        ) ??
-        90;
+      final retDays =
+          OfflineStorageService.getSetting<int>(
+            SettingsKeys.retentionDays,
+            defaultValue: 90,
+          ) ??
+          90;
 
-    final autoCleanup =
-        OfflineStorageService.getSetting<bool>(
-          SettingsKeys.autoCleanupEnabled,
-          defaultValue: true,
-        ) ??
-        true;
+      final autoCleanup =
+          OfflineStorageService.getSetting<bool>(
+            SettingsKeys.autoCleanupEnabled,
+            defaultValue: true,
+          ) ??
+          true;
 
-    state = AppSettings(
-      isDarkMode: isDark,
-      locale: Locale(langCode),
-      languageCode: langCode,
-      retentionDays: retDays,
-      autoCleanupEnabled: autoCleanup,
-    );
+      state = AppSettings(
+        isDarkMode: isDark,
+        locale: Locale(langCode),
+        languageCode: langCode,
+        retentionDays: retDays,
+        autoCleanupEnabled: autoCleanup,
+      );
+      debugPrint('✅ Settings loaded instantly from local cache');
+    } catch (e) {
+      debugPrint('Error loading settings from local cache: $e');
+    }
+  }
+
+  /// Async cloud fetch — updates if cloud has newer data
+  Future<void> _loadFromCloud() async {
+    try {
+      final cloudData = await OfflineStorageService.loadAllSettingsFromCloud();
+
+      if (cloudData.isNotEmpty) {
+        final cloudDark = cloudData[SettingsKeys.isDarkMode] as bool?;
+        final cloudLang = cloudData[SettingsKeys.language] as String?;
+        final cloudRetention = cloudData[SettingsKeys.retentionDays] as int?;
+        final cloudAutoCleanup =
+            cloudData[SettingsKeys.autoCleanupEnabled] as bool?;
+
+        if (cloudDark != null || cloudLang != null || cloudRetention != null) {
+          final langCode = cloudLang ?? state.languageCode;
+          final newState = AppSettings(
+            isDarkMode: cloudDark ?? state.isDarkMode,
+            locale: Locale(langCode),
+            languageCode: langCode,
+            retentionDays: cloudRetention ?? state.retentionDays,
+            autoCleanupEnabled: cloudAutoCleanup ?? state.autoCleanupEnabled,
+          );
+          // Only update if different
+          if (newState.isDarkMode != state.isDarkMode ||
+              newState.languageCode != state.languageCode ||
+              newState.retentionDays != state.retentionDays ||
+              newState.autoCleanupEnabled != state.autoCleanupEnabled) {
+            state = newState;
+            debugPrint('✅ Settings updated from cloud');
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Cloud settings load failed: $e');
+    }
+  }
+
+  /// Reload settings (called on user switch)
+  Future<void> reloadSettings() async {
+    _loadLocalSync();
+    await _loadFromCloud();
   }
 
   void toggleDarkMode() {
@@ -114,6 +170,11 @@ class SettingsNotifier extends StateNotifier<AppSettings> {
   void setRetentionPeriod(RetentionPeriod period) {
     state = state.copyWith(retentionDays: period.days);
     OfflineStorageService.saveSetting(SettingsKeys.retentionDays, period.days);
+  }
+
+  void setRetentionDays(int days) {
+    state = state.copyWith(retentionDays: days);
+    OfflineStorageService.saveSetting(SettingsKeys.retentionDays, days);
   }
 
   void setAutoCleanup(bool enabled) {
@@ -281,7 +342,6 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
         paperSizeIndex: paperSize,
         fontSizeIndex: fontSize,
         customWidth: customWidth,
-        isConnected: false, // Will check connection later
       );
     } else {
       state = PrinterState(
@@ -312,7 +372,7 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
 
   /// Save and connect to printer
   Future<bool> connectPrinter(String name, String address) async {
-    state = state.copyWith(isScanning: true, error: null);
+    state = state.copyWith(isScanning: true);
 
     // Save to storage
     await PrinterStorage.savePrinter(name, address);
@@ -324,7 +384,6 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
       paperSizeIndex: state.paperSizeIndex,
       fontSizeIndex: state.fontSizeIndex,
       customWidth: state.customWidth,
-      isScanning: false,
     );
 
     return true;
@@ -357,7 +416,7 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
 
   /// Clear error
   void clearError() {
-    state = state.copyWith(error: null);
+    state = state.copyWith();
   }
 }
 

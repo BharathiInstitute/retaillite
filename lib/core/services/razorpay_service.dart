@@ -104,7 +104,7 @@ class RazorpayService {
     // Convert amount to paise (Razorpay expects amount in smallest currency unit)
     final amountInPaise = (amount * 100).round();
 
-    var options = {
+    final options = {
       'key': RazorpayConfig.keyId,
       'amount': amountInPaise,
       'name': RazorpayConfig.appName,

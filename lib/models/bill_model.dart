@@ -7,7 +7,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 enum PaymentMethod {
   cash('Cash', '💵'),
   upi('UPI', '📱'),
-  udhar('Udhar', '📝');
+  udhar('Credit', '💳'),
+  unknown('Unknown', '❓');
 
   final String displayName;
   final String emoji;
@@ -17,7 +18,7 @@ enum PaymentMethod {
   static PaymentMethod fromString(String value) {
     return PaymentMethod.values.firstWhere(
       (e) => e.name == value,
-      orElse: () => PaymentMethod.cash,
+      orElse: () => PaymentMethod.unknown,
     );
   }
 }
@@ -62,11 +63,11 @@ class CartItem {
 
   factory CartItem.fromMap(Map<String, dynamic> map) {
     return CartItem(
-      productId: map['productId'] ?? '',
-      name: map['name'] ?? '',
-      price: (map['price'] ?? 0).toDouble(),
-      quantity: map['quantity'] ?? 1,
-      unit: map['unit'] ?? 'pcs',
+      productId: (map['productId'] as String?) ?? '',
+      name: (map['name'] as String?) ?? '',
+      price: (map['price'] as num?)?.toDouble() ?? 0.0,
+      quantity: (map['quantity'] as int?) ?? 1,
+      unit: (map['unit'] as String?) ?? 'pcs',
     );
   }
 }
@@ -110,19 +111,21 @@ class BillModel {
     final data = doc.data() as Map<String, dynamic>;
     return BillModel(
       id: doc.id,
-      billNumber: data['billNumber'] ?? 0,
+      billNumber: (data['billNumber'] as int?) ?? 0,
       items:
           (data['items'] as List<dynamic>?)
               ?.map((e) => CartItem.fromMap(e as Map<String, dynamic>))
               .toList() ??
           [],
-      total: (data['total'] ?? 0).toDouble(),
-      paymentMethod: PaymentMethod.fromString(data['paymentMethod'] ?? 'cash'),
-      customerId: data['customerId'],
-      customerName: data['customerName'],
-      receivedAmount: data['receivedAmount']?.toDouble(),
+      total: (data['total'] as num?)?.toDouble() ?? 0.0,
+      paymentMethod: PaymentMethod.fromString(
+        (data['paymentMethod'] as String?) ?? 'cash',
+      ),
+      customerId: data['customerId'] as String?,
+      customerName: data['customerName'] as String?,
+      receivedAmount: (data['receivedAmount'] as num?)?.toDouble(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      date: data['date'] ?? '',
+      date: (data['date'] as String?) ?? '',
     );
   }
 

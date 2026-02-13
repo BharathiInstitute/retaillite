@@ -1,6 +1,8 @@
 /// App Health Service for monitoring app performance and health
 library;
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -38,12 +40,12 @@ class AppHealthMetrics {
   factory AppHealthMetrics.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return AppHealthMetrics(
-      startupTime: Duration(milliseconds: data['startupTimeMs'] ?? 0),
-      platform: data['platform'] ?? 'unknown',
-      appVersion: data['appVersion'] ?? '0.0.0',
+      startupTime: Duration(milliseconds: (data['startupTimeMs'] as int?) ?? 0),
+      platform: (data['platform'] as String?) ?? 'unknown',
+      appVersion: (data['appVersion'] as String?) ?? '0.0.0',
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      isOnline: data['isOnline'] ?? true,
-      userId: data['userId'],
+      isOnline: (data['isOnline'] as bool?) ?? true,
+      userId: data['userId'] as String?,
     );
   }
 }
@@ -90,14 +92,14 @@ class AppHealthService {
     // Calculate startup time
     final startupTime = _appStartTime != null
         ? DateTime.now().difference(_appStartTime!)
-        : const Duration(milliseconds: 0);
+        : const Duration();
 
     if (kDebugMode) {
       debugPrint('⏱️ App startup time: ${startupTime.inMilliseconds}ms');
     }
 
     // Don't block the main thread, log in background
-    _logStartupMetrics(startupTime);
+    unawaited(_logStartupMetrics(startupTime));
   }
 
   /// Log startup metrics to Firestore
@@ -205,8 +207,8 @@ class AppHealthService {
           .get();
 
       // Calculate metrics
-      int totalSessions = healthSnapshot.docs.length;
-      int totalErrors = errorSnapshot.docs.length;
+      final int totalSessions = healthSnapshot.docs.length;
+      final int totalErrors = errorSnapshot.docs.length;
 
       // Calculate average startup time
       double avgStartup = 0;

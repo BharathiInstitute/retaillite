@@ -1,13 +1,11 @@
 /// Main app widget with providers and theme
 library;
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/theme/app_theme.dart';
-import 'package:retaillite/core/theme/web_theme.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
+import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/router/app_router.dart';
 
@@ -19,19 +17,22 @@ class LiteApp extends ConsumerWidget {
     final router = ref.watch(routerProvider);
     final settings = ref.watch(settingsProvider);
 
-    // Check if running on Web or Desktop
-    final isWebOrDesktop =
-        kIsWeb ||
-        defaultTargetPlatform == TargetPlatform.windows ||
-        defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.linux;
+    // Dynamic theme from user settings
+    final theme = ref.watch(appThemeProvider);
+    final darkTheme = ref.watch(appDarkThemeProvider);
+    final themeMode = ref.watch(userThemeModeProvider);
+
+    // Get font scale from theme settings (0.8 - 1.4)
+    final themeSettings = ref.watch(themeSettingsProvider);
+    final fontScale = themeSettings.fontSizeScale;
 
     return MaterialApp.router(
       title: 'LITE',
       debugShowCheckedModeBanner: false,
-      theme: isWebOrDesktop ? WebTheme.light : AppTheme.light,
-      darkTheme: AppTheme.dark, // Fallback to compatible dark theme
-      themeMode: settings.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+      // Dynamic theme from user preferences
+      theme: theme,
+      darkTheme: darkTheme,
+      themeMode: themeMode,
       locale: settings.locale,
       supportedLocales: supportedLocales,
       localizationsDelegates: const [
@@ -41,6 +42,19 @@ class LiteApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       routerConfig: router,
+      // Apply global font scaling to ALL text in the app
+      // Also dismiss keyboard on tap-outside (prevents stuck layout on mobile web)
+      builder: (context, child) {
+        return GestureDetector(
+          onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+          child: MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(fontScale)),
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
     );
   }
 }

@@ -135,7 +135,7 @@ class DataRetentionService {
 
     final cutoff = _period.cutoffDate;
     if (cutoff == null) {
-      return CleanupResult(
+      return const CleanupResult(
         billsDeleted: 0,
         transactionsDeleted: 0,
         bytesFreed: 0,
@@ -175,7 +175,6 @@ class DataRetentionService {
         billsDeleted: billsDeleted,
         transactionsDeleted: 0,
         bytesFreed: billsDeleted * 500, // Approximate bytes per bill
-        skipped: false,
         dryRun: dryRun,
       );
     } catch (e) {
@@ -235,7 +234,7 @@ class CleanupResult {
 
 /// Provider for data retention service
 final dataRetentionServiceProvider = Provider<DataRetentionService>((ref) {
-  final retentionDays = 90; // Default
+  const retentionDays = 90; // Default
   return DataRetentionService(RetentionPeriod.fromDays(retentionDays));
 });
 

@@ -2,7 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/models/product_model.dart';
 
@@ -26,13 +26,19 @@ class ProductGrid extends StatelessWidget {
           : const _EmptyProducts();
     }
 
+    final spacing = ResponsiveHelper.spacing(context);
+    final cardHeight = ResponsiveHelper.productCardHeight(context);
+    final screenWidth = ResponsiveHelper.screenWidth(context);
+    final cols = ResponsiveHelper.gridColumns(context);
+    final cardWidth = (screenWidth - (cols + 1) * spacing) / cols;
+
     if (isSliver) {
       return SliverGrid(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 120,
-          childAspectRatio: 0.85,
-          crossAxisSpacing: 8,
-          mainAxisSpacing: 8,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: cols,
+          childAspectRatio: cardWidth / cardHeight,
+          crossAxisSpacing: spacing,
+          mainAxisSpacing: spacing,
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) => _ProductTile(
@@ -45,12 +51,12 @@ class ProductGrid extends StatelessWidget {
     }
 
     return GridView.builder(
-      padding: const EdgeInsets.all(16),
-      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-        maxCrossAxisExtent: 120,
-        childAspectRatio: 0.85,
-        crossAxisSpacing: 8,
-        mainAxisSpacing: 8,
+      padding: EdgeInsets.all(ResponsiveHelper.pagePadding(context)),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: cols,
+        childAspectRatio: cardWidth / cardHeight,
+        crossAxisSpacing: spacing,
+        mainAxisSpacing: spacing,
       ),
       itemCount: products.length,
       itemBuilder: (context, index) => _ProductTile(
@@ -84,7 +90,7 @@ class _ProductTile extends StatelessWidget {
             border: Border.all(
               color: isOutOfStock
                   ? AppColors.error.withValues(alpha: 0.3)
-                  : AppColors.dividerLight,
+                  : Theme.of(context).dividerColor,
             ),
           ),
           child: Column(
@@ -114,7 +120,9 @@ class _ProductTile extends StatelessWidget {
                 product.name,
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   fontWeight: FontWeight.w500,
-                  color: isOutOfStock ? AppColors.textTertiaryLight : null,
+                  color: isOutOfStock
+                      ? Theme.of(context).colorScheme.outline
+                      : null,
                 ),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -127,7 +135,7 @@ class _ProductTile extends StatelessWidget {
                 product.price.asCurrency,
                 style: Theme.of(context).textTheme.labelMedium?.copyWith(
                   color: isOutOfStock
-                      ? AppColors.textTertiaryLight
+                      ? Theme.of(context).colorScheme.outline
                       : AppColors.primary,
                   fontWeight: FontWeight.bold,
                 ),
@@ -189,21 +197,21 @@ class _EmptyProducts extends StatelessWidget {
           Icon(
             Icons.inventory_2_outlined,
             size: 64,
-            color: AppColors.textTertiaryLight,
+            color: Theme.of(context).colorScheme.outline,
           ),
           const SizedBox(height: 16),
           Text(
             'No products found',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: AppColors.textSecondaryLight,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'Add products from the Products tab',
-            style: Theme.of(
-              context,
-            ).textTheme.bodySmall?.copyWith(color: AppColors.textTertiaryLight),
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Theme.of(context).colorScheme.outline,
+            ),
           ),
         ],
       ),

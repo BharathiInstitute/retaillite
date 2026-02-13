@@ -141,7 +141,7 @@ class AnalyticsService {
 
   /// Log a custom message to crashlytics
   static Future<void> log(String message) async {
-    _crashlytics.log(message);
+    await _crashlytics.log(message);
   }
 
   // ==================== Performance Monitoring ====================

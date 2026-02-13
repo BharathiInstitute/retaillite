@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/core/theme/web_theme.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
 import 'package:retaillite/router/app_router.dart';
+import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
+
+/// User-toggled sidebar collapse state. null = auto (follow screen width)
+final sidebarCollapsedProvider = StateProvider<bool?>((ref) => null);
 
 class WebShell extends ConsumerWidget {
   final Widget child;
@@ -24,7 +28,8 @@ class WebShell extends ConsumerWidget {
     final location = GoRouterState.of(context).matchedLocation;
 
     return Scaffold(
-      backgroundColor: WebTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      resizeToAvoidBottomInset: false,
       body: Column(
         children: [
           // Demo mode banner at the very top if active
@@ -44,8 +49,12 @@ class WebShell extends ConsumerWidget {
                 Expanded(
                   child: Column(
                     children: [
-                      // Header (hide for billing which has its own nav)
-                      if (!location.startsWith(AppRoutes.billing))
+                      // Header (hide for screens that have their own header)
+                      if (!location.startsWith(AppRoutes.billing) &&
+                          !location.startsWith(AppRoutes.khata) &&
+                          !location.startsWith(AppRoutes.products) &&
+                          !location.startsWith(AppRoutes.bills) &&
+                          !location.startsWith(AppRoutes.dashboard))
                         _WebHeader(currentPath: location),
 
                       // Content
@@ -75,156 +84,255 @@ class _WebSidebar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
     // Identify if we are in settings (since it might be outside standard index)
     final isSettings = currentPath.startsWith(AppRoutes.settings);
+    final userToggle = ref.watch(sidebarCollapsedProvider);
+    final autoCollapsed = MediaQuery.of(context).size.width < 800;
+    final isCollapsed = userToggle ?? autoCollapsed;
+    final sidebarWidth = isCollapsed
+        ? 72.0
+        : (ResponsiveHelper.isDesktopLarge(context) ? 280.0 : 240.0);
 
     return Container(
-      width: 260,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        border: Border(right: BorderSide(color: theme.dividerColor)),
-      ),
+      width: sidebarWidth,
+      decoration: BoxDecoration(color: Theme.of(context).cardColor),
       child: Column(
         children: [
           // Logo Area
           Container(
             height: 70,
-            padding: const EdgeInsets.symmetric(horizontal: 24),
-            alignment: Alignment.centerLeft,
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
+            padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 0 : 24),
+            alignment: isCollapsed ? Alignment.center : Alignment.centerLeft,
+            child: isCollapsed
+                ? ShopLogoWidget(logoPath: user?.shopLogoPath)
+                : Row(
+                    children: [
+                      ShopLogoWidget(logoPath: user?.shopLogoPath),
+                      const SizedBox(width: 12),
+                      Flexible(
+                        child: Text(
+                          user?.shopName ?? 'Tulasi Shop Lite',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSurface,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+
+          // Collapse / Expand toggle button
+          Container(
+            alignment: isCollapsed ? Alignment.center : Alignment.centerRight,
+            padding: EdgeInsets.symmetric(
+              horizontal: isCollapsed ? 0 : 16,
+              vertical: 4,
+            ),
+            child: InkWell(
+              onTap: () {
+                ref.read(sidebarCollapsedProvider.notifier).state =
+                    !isCollapsed;
+              },
+              borderRadius: BorderRadius.circular(6),
+              child: Tooltip(
+                message: isCollapsed ? 'Expand sidebar' : 'Collapse sidebar',
+                child: Container(
+                  padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: WebTheme.primary,
-                    borderRadius: BorderRadius.circular(8),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.storefront,
-                      color: Colors.white,
-                      size: 20,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                const Text(
-                  'RetailLite',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: WebTheme.textPrimary,
+                  child: Icon(
+                    isCollapsed
+                        ? Icons.chevron_right_rounded
+                        : Icons.chevron_left_rounded,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
                 ),
-              ],
+              ),
             ),
           ),
 
-          const Divider(height: 1),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
 
           // Navigation Links
           Expanded(
             child: ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: EdgeInsets.symmetric(horizontal: isCollapsed ? 8 : 16),
               children: [
                 _SidebarItem(
-                  icon: Icons.dashboard_outlined,
-                  label: 'Dashboard',
-                  isSelected: selectedIndex == 3,
-                  onTap: () => onItemTapped(3),
+                  icon: Icons.point_of_sale_outlined,
+                  label: 'POS',
+                  isSelected: selectedIndex == 0,
+                  isCollapsed: isCollapsed,
+                  onTap: () => onItemTapped(0),
+                ),
+                _SidebarItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  label: 'Khata Ledger',
+                  isSelected: selectedIndex == 1,
+                  isCollapsed: isCollapsed,
+                  onTap: () => onItemTapped(1),
                 ),
                 _SidebarItem(
                   icon: Icons.inventory_2_outlined,
                   label: 'Inventory',
                   isSelected: selectedIndex == 2,
+                  isCollapsed: isCollapsed,
                   onTap: () => onItemTapped(2),
                 ),
                 _SidebarItem(
-                  icon: Icons.receipt_long_outlined,
-                  label: 'Billing',
-                  isSelected: selectedIndex == 0,
-                  onTap: () => onItemTapped(0),
+                  icon: Icons.dashboard_outlined,
+                  label: 'Dashboard',
+                  isSelected: selectedIndex == 3,
+                  isCollapsed: isCollapsed,
+                  onTap: () => onItemTapped(3),
                 ),
-                // Khata Ledger
                 _SidebarItem(
-                  icon: Icons.account_balance_wallet_outlined,
-                  label: 'Khata Ledger',
-                  isSelected: selectedIndex == 1,
-                  onTap: () => onItemTapped(1),
+                  icon: Icons.receipt_outlined,
+                  label: 'Bills',
+                  isSelected: selectedIndex == 4,
+                  isCollapsed: isCollapsed,
+                  onTap: () => onItemTapped(4),
                 ),
 
                 const Divider(height: 32),
+
+                // Notification bell
+                _SidebarItem(
+                  icon: Icons.notifications_outlined,
+                  label: 'Notifications',
+                  isSelected: false,
+                  isCollapsed: isCollapsed,
+                  onTap: () {},
+                ),
               ],
             ),
           ),
 
           // User Profile Card (Bottom of Sidebar) - Navigates to Settings
           GestureDetector(
-            onTap: () => context.go(AppRoutes.settings),
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              margin: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isSettings
-                    ? WebTheme.primary.withValues(alpha: 0.1)
-                    : WebTheme.background,
-                borderRadius: BorderRadius.circular(12),
-                border: isSettings
-                    ? Border.all(color: WebTheme.primary, width: 1.5)
-                    : null,
-              ),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 16,
-                    backgroundColor: isSettings
-                        ? WebTheme.primary
-                        : Colors.grey,
-                    child: const Icon(
-                      Icons.person,
-                      size: 16,
-                      color: Colors.white,
+            onTap: () => context.go('/settings/general'),
+            child: isCollapsed
+                ? Tooltip(
+                    message: 'Settings',
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      margin: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isSettings
+                            ? AppColors.primary.withValues(alpha: 0.1)
+                            : Theme.of(context).scaffoldBackgroundColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: isSettings
+                            ? Border.all(color: AppColors.primary, width: 1.5)
+                            : null,
+                      ),
+                      child: Icon(
+                        Icons.settings_outlined,
+                        size: 22,
+                        color: isSettings
+                            ? AppColors.primary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
+                  )
+                : Container(
+                    padding: const EdgeInsets.all(16),
+                    margin: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: isSettings
+                          ? AppColors.primary.withValues(alpha: 0.1)
+                          : Theme.of(context).scaffoldBackgroundColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSettings
+                          ? Border.all(color: AppColors.primary, width: 1.5)
+                          : null,
+                    ),
+                    child: Row(
                       children: [
-                        Text(
-                          user?.ownerName ?? 'User',
-                          style: const TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: WebTheme.textPrimary,
+                        CircleAvatar(
+                          radius: 16,
+                          backgroundColor: isSettings
+                              ? AppColors.primary
+                              : Colors.grey,
+                          child: const Icon(
+                            Icons.person,
+                            size: 16,
+                            color: Colors.white,
                           ),
-                          overflow: TextOverflow.ellipsis,
                         ),
-                        Text(
-                          user?.shopName ?? 'Store Owner',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: WebTheme.textSecondary,
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                user?.ownerName ?? 'User',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurface,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'Owner',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ],
                           ),
-                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Icon(
+                          Icons.settings_outlined,
+                          size: 18,
+                          color: isSettings
+                              ? AppColors.primary
+                              : Theme.of(context).colorScheme.outline,
                         ),
                       ],
                     ),
                   ),
-                  Icon(
-                    Icons.settings_outlined,
-                    size: 18,
-                    color: isSettings ? WebTheme.primary : WebTheme.textMuted,
-                  ),
-                ],
+          ),
+
+          // App branding footer
+          if (!isCollapsed)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Text(
+                'Powered by Tulasi Shop Lite',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.5),
+                  letterSpacing: 0.3,
+                  shadows: [
+                    Shadow(
+                      color: Colors.black.withValues(alpha: 0.08),
+                      blurRadius: 2,
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -235,18 +343,20 @@ class _SidebarItem extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
+  final bool isCollapsed;
   final VoidCallback onTap;
 
   const _SidebarItem({
     required this.icon,
     required this.label,
     required this.isSelected,
+    this.isCollapsed = false,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
+    final item = Container(
       margin: const EdgeInsets.only(bottom: 4),
       child: Material(
         color: Colors.transparent,
@@ -254,42 +364,73 @@ class _SidebarItem extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(8),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            padding: EdgeInsets.symmetric(
+              horizontal: isCollapsed ? 0 : 12,
+              vertical: isCollapsed ? 8 : 12,
+            ),
             decoration: BoxDecoration(
-              color: isSelected
-                  ? WebTheme.primary.withValues(alpha: 0.08)
+              color: isSelected && !isCollapsed
+                  ? AppColors.primary.withValues(alpha: 0.12)
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: isSelected
-                    ? WebTheme.primary.withValues(alpha: 0.1)
-                    : Colors.transparent,
-              ),
             ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  size: 20,
-                  color: isSelected ? WebTheme.primary : WebTheme.textSecondary,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
-                    color: isSelected
-                        ? WebTheme.primary
-                        : WebTheme.textSecondary,
+            child: isCollapsed
+                ? Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: isSelected
+                          ? AppColors.primary.withValues(alpha: 0.15)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(12),
+                      border: isSelected
+                          ? Border.all(
+                              color: AppColors.primary.withValues(alpha: 0.3),
+                              width: 1.5,
+                            )
+                          : null,
+                    ),
+                    child: Icon(
+                      icon,
+                      size: 22,
+                      color: isSelected
+                          ? AppColors.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Icon(
+                        icon,
+                        size: 20,
+                        color: isSelected
+                            ? AppColors.primary
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.w500,
+                          color: isSelected
+                              ? AppColors.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
-            ),
           ),
         ),
       ),
     );
+
+    if (isCollapsed) {
+      return Tooltip(message: label, child: item);
+    }
+    return item;
   }
 }
 
@@ -315,6 +456,9 @@ class _WebHeader extends StatelessWidget {
     } else if (currentPath.startsWith(AppRoutes.khata)) {
       title = 'Customer Ledger';
       breadcrumb = 'Khata';
+    } else if (currentPath.startsWith(AppRoutes.bills)) {
+      title = 'Billing History';
+      breadcrumb = 'Bills';
     } else if (currentPath.startsWith(AppRoutes.settings)) {
       title = 'System Settings';
       breadcrumb = 'Settings';
@@ -323,10 +467,7 @@ class _WebHeader extends StatelessWidget {
     return Container(
       height: 70,
       padding: const EdgeInsets.symmetric(horizontal: 32),
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        border: Border(bottom: BorderSide(color: Color(0xFFE5E7EB))),
-      ),
+      decoration: BoxDecoration(color: Theme.of(context).cardColor),
       child: Row(
         children: [
           Expanded(
@@ -338,21 +479,22 @@ class _WebHeader extends StatelessWidget {
                   children: [
                     Text(
                       'Home',
-                      style: TextStyle(fontSize: 12, color: WebTheme.textMuted),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.outline,
+                      ),
                     ),
-                    const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
                       child: Text(
                         '/',
-                        style: TextStyle(color: Color(0xFFE5E7EB)),
+                        style: TextStyle(color: Theme.of(context).dividerColor),
                       ),
                     ),
                     Text(
                       breadcrumb,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: WebTheme.textSecondary,
-                        fontWeight: FontWeight.w500,
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ],
@@ -360,10 +502,10 @@ class _WebHeader extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: WebTheme.textPrimary,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
               ],
@@ -373,9 +515,9 @@ class _WebHeader extends StatelessWidget {
           // Header Actions (optional)
           IconButton(
             onPressed: () {},
-            icon: const Icon(
+            icon: Icon(
               Icons.notifications_outlined,
-              color: WebTheme.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],

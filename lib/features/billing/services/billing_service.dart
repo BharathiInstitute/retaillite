@@ -1,15 +1,23 @@
-/// Billing service for local bills (Firestore-based storage)
+/// Billing service for bills
+/// Supports demo mode with local in-memory data
 library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
 
-/// Today's bills provider - reads from Firestore storage (async)
+/// Today's bills provider - reads from demo data or Firestore
 final todayBillsProvider = FutureProvider<List<BillModel>>((ref) async {
+  final isDemoMode = ref.watch(isDemoModeProvider);
   final today = DateTime.now();
   final startOfDay = DateTime(today.year, today.month, today.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
+
+  if (isDemoMode) {
+    return DemoDataService.getBillsInRange(startOfDay, endOfDay);
+  }
 
   final bills = await OfflineStorageService.getCachedBillsInRange(
     startOfDay,
@@ -20,14 +28,20 @@ final todayBillsProvider = FutureProvider<List<BillModel>>((ref) async {
 
 /// Today's summary provider
 final todaySummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  final isDemoMode = ref.watch(isDemoModeProvider);
   final today = DateTime.now();
   final startOfDay = DateTime(today.year, today.month, today.day);
   final endOfDay = startOfDay.add(const Duration(days: 1));
 
-  final todayBills = await OfflineStorageService.getCachedBillsInRange(
-    startOfDay,
-    endOfDay,
-  );
+  List<BillModel> todayBills;
+  if (isDemoMode) {
+    todayBills = DemoDataService.getBillsInRange(startOfDay, endOfDay);
+  } else {
+    todayBills = await OfflineStorageService.getCachedBillsInRange(
+      startOfDay,
+      endOfDay,
+    );
+  }
 
   double totalSales = 0;
   double cashAmount = 0;
@@ -45,6 +59,8 @@ final todaySummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
         break;
       case PaymentMethod.udhar:
         udharAmount += bill.total;
+        break;
+      case PaymentMethod.unknown:
         break;
     }
   }

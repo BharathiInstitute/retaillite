@@ -2,8 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
-import 'package:retaillite/core/utils/color_utils.dart';
+import 'package:retaillite/core/design/design_system.dart';
 
 /// Full screen loading overlay
 class LoadingOverlay extends StatelessWidget {
@@ -52,6 +51,7 @@ class LoadingIndicator extends StatelessWidget {
 }
 
 /// Empty state widget
+/// Empty state widget
 class EmptyState extends StatelessWidget {
   final IconData icon;
   final String title;
@@ -70,43 +70,69 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: OpacityColors.primary10,
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 48, color: AppColors.primary),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          padding: const EdgeInsets.all(32),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              minHeight: constraints.maxHeight > 64
+                  ? constraints.maxHeight - 64
+                  : constraints.maxHeight,
             ),
-            const SizedBox(height: 24),
-            Text(
-              title,
-              style: Theme.of(context).textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            if (subtitle != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                subtitle!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: AppColors.textSecondaryLight,
-                ),
-                textAlign: TextAlign.center,
+            child: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(24),
+                    decoration: BoxDecoration(
+                      color: AppColors.surface,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.primaryBg, width: 4),
+                      boxShadow: AppShadows.small,
+                    ),
+                    child: Icon(icon, size: 48, color: AppColors.primary),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  if (subtitle != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      subtitle!,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: AppColors.textSecondary,
+                        height: 1.5,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                  if (actionLabel != null && onAction != null) ...[
+                    const SizedBox(height: 32),
+                    ElevatedButton(
+                      onPressed: onAction,
+                      style: ElevatedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 16,
+                        ),
+                      ),
+                      child: Text(actionLabel!),
+                    ),
+                  ],
+                ],
               ),
-            ],
-            if (actionLabel != null && onAction != null) ...[
-              const SizedBox(height: 24),
-              ElevatedButton(onPressed: onAction, child: Text(actionLabel!)),
-            ],
-          ],
-        ),
-      ),
+            ),
+          ),
+        );
+      },
     );
   }
 }

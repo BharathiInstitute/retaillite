@@ -1,6 +1,8 @@
 /// Performance Service - Comprehensive app performance tracking
 library;
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -57,10 +59,10 @@ class ScreenTiming {
   factory ScreenTiming.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;
     return ScreenTiming(
-      screenName: data['screenName'] ?? 'unknown',
-      loadTime: Duration(milliseconds: data['loadTimeMs'] ?? 0),
+      screenName: (data['screenName'] as String?) ?? 'unknown',
+      loadTime: Duration(milliseconds: (data['loadTimeMs'] as int?) ?? 0),
       timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
-      userId: data['userId'],
+      userId: data['userId'] as String?,
     );
   }
 }
@@ -293,7 +295,7 @@ class PerformanceService {
 
       // Upload when we have enough data
       if (_networkTimings.length >= 10) {
-        _uploadNetworkTimings();
+        unawaited(_uploadNetworkTimings());
       }
     }
   }

@@ -459,7 +459,6 @@ class UserDetailScreen extends ConsumerWidget {
                   Navigator.pop(context);
                   final newSubscription = UserSubscription(
                     plan: plan,
-                    status: SubscriptionStatus.active,
                     startedAt: DateTime.now(),
                     expiresAt: plan == SubscriptionPlan.free
                         ? null
@@ -501,8 +500,86 @@ class UserDetailScreen extends ConsumerWidget {
   }
 
   void _resetLimits(BuildContext context, AdminUser user) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Limits reset functionality - coming soon')),
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.refresh, color: Colors.orange),
+            SizedBox(width: 8),
+            Text('Reset Monthly Limits'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Current usage: ${user.limits.billsThisMonth} bills this month',
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'This will reset the monthly bill count to 0. This action is typically used when:',
+            ),
+            const SizedBox(height: 8),
+            const Text('• User had billing issues'),
+            const Text('• Manual adjustment required'),
+            const Text('• Testing purposes'),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.orange.shade200),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning, color: Colors.orange, size: 20),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'This action cannot be undone.',
+                      style: TextStyle(fontSize: 13),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final success = await AdminFirestoreService.resetUserLimits(
+                user.id,
+              );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      success
+                          ? 'Monthly limits reset successfully!'
+                          : 'Failed to reset limits',
+                    ),
+                    backgroundColor: success ? Colors.green : Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Reset Limits'),
+          ),
+        ],
+      ),
     );
   }
 

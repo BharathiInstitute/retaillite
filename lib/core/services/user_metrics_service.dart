@@ -54,8 +54,8 @@ class UserSubscription {
       ),
       startedAt: (map['startedAt'] as Timestamp?)?.toDate(),
       expiresAt: (map['expiresAt'] as Timestamp?)?.toDate(),
-      razorpayCustomerId: map['razorpayCustomerId'],
-      razorpaySubscriptionId: map['razorpaySubscriptionId'],
+      razorpayCustomerId: map['razorpayCustomerId'] as String?,
+      razorpaySubscriptionId: map['razorpaySubscriptionId'] as String?,
     );
   }
 
@@ -136,11 +136,11 @@ class UserLimits {
   factory UserLimits.fromMap(Map<String, dynamic>? map) {
     if (map == null) return UserLimits();
     return UserLimits(
-      billsThisMonth: map['billsThisMonth'] ?? 0,
-      billsLimit: map['billsLimit'] ?? 50,
-      productsCount: map['productsCount'] ?? 0,
-      productsLimit: map['productsLimit'] ?? 100,
-      customersCount: map['customersCount'] ?? 0,
+      billsThisMonth: (map['billsThisMonth'] as int?) ?? 0,
+      billsLimit: (map['billsLimit'] as int?) ?? 50,
+      productsCount: (map['productsCount'] as int?) ?? 0,
+      productsLimit: (map['productsLimit'] as int?) ?? 100,
+      customersCount: (map['customersCount'] as int?) ?? 0,
     );
   }
 

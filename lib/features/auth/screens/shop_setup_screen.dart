@@ -4,9 +4,9 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
-import 'package:retaillite/core/theme/responsive_helper.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/auth/widgets/auth_layout.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 
 class ShopSetupScreen extends ConsumerStatefulWidget {
@@ -65,213 +65,183 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   @override
   Widget build(BuildContext context) {
     final l10n = context.l10n;
-    final theme = Theme.of(context);
-    final isMobile = ResponsiveHelper.isMobile(context);
-    final cardMaxWidth = ResponsiveHelper.value(
-      context,
-      mobile: double.infinity,
-      tablet: 480.0,
-      desktop: 520.0,
-    );
 
-    return Scaffold(
-      body: Container(
-        decoration: isMobile
-            ? null
-            : const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFF10B981),
-                    Color(0xFF059669),
-                    Color(0xFF047857),
-                  ],
+    return AuthLayout(
+      title: 'Set Up Your Shop',
+      subtitle: 'Enter your shop details to get started',
+      child: Form(
+        key: _formKey,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Shop Name
+            TextFormField(
+              controller: _shopNameController,
+              decoration: InputDecoration(
+                labelText: l10n.shopName,
+                hintText: 'Enter your shop name',
+                prefixIcon: const Icon(
+                  Icons.store_outlined,
+                  color: AppColors.textSecondary,
                 ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.white,
               ),
-        child: SafeArea(
-          child: Center(
-            child: SingleChildScrollView(
-              padding: EdgeInsets.all(isMobile ? 24 : 32),
-              child: Container(
-                constraints: BoxConstraints(maxWidth: cardMaxWidth),
-                decoration: isMobile
-                    ? null
-                    : BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(16),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.1),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
-                          ),
-                        ],
-                      ),
-                padding: isMobile ? null : const EdgeInsets.all(40),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // Icon
-                      Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary.withValues(alpha: 0.1),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                          Icons.store,
-                          size: 48,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                      const SizedBox(height: 24),
+              textCapitalization: TextCapitalization.words,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter your shop name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
 
-                      // Title
-                      Text(
-                        'Set Up Your Shop',
-                        style: theme.textTheme.headlineMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 8),
+            // Owner Name
+            TextFormField(
+              controller: _ownerNameController,
+              decoration: InputDecoration(
+                labelText: l10n.ownerName,
+                hintText: 'Enter your name',
+                prefixIcon: const Icon(
+                  Icons.person_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              textCapitalization: TextCapitalization.words,
+              validator: (value) {
+                if (value == null || value.trim().isEmpty) {
+                  return 'Please enter your name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
 
-                      Text(
-                        'Enter your shop details to get started',
-                        style: theme.textTheme.bodyLarge?.copyWith(
-                          color: AppColors.textSecondaryLight,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                      const SizedBox(height: 32),
+            // Address (Optional)
+            TextFormField(
+              controller: _addressController,
+              decoration: InputDecoration(
+                labelText: '${l10n.address} (Optional)',
+                hintText: 'Enter your shop address',
+                prefixIcon: const Icon(
+                  Icons.location_on_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              maxLines: 2,
+            ),
+            const SizedBox(height: 16),
 
-                      // Shop Name
-                      TextFormField(
-                        controller: _shopNameController,
-                        decoration: InputDecoration(
-                          labelText: l10n.shopName,
-                          prefixIcon: const Icon(Icons.store_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: theme.colorScheme.surface,
-                        ),
-                        textCapitalization: TextCapitalization.words,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your shop name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
+            // GST Number (Optional)
+            TextFormField(
+              controller: _gstController,
+              decoration: InputDecoration(
+                labelText: 'GST Number (Optional)',
+                hintText: 'Enter 15-digit GST number',
+                prefixIcon: const Icon(
+                  Icons.receipt_long_outlined,
+                  color: AppColors.textSecondary,
+                ),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: const BorderSide(color: AppColors.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(color: AppColors.primary, width: 2),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+              ),
+              textCapitalization: TextCapitalization.characters,
+            ),
+            const SizedBox(height: 32),
 
-                      // Owner Name
-                      TextFormField(
-                        controller: _ownerNameController,
-                        decoration: InputDecoration(
-                          labelText: l10n.ownerName,
-                          prefixIcon: const Icon(Icons.person_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: theme.colorScheme.surface,
-                        ),
-                        textCapitalization: TextCapitalization.words,
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Please enter your name';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Address (Optional)
-                      TextFormField(
-                        controller: _addressController,
-                        decoration: InputDecoration(
-                          labelText: '${l10n.address} (Optional)',
-                          prefixIcon: const Icon(Icons.location_on_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: theme.colorScheme.surface,
-                        ),
-                        maxLines: 2,
-                      ),
-                      const SizedBox(height: 16),
-
-                      // GST Number (Optional)
-                      TextFormField(
-                        controller: _gstController,
-                        decoration: InputDecoration(
-                          labelText: 'GST Number (Optional)',
-                          prefixIcon: const Icon(Icons.receipt_long_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: theme.colorScheme.surface,
-                        ),
-                        textCapitalization: TextCapitalization.characters,
-                      ),
-                      const SizedBox(height: 32),
-
-                      // Continue Button
-                      SizedBox(
-                        height: 52,
-                        child: ElevatedButton(
-                          onPressed: _isLoading ? null : _handleSetup,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.primary,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: _isLoading
-                              ? const SizedBox(
-                                  height: 24,
-                                  width: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Colors.white,
-                                  ),
-                                )
-                              : const Text(
-                                  'Continue',
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-
-                      // Footer
-                      Text(
-                        'You can update these details later in Settings',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: AppColors.textSecondaryLight,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ],
+            // Continue Button
+            SizedBox(
+              height: 52,
+              child: ElevatedButton(
+                onPressed: _isLoading ? null : _handleSetup,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
+                child: _isLoading
+                    ? const SizedBox(
+                        height: 24,
+                        width: 24,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Text(
+                        '✅ GET STARTED',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
               ),
             ),
-          ),
+            const SizedBox(height: 16),
+
+            // Footer
+            const Text(
+              'You can update these details later in Settings',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              textAlign: TextAlign.center,
+            ),
+          ],
         ),
       ),
     );

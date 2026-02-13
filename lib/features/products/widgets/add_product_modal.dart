@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/barcode_scanner_service.dart';
 import 'package:retaillite/core/services/barcode_lookup_service.dart';
 import 'package:retaillite/core/utils/validators.dart';
@@ -30,6 +30,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
   late final TextEditingController _stockController;
   late final TextEditingController _lowStockController;
   late final TextEditingController _barcodeController;
+  late final TextEditingController _categoryController;
   late ProductUnit _selectedUnit;
   bool _isLoading = false;
   bool _isLookingUp = false;
@@ -51,6 +52,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
       text: p?.lowStockAlert.toString() ?? '5',
     );
     _barcodeController = TextEditingController(text: p?.barcode ?? '');
+    _categoryController = TextEditingController(text: p?.category ?? '');
     _selectedUnit = p?.unit ?? ProductUnit.piece;
   }
 
@@ -62,6 +64,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     _stockController.dispose();
     _lowStockController.dispose();
     _barcodeController.dispose();
+    _categoryController.dispose();
     super.dispose();
   }
 
@@ -126,6 +129,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
         barcode: _barcodeController.text.trim().isEmpty
             ? null
             : _barcodeController.text.trim(),
+        category: _categoryController.text.trim().isEmpty
+            ? null
+            : _categoryController.text.trim(),
         createdAt: widget.product?.createdAt ?? DateTime.now(),
       );
 
@@ -193,6 +199,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
 
   @override
   Widget build(BuildContext context) {
+    final isMobile = ResponsiveHelper.isMobile(context);
+    final fieldSpacing = isMobile ? 10.0 : 16.0;
+
     return Container(
       height: MediaQuery.of(context).size.height * 0.85,
       decoration: BoxDecoration(
@@ -203,30 +212,43 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
         children: [
           // Header
           Container(
-            padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.dividerLight)),
+            padding: EdgeInsets.all(isMobile ? 12 : 16),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(color: Theme.of(context).dividerColor),
+              ),
             ),
             child: Row(
               children: [
                 Icon(
                   _isEditing ? Icons.edit : Icons.add_shopping_cart,
                   color: AppColors.primary,
+                  size: isMobile ? 20 : 24,
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: isMobile ? 6 : 8),
                 Text(
                   _isEditing ? 'Edit Product' : 'Add Product',
-                  style: Theme.of(context).textTheme.titleLarge,
+                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontSize: isMobile ? 16 : 20,
+                  ),
                 ),
                 const Spacer(),
                 if (_isEditing)
                   IconButton(
-                    icon: const Icon(Icons.delete, color: AppColors.error),
+                    icon: Icon(
+                      Icons.delete,
+                      color: AppColors.error,
+                      size: isMobile ? 20 : 24,
+                    ),
                     onPressed: _delete,
+                    padding: EdgeInsets.all(isMobile ? 4 : 8),
+                    constraints: isMobile ? const BoxConstraints() : null,
                   ),
                 IconButton(
-                  icon: const Icon(Icons.close),
+                  icon: Icon(Icons.close, size: isMobile ? 20 : 24),
                   onPressed: () => Navigator.pop(context),
+                  padding: EdgeInsets.all(isMobile ? 4 : 8),
+                  constraints: isMobile ? const BoxConstraints() : null,
                 ),
               ],
             ),
@@ -236,9 +258,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
+                left: ResponsiveHelper.modalPadding(context),
+                right: ResponsiveHelper.modalPadding(context),
+                top: isMobile ? 12 : ResponsiveHelper.modalPadding(context),
                 bottom: MediaQuery.of(context).viewInsets.bottom + 100,
               ),
               child: Form(
@@ -255,9 +277,17 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                       prefixIcon: const Icon(Icons.inventory_2_outlined),
                       validator: (v) => Validators.name(v, 'Product name'),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: fieldSpacing),
 
-                    // Price
+                    // Category
+                    AppTextField(
+                      label: 'Category',
+                      hint: 'e.g., Groceries, Snacks, Beverages',
+                      controller: _categoryController,
+                      textInputAction: TextInputAction.next,
+                      prefixIcon: const Icon(Icons.category_outlined),
+                    ),
+                    SizedBox(height: fieldSpacing),
                     Row(
                       children: [
                         Expanded(
@@ -266,7 +296,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                             controller: _priceController,
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: isMobile ? 8 : 12),
                         Expanded(
                           child: CurrencyTextField(
                             label: 'Cost Price',
@@ -275,7 +305,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: fieldSpacing),
 
                     // Stock & Low stock
                     Row(
@@ -292,7 +322,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                                 Validators.positiveNumber(v, 'Stock'),
                           ),
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: isMobile ? 8 : 12),
                         Expanded(
                           child: AppTextField(
                             label: 'Low Stock Alert',
@@ -305,23 +335,36 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: fieldSpacing),
 
                     // Unit selection
                     Text(
                       'Unit',
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                        color: AppColors.textSecondaryLight,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: isMobile ? 12 : 14,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: isMobile ? 4 : 8),
                     Wrap(
-                      spacing: 8,
+                      spacing: isMobile ? 4 : 8,
+                      runSpacing: isMobile ? 4 : 8,
                       children: ProductUnit.values.map((unit) {
                         final isSelected = _selectedUnit == unit;
                         return ChoiceChip(
-                          label: Text(unit.displayName),
+                          label: Text(
+                            unit.displayName,
+                            style: TextStyle(fontSize: isMobile ? 11 : 14),
+                          ),
                           selected: isSelected,
+                          visualDensity: isMobile
+                              ? VisualDensity.compact
+                              : null,
+                          padding: isMobile
+                              ? const EdgeInsets.symmetric(
+                                  horizontal: 4,
+                                )
+                              : null,
                           onSelected: (selected) {
                             if (selected) {
                               setState(() => _selectedUnit = unit);
@@ -330,7 +373,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         );
                       }).toList(),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: fieldSpacing),
 
                     // Barcode
                     AppTextField(
@@ -357,9 +400,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
 
                     // Show looked up product info
                     if (_lookedUpProduct != null) ...[
-                      const SizedBox(height: 8),
+                      SizedBox(height: isMobile ? 6 : 8),
                       Container(
-                        padding: const EdgeInsets.all(12),
+                        padding: EdgeInsets.all(isMobile ? 8 : 12),
                         decoration: BoxDecoration(
                           color: AppColors.success.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(8),
@@ -369,27 +412,28 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(
+                            Icon(
                               Icons.check_circle,
                               color: AppColors.success,
-                              size: 20,
+                              size: isMobile ? 16 : 20,
                             ),
-                            const SizedBox(width: 8),
+                            SizedBox(width: isMobile ? 6 : 8),
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
                                     'Found: ${_lookedUpProduct!.displayName}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.bold,
+                                      fontSize: isMobile ? 12 : 14,
                                     ),
                                   ),
                                   if (_lookedUpProduct!.brand != null)
                                     Text(
                                       'Brand: ${_lookedUpProduct!.brand}',
                                       style: TextStyle(
-                                        fontSize: 12,
+                                        fontSize: isMobile ? 10 : 12,
                                         color: Colors.grey[600],
                                       ),
                                     ),
@@ -400,7 +444,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                       ),
                     ],
-                    const SizedBox(height: 32),
+                    SizedBox(height: isMobile ? 16 : 32),
 
                     // Submit button
                     AppButton(

@@ -128,11 +128,7 @@ class ErrorHandler {
     // Platform-specific error reporting
     if (kIsWeb) {
       // Web: Log to Firestore
-      ErrorLoggingService.logError(
-        error: error,
-        stackTrace: stack,
-        severity: ErrorSeverity.error,
-      );
+      ErrorLoggingService.logError(error: error, stackTrace: stack);
     } else {
       // Mobile/Desktop: Log to Crashlytics (non-fatal)
       FirebaseCrashlytics.instance.recordError(error, stack);
@@ -201,7 +197,8 @@ class ErrorHandler {
         ),
         backgroundColor: Colors.red.shade700,
         behavior: SnackBarBehavior.floating,
-        action: appError.details != null
+        // Only show error details in debug mode to prevent leaking internals
+        action: kDebugMode && appError.details != null
             ? SnackBarAction(
                 label: 'Details',
                 textColor: Colors.white,

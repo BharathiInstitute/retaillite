@@ -42,9 +42,17 @@ class PaymentLinkResult {
 class PaymentLinkService {
   static final FirebaseFunctions _functions = FirebaseFunctions.instance;
 
-  // Fallback UPI ID for manual sharing
-  static const String _upiId = '9666464460@ybl';
-  // Future: static const String _payeeName = 'LITE Store';
+  // UPI ID loaded from Remote Config or Cloud Function — never hardcoded
+  // Set via Firebase Remote Config key: 'merchant_upi_id'
+  static String _upiId = '';
+
+  /// Initialize with UPI ID from Remote Config
+  static void setUpiId(String upiId) {
+    _upiId = upiId;
+  }
+
+  /// Get the current UPI ID (empty if not configured)
+  static String get upiId => _upiId;
 
   /// Create a payment link via Cloud Function (Razorpay)
   ///
@@ -132,7 +140,6 @@ class PaymentLinkService {
     // Generate a message-based payment link (not a real URL)
     return PaymentLinkResult.success(
       paymentLink: 'MANUAL', // Signal to use manual UPI message
-      paymentLinkId: null,
     );
   }
 

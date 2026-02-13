@@ -3,6 +3,9 @@
 library;
 
 import 'dart:io';
+import 'package:file_picker/file_picker.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -17,6 +20,76 @@ class ImageSizes {
 /// Service for picking and resizing images
 class ImageService {
   static final ImagePicker _picker = ImagePicker();
+
+  /// Cross-platform logo picker: works on Web, Android, Windows
+  /// Uses file_picker (works everywhere) + Firebase Storage for URL
+  /// Returns the download URL string on success, null on cancel/error
+  static Future<String?> pickAndUploadLogo() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+
+      // Use file_picker which works on all platforms
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true, // needed for web
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+
+      Uint8List? bytes = file.bytes;
+      if (bytes == null && !kIsWeb && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+      if (bytes == null) return null;
+
+      // Resize image (use compute on non-web, direct call on web)
+      Uint8List resizedBytes;
+      if (kIsWeb) {
+        resizedBytes = _resizeImageBytes(bytes, ImageSizes.logoSize);
+      } else {
+        resizedBytes = await compute(
+          (data) => _resizeImageBytes(
+            data['bytes'] as Uint8List,
+            data['size'] as int,
+          ),
+          {'bytes': bytes, 'size': ImageSizes.logoSize},
+        );
+      }
+
+      // Upload to Firebase Storage
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'users/$uid/shop_logo.jpg',
+      );
+
+      await storageRef.putData(
+        resizedBytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      // Get download URL
+      final downloadUrl = await storageRef.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Error picking/uploading logo: $e');
+      return null;
+    }
+  }
+
+  /// Delete logo from Firebase Storage
+  static Future<void> deleteLogoFromStorage() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return;
+      await FirebaseStorage.instance
+          .ref()
+          .child('users/$uid/shop_logo.jpg')
+          .delete();
+    } catch (e) {
+      debugPrint('Error deleting logo from storage: $e');
+    }
+  }
 
   /// Pick and resize image for shop logo (200x200)
   static Future<String?> pickAndResizeLogo() async {

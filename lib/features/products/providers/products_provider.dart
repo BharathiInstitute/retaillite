@@ -1,10 +1,13 @@
 /// Products provider for CRUD operations (Firestore-based with offline support)
+/// Supports demo mode with local in-memory data
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/product_model.dart';
 
 /// Firestore instance
@@ -18,10 +21,18 @@ String get _productsPath {
   return 'users/$uid/products';
 }
 
-/// Products list provider - reads from Firestore (with offline cache)
+/// Products list provider - reads from Firestore OR demo data
 final productsProvider = StreamProvider.autoDispose<List<ProductModel>>((ref) {
-  debugPrint('📦 productsProvider: Listening to Firestore products...');
+  final isDemoMode = ref.watch(isDemoModeProvider);
 
+  // Demo mode: return local demo data as a stream
+  if (isDemoMode) {
+    debugPrint('📦 productsProvider: Demo mode - returning local data');
+    return Stream.value(DemoDataService.getProducts().toList());
+  }
+
+  // Firebase mode: stream from Firestore
+  debugPrint('📦 productsProvider: Listening to Firestore products...');
   return _firestore.collection(_productsPath).orderBy('name').snapshots().map((
     snapshot,
   ) {
@@ -43,14 +54,22 @@ final lowStockProductsProvider = Provider<List<ProductModel>>((ref) {
   );
 });
 
-/// Products service for Firestore CRUD operations
+/// Products service for CRUD operations
+/// Automatically routes to demo data or Firestore based on mode
 class ProductsService {
-  final CollectionReference _collection;
+  final bool _isDemoMode;
+  final CollectionReference? _collection;
 
-  ProductsService() : _collection = _firestore.collection(_productsPath);
+  ProductsService({required bool isDemoMode})
+    : _isDemoMode = isDemoMode,
+      _collection = isDemoMode ? null : _firestore.collection(_productsPath);
 
   /// Add new product
   Future<String> addProduct(ProductModel product) async {
+    if (_isDemoMode) {
+      return DemoDataService.addProduct(product);
+    }
+
     final id = 'product_${DateTime.now().millisecondsSinceEpoch}';
     final newProduct = ProductModel(
       id: id,
@@ -63,32 +82,62 @@ class ProductsService {
       unit: product.unit,
       createdAt: DateTime.now(),
     );
-    await _collection.doc(id).set(newProduct.toFirestore());
+    await _collection!.doc(id).set(newProduct.toFirestore());
     return id;
   }
 
   /// Update product
   Future<void> updateProduct(ProductModel product) async {
-    await _collection.doc(product.id).update(product.toFirestore());
+    if (_isDemoMode) {
+      DemoDataService.updateProduct(product);
+      return;
+    }
+    await _collection!.doc(product.id).update(product.toFirestore());
   }
 
   /// Delete product
   Future<void> deleteProduct(String productId) async {
-    await _collection.doc(productId).delete();
+    if (_isDemoMode) {
+      DemoDataService.deleteProduct(productId);
+      return;
+    }
+    await _collection!.doc(productId).delete();
   }
 
   /// Update stock
   Future<void> updateStock(String productId, int newStock) async {
-    await _collection.doc(productId).update({'stock': newStock});
+    if (_isDemoMode) {
+      DemoDataService.updateStock(productId, newStock);
+      return;
+    }
+    final collection = _collection;
+    if (collection == null) {
+      throw StateError(
+        'Firestore collection is not initialized in Firebase mode.',
+      );
+    }
+    await collection.doc(productId).update({'stock': newStock});
   }
 
   /// Decrement stock (for billing)
   Future<void> decrementStock(String productId, int quantity) async {
-    final doc = await _collection.doc(productId).get();
+    if (_isDemoMode) {
+      DemoDataService.decrementStock(productId, quantity);
+      return;
+    }
+
+    final collection = _collection;
+    if (collection == null) {
+      throw StateError(
+        'Firestore collection is not initialized in Firebase mode.',
+      );
+    }
+
+    final doc = await collection.doc(productId).get();
     if (doc.exists) {
       final data = doc.data() as Map<String, dynamic>?;
       final currentStock = data?['stock'] as int? ?? 0;
-      await _collection.doc(productId).update({
+      await collection.doc(productId).update({
         'stock': currentStock - quantity,
       });
     }
@@ -96,7 +145,11 @@ class ProductsService {
 
   /// Find product by barcode
   Future<ProductModel?> findByBarcode(String barcode) async {
-    final snapshot = await _collection
+    if (_isDemoMode) {
+      return DemoDataService.getProductByBarcode(barcode);
+    }
+
+    final snapshot = await _collection!
         .where('barcode', isEqualTo: barcode)
         .limit(1)
         .get();
@@ -105,7 +158,8 @@ class ProductsService {
   }
 }
 
-/// Products service provider (singleton)
+/// Products service provider - auto-detects demo mode
 final productsServiceProvider = Provider<ProductsService>((ref) {
-  return ProductsService();
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  return ProductsService(isDemoMode: isDemoMode);
 });

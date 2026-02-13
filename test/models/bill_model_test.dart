@@ -101,7 +101,7 @@ void main() {
         ],
         total: 200.0,
         paymentMethod: PaymentMethod.cash,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         date: '2024-01-01',
       );
 
@@ -120,7 +120,7 @@ void main() {
         total: 150.0,
         paymentMethod: PaymentMethod.cash,
         receivedAmount: 200.0,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         date: '2024-01-01',
       );
 
@@ -134,7 +134,7 @@ void main() {
         items: const [],
         total: 150.0,
         paymentMethod: PaymentMethod.upi,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         date: '2024-01-01',
       );
 
@@ -163,7 +163,7 @@ void main() {
         ],
         total: 350.0,
         paymentMethod: PaymentMethod.cash,
-        createdAt: DateTime(2024, 1, 1),
+        createdAt: DateTime(2024),
         date: '2024-01-01',
       );
 
@@ -175,13 +175,13 @@ void main() {
     test('should have correct display names', () {
       expect(PaymentMethod.cash.displayName, 'Cash');
       expect(PaymentMethod.upi.displayName, 'UPI');
-      expect(PaymentMethod.udhar.displayName, 'Udhar');
+      expect(PaymentMethod.udhar.displayName, 'Credit');
     });
 
     test('should have correct emojis', () {
       expect(PaymentMethod.cash.emoji, '💵');
       expect(PaymentMethod.upi.emoji, '📱');
-      expect(PaymentMethod.udhar.emoji, '📝');
+      expect(PaymentMethod.udhar.emoji, '💳');
     });
 
     test('should parse from string correctly', () {
@@ -189,9 +189,9 @@ void main() {
       expect(PaymentMethod.fromString('upi'), PaymentMethod.upi);
       expect(PaymentMethod.fromString('udhar'), PaymentMethod.udhar);
       expect(
-        PaymentMethod.fromString('unknown'),
-        PaymentMethod.cash,
-      ); // default
+        PaymentMethod.fromString('unknown_value'),
+        PaymentMethod.unknown,
+      ); // default fallback for unknown values
     });
   });
 }

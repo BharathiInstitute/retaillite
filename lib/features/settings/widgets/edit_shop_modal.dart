@@ -3,7 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/constants/theme_constants.dart';
+import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/validators.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
@@ -54,7 +54,7 @@ class _EditShopModalState extends ConsumerState<EditShopModal> {
     final l10n = context.l10n;
 
     try {
-      ref
+      await ref
           .read(authNotifierProvider.notifier)
           .updateShopDetails(
             shopName: _shopNameController.text.trim(),
@@ -103,12 +103,10 @@ class _EditShopModalState extends ConsumerState<EditShopModal> {
           // Header
           Container(
             padding: const EdgeInsets.all(16),
-            decoration: const BoxDecoration(
-              border: Border(bottom: BorderSide(color: AppColors.dividerLight)),
-            ),
+            decoration: const BoxDecoration(),
             child: Row(
               children: [
-                const Icon(Icons.store, color: AppColors.primary),
+                Icon(Icons.store, color: AppColors.primary),
                 const SizedBox(width: 8),
                 Text(
                   l10n.editShopDetails,
@@ -127,9 +125,9 @@ class _EditShopModalState extends ConsumerState<EditShopModal> {
           Expanded(
             child: SingleChildScrollView(
               padding: EdgeInsets.only(
-                left: 20,
-                right: 20,
-                top: 20,
+                left: ResponsiveHelper.modalPadding(context),
+                right: ResponsiveHelper.modalPadding(context),
+                top: ResponsiveHelper.modalPadding(context),
                 bottom: MediaQuery.of(context).viewInsets.bottom + 100,
               ),
               child: Form(

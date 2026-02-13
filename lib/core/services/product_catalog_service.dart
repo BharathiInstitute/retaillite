@@ -116,7 +116,6 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'Tata Salt 1kg',
       suggestedPrice: 28,
-      unit: ProductUnit.piece,
       category: ProductCategory.grocery,
       barcode: '8901725181116',
     ),
@@ -209,13 +208,11 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'MDH Chana Masala',
       suggestedPrice: 55,
-      unit: ProductUnit.piece,
       category: ProductCategory.kirana,
     ),
     CatalogProduct(
       name: 'Everest Meat Masala',
       suggestedPrice: 65,
-      unit: ProductUnit.piece,
       category: ProductCategory.kirana,
     ),
     CatalogProduct(
@@ -315,32 +312,27 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'Parle-G Biscuit',
       suggestedPrice: 10,
-      unit: ProductUnit.piece,
       category: ProductCategory.snacks,
       barcode: '8901725181000',
     ),
     CatalogProduct(
       name: 'Britannia Biscuit',
       suggestedPrice: 20,
-      unit: ProductUnit.piece,
       category: ProductCategory.snacks,
     ),
     CatalogProduct(
       name: 'Lays Chips',
       suggestedPrice: 20,
-      unit: ProductUnit.piece,
       category: ProductCategory.snacks,
     ),
     CatalogProduct(
       name: 'Kurkure',
       suggestedPrice: 20,
-      unit: ProductUnit.piece,
       category: ProductCategory.snacks,
     ),
     CatalogProduct(
       name: 'Maggi 2-Min Noodles',
       suggestedPrice: 14,
-      unit: ProductUnit.piece,
       category: ProductCategory.snacks,
       barcode: '8901058851113',
     ),
@@ -433,31 +425,26 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'Oral-B Toothbrush',
       suggestedPrice: 30,
-      unit: ProductUnit.piece,
       category: ProductCategory.personal,
     ),
     CatalogProduct(
       name: 'Lux Soap',
       suggestedPrice: 38,
-      unit: ProductUnit.piece,
       category: ProductCategory.personal,
     ),
     CatalogProduct(
       name: 'Dove Soap',
       suggestedPrice: 55,
-      unit: ProductUnit.piece,
       category: ProductCategory.personal,
     ),
     CatalogProduct(
       name: 'Dettol Soap',
       suggestedPrice: 40,
-      unit: ProductUnit.piece,
       category: ProductCategory.personal,
     ),
     CatalogProduct(
       name: 'Lifebuoy Soap',
       suggestedPrice: 35,
-      unit: ProductUnit.piece,
       category: ProductCategory.personal,
     ),
     CatalogProduct(
@@ -525,13 +512,11 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'Rin Detergent Bar',
       suggestedPrice: 22,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
     CatalogProduct(
       name: 'Vim Dishwash Bar',
       suggestedPrice: 30,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
     CatalogProduct(
@@ -555,25 +540,21 @@ class ProductCatalogService {
     CatalogProduct(
       name: 'Colin Glass Cleaner',
       suggestedPrice: 90,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
     CatalogProduct(
       name: 'Hit Spray',
       suggestedPrice: 180,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
     CatalogProduct(
       name: 'Good Knight Liquid',
       suggestedPrice: 70,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
     CatalogProduct(
       name: 'Mortein Coil',
       suggestedPrice: 48,
-      unit: ProductUnit.piece,
       category: ProductCategory.cleaning,
     ),
   ];

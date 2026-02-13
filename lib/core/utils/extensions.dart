@@ -133,7 +133,7 @@ extension DateTimeExtensions on DateTime {
   }
 
   /// Get start of month
-  DateTime get startOfMonth => DateTime(year, month, 1);
+  DateTime get startOfMonth => DateTime(year, month);
 
   /// Check if today
   bool get isToday => isSameDay(DateTime.now());

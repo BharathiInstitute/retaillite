@@ -206,6 +206,20 @@ class AdminFirestoreService {
     }
   }
 
+  /// Reset user monthly limits (admin action)
+  static Future<bool> resetUserLimits(String userId) async {
+    try {
+      await _firestore.collection('users').doc(userId).update({
+        'limits.billsThisMonth': 0,
+        'limits.lastResetAt': FieldValue.serverTimestamp(),
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to reset user limits: $e');
+      return false;
+    }
+  }
+
   /// Get recent users (for dashboard)
   static Future<List<AdminUser>> getRecentUsers({int limit = 5}) async {
     try {

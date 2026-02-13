@@ -102,7 +102,6 @@ class ReceiptService {
     final createdAt = bill.createdAt;
 
     return pw.Column(
-      crossAxisAlignment: pw.CrossAxisAlignment.center,
       children: [
         // Shop header
         pw.Text(
@@ -188,7 +187,6 @@ class ReceiptService {
               ),
             ),
             pw.Expanded(
-              flex: 1,
               child: pw.Text(
                 'Qty',
                 style: pw.TextStyle(
@@ -241,7 +239,6 @@ class ReceiptService {
                   ),
                 ),
                 pw.Expanded(
-                  flex: 1,
                   child: pw.Text(
                     item.quantity.toString(),
                     style: const pw.TextStyle(fontSize: 9),
