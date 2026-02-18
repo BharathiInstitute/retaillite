@@ -350,73 +350,7 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
         }
     }
 
-    # --- Build and Deploy: Web ---
-    if (-not $failed -and $deployWeb) {
-        Write-Step "Building Web..."
-        $distDir = Join-Path $root "dist"
-        $websiteDir = Join-Path $root "website"
-        $flutterBuildDir = Join-Path $root "build\web"
-
-        if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
-        New-Item -ItemType Directory -Path $distDir -Force | Out-Null
-
-        if (Test-Path $websiteDir) {
-            Copy-Item -Path "$websiteDir\*" -Destination $distDir -Recurse -Force
-            Write-Ok "Copied website/ to dist/"
-        }
-
-        $ErrorActionPreference = "Continue"
-        flutter build web --base-href=/app/ --release
-        $webExit = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        if ($webExit -ne 0) {
-            Write-Fail "Web build failed!"
-            $failed = $true
-        }
-        else {
-            $appDir = Join-Path $distDir "app"
-            New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-            Copy-Item -Path "$flutterBuildDir\*" -Destination $appDir -Recurse -Force
-            Write-Ok "Web built to dist/app/"
-
-            $serveJson = '{"rewrites":[{"source":"/app/**","destination":"/app/index.html"}],"headers":[{"source":"**/*","headers":[{"key":"Cache-Control","value":"no-cache"}]}]}'
-            [System.IO.File]::WriteAllText((Join-Path $distDir "serve.json"), $serveJson, [System.Text.UTF8Encoding]::new($false))
-
-            Write-Step "Deploying to Firebase Hosting..."
-            $ErrorActionPreference = "Continue"
-            firebase deploy --only hosting
-            $fbExit = $LASTEXITCODE
-            $ErrorActionPreference = "Stop"
-            if ($fbExit -eq 0) {
-                Write-Ok "Web deployed to Firebase Hosting!"
-                Write-DeployLog "WEB DEPLOYED"
-
-                Write-Step "Health check..."
-                Start-Sleep -Seconds 5
-                $healthUrls = @(
-                    "https://login-radha.web.app/",
-                    "https://login-radha.web.app/app/"
-                )
-                foreach ($url in $healthUrls) {
-                    try {
-                        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
-                        if ($response.StatusCode -eq 200) { Write-Ok "$url -> HTTP 200" }
-                        else { Write-Warn "$url -> HTTP $($response.StatusCode)" }
-                    }
-                    catch {
-                        Write-Warn "$url -> Could not reach"
-                    }
-                }
-                Write-DeployLog "HEALTH CHECK DONE"
-            }
-            else {
-                Write-Fail "Firebase deploy failed!"
-                $failed = $true
-            }
-        }
-    }
-
-    # --- Build and Deploy: Windows (MSIX) ---
+    # --- Build and Deploy: Windows (MSIX) --- [RUNS FIRST to update download.html before web deploy]
     if (-not $failed -and $deployWindows) {
         Write-Step "Building Windows + MSIX installer..."
 
@@ -484,18 +418,50 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
                 [System.IO.File]::WriteAllText($winVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
                 Write-Ok "version.json updated (MSIX download URL)"
 
+                # Auto-update website download page with new version
+                $downloadPage = Join-Path $root "website\src\pages\download.html"
+                if (Test-Path $downloadPage) {
+                    Write-Step "Updating website download page..."
+                    $pageContent = Get-Content $downloadPage -Raw
+
+                    # Update MSIX download URL (replace old version with new)
+                    $pageContent = $pageContent -replace 'TulasiStores_Setup_v[\d.]+\.msix', "TulasiStores_Setup_v$newVersion.msix"
+
+                    # Update version display (e.g., v1.0.0 -> v1.0.1)
+                    $pageContent = $pageContent -replace '(<span>v)\d+\.\d+\.\d+(</span>)', "`${1}$newVersion`${2}"
+                    $pageContent = $pageContent -replace '(Latest version: <strong>v)\d+\.\d+\.\d+(</strong>)', "`${1}$newVersion`${2}"
+                    $pageContent = $pageContent -replace '(style="[^"]*">)\s*v\d+\.\d+\.\d+(</div>)', "`${1}v$newVersion`${2}"
+
+                    [System.IO.File]::WriteAllText($downloadPage, $pageContent, [System.Text.UTF8Encoding]::new($false))
+                    Write-Ok "download.html updated to v$newVersion"
+                    Write-DeployLog "WEBSITE | download.html updated to v$newVersion"
+                }
+
                 # Upload to Firebase Storage
                 $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
                 if ($gsutilExists) {
-                    Write-Step "Uploading MSIX + version.json to Firebase Storage..."
                     $storagePath = "gs://login-radha.firebasestorage.app/updates/windows/"
-                    $ErrorActionPreference = "Continue"
 
-                    # Upload version.json
+                    # Delete old MSIX files first
+                    Write-Step "Cleaning old MSIX files from Storage..."
+                    $ErrorActionPreference = "Continue"
+                    $oldFiles = gsutil ls "${storagePath}*.msix" 2>&1
+                    if ($oldFiles -and $oldFiles -notmatch "CommandException") {
+                        foreach ($oldFile in $oldFiles) {
+                            $oldFile = $oldFile.Trim()
+                            if ($oldFile -and $oldFile -notlike "*$msixStorageName*" -and $oldFile -like "*.msix") {
+                                gsutil rm $oldFile 2>&1 | Out-Null
+                                Write-Info "Deleted old: $($oldFile.Split('/')[-1])"
+                            }
+                        }
+                    }
+                    Write-Ok "Old files cleaned"
+
+                    # Upload new files
+                    Write-Step "Uploading MSIX + version.json to Firebase Storage..."
                     gsutil cp $winVersionPath "${storagePath}version.json"
                     gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
 
-                    # Upload MSIX installer
                     if ($msixFile -and (Test-Path $msixFile)) {
                         gsutil cp $msixFile "${storagePath}$msixStorageName"
                         gsutil setmeta -h "Content-Type:application/msix" "${storagePath}$msixStorageName"
@@ -511,6 +477,72 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
                     Write-Info "  Firebase Console > Storage > updates/windows/"
                     Write-Info "  Upload: version.json + $msixStorageName"
                 }
+            }
+        }
+    }
+
+    # --- Build and Deploy: Web --- [RUNS AFTER Windows so download.html is already updated]
+    if (-not $failed -and $deployWeb) {
+        Write-Step "Building Web..."
+        $distDir = Join-Path $root "dist"
+        $websiteDir = Join-Path $root "website"
+        $flutterBuildDir = Join-Path $root "build\web"
+
+        if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+
+        if (Test-Path $websiteDir) {
+            Copy-Item -Path "$websiteDir\*" -Destination $distDir -Recurse -Force
+            Write-Ok "Copied website/ to dist/"
+        }
+
+        $ErrorActionPreference = "Continue"
+        flutter build web --base-href=/app/ --release
+        $webExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($webExit -ne 0) {
+            Write-Fail "Web build failed!"
+            $failed = $true
+        }
+        else {
+            $appDir = Join-Path $distDir "app"
+            New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+            Copy-Item -Path "$flutterBuildDir\*" -Destination $appDir -Recurse -Force
+            Write-Ok "Web built to dist/app/"
+
+            $serveJson = '{"rewrites":[{"source":"/app/**","destination":"/app/index.html"}],"headers":[{"source":"**/*","headers":[{"key":"Cache-Control","value":"no-cache"}]}]}'
+            [System.IO.File]::WriteAllText((Join-Path $distDir "serve.json"), $serveJson, [System.Text.UTF8Encoding]::new($false))
+
+            Write-Step "Deploying to Firebase Hosting..."
+            $ErrorActionPreference = "Continue"
+            firebase deploy --only hosting
+            $fbExit = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            if ($fbExit -eq 0) {
+                Write-Ok "Web deployed to Firebase Hosting!"
+                Write-DeployLog "WEB DEPLOYED"
+
+                Write-Step "Health check..."
+                Start-Sleep -Seconds 5
+                $healthUrls = @(
+                    "https://login-radha.web.app/",
+                    "https://login-radha.web.app/app/"
+                )
+                foreach ($url in $healthUrls) {
+                    try {
+                        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+                        if ($response.StatusCode -eq 200) { Write-Ok "$url -> HTTP 200" }
+                        else { Write-Warn "$url -> HTTP $($response.StatusCode)" }
+                    }
+                    catch {
+                        Write-Warn "$url -> Could not reach"
+                    }
+                }
+                Write-DeployLog "HEALTH CHECK DONE"
+            }
+            else {
+                Write-Fail "Firebase deploy failed!"
+                $failed = $true
             }
         }
     }
