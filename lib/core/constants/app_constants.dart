@@ -1,11 +1,11 @@
-/// App-wide constants for LITE retail billing app
+/// App-wide constants for Tulasi Stores retail billing app
 library;
 
 class AppConstants {
   AppConstants._();
 
   // App Info
-  static const String appName = 'Tulasi Shop Lite';
+  static const String appName = 'Tulasi Stores';
   static const String appTagline = 'भारत का सबसे आसान बिलिंग ऐप';
   static const String version = '1.0.0';
 

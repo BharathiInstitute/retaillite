@@ -2,10 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
+import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 
 /// Modal to give Udhaar (credit) to a customer
@@ -46,26 +50,48 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
     setState(() => _isLoading = true);
 
     try {
-      // 1. Update customer balance (ADD credit - positive amount)
-      await OfflineStorageService.updateCustomerBalance(
-        widget.customer.id,
-        _amount, // Positive to increase balance (customer owes more)
-      );
+      final isDemoMode = ref.read(isDemoModeProvider);
 
-      // 2. Save credit transaction
-      await OfflineStorageService.saveTransaction(
-        customerId: widget.customer.id,
-        type: 'purchase',
-        amount: _amount,
-        note: _noteController.text.isEmpty
-            ? 'Credit given'
-            : _noteController.text,
-      );
+      if (isDemoMode) {
+        // Demo mode: Update in-memory data
+        DemoDataService.updateCustomerBalance(
+          widget.customer.id,
+          _amount, // Positive to increase balance (customer owes more)
+        );
+        // Add transaction to demo data
+        DemoDataService.addTransaction(
+          customerId: widget.customer.id,
+          type: TransactionType.purchase,
+          amount: _amount,
+          note: _noteController.text.isEmpty
+              ? 'Credit given'
+              : _noteController.text,
+        );
+      } else {
+        // Real mode: Save to Firestore
+        // 1. Update customer balance (ADD credit - positive amount)
+        await OfflineStorageService.updateCustomerBalance(
+          widget.customer.id,
+          _amount, // Positive to increase balance (customer owes more)
+        );
 
-      // 3. Invalidate providers to refresh UI
+        // 2. Save credit transaction
+        await OfflineStorageService.saveTransaction(
+          customerId: widget.customer.id,
+          type: 'purchase',
+          amount: _amount,
+          note: _noteController.text.isEmpty
+              ? 'Credit given'
+              : _noteController.text,
+        );
+      }
+
+      // 3. Invalidate providers to refresh UI immediately
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
+      ref.invalidate(sortedCustomersProvider);
+      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);
@@ -120,7 +146,10 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
               // Header
               Row(
                 children: [
-                  const Icon(Icons.remove_circle_outline, color: AppColors.error),
+                  const Icon(
+                    Icons.remove_circle_outline,
+                    color: AppColors.error,
+                  ),
                   const SizedBox(width: 8),
                   Text(
                     'Give Udhaar (Credit)',

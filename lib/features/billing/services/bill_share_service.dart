@@ -16,7 +16,7 @@ import 'package:url_launcher/url_launcher.dart';
 /// Service for sharing bills via WhatsApp, SMS, PDF download, and general share
 class BillShareService {
   /// Shop name used in bill text/PDF
-  static const String shopName = 'Tulasi Shop Lite';
+  static const String shopName = 'Tulasi Stores';
 
   // ==================== Text Generation ====================
 

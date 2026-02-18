@@ -264,7 +264,7 @@ extension LocalizationsExtension on BuildContext {
 
 // ============ ENGLISH STRINGS ============
 const Map<String, String> _englishStrings = {
-  'appName': 'Tulasi Shop Lite',
+  'appName': 'Tulasi Stores',
   'appTagline': "India's Easiest Billing App",
   'billing': 'Billing',
   'khata': 'Khata',
@@ -442,7 +442,7 @@ const Map<String, String> _englishStrings = {
 
 // ============ HINDI STRINGS ============
 const Map<String, String> _hindiStrings = {
-  'appName': 'Tulasi Shop Lite',
+  'appName': 'Tulasi Stores',
   'appTagline': 'भारत का सबसे आसान बिलिंग ऐप',
   'billing': 'बिलिंग',
   'khata': 'खाता',
@@ -620,7 +620,7 @@ const Map<String, String> _hindiStrings = {
 
 // ============ TELUGU STRINGS ============
 const Map<String, String> _teluguStrings = {
-  'appName': 'Tulasi Shop Lite',
+  'appName': 'Tulasi Stores',
   'appTagline': 'భారతదేశం యొక్క సులభమైన బిల్లింగ్ యాప్',
   'billing': 'బిల్లింగ్',
   'khata': 'ఖాతా',

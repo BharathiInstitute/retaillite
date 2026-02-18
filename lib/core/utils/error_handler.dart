@@ -1,10 +1,15 @@
 /// Global error handling utilities
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/services/error_logging_service.dart';
+
+/// Check if Crashlytics is supported (not web and not Windows)
+bool get _supportsCrashlytics => !kIsWeb && !Platform.isWindows;
 
 /// Error types for categorization
 enum AppErrorType {
@@ -85,15 +90,15 @@ class ErrorHandler {
     if (_initialized) return;
 
     // Handle Flutter errors (web uses different handling)
-    if (!kIsWeb) {
-      // Mobile/Desktop: Use Crashlytics
+    if (_supportsCrashlytics) {
+      // Mobile: Use Crashlytics
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
         FirebaseCrashlytics.instance.recordFlutterError(details);
         _logError(details.exception, details.stack);
       };
     } else {
-      // Web: Use console + Firestore logging
+      // Web/Windows: Use console + Firestore logging
       FlutterError.onError = (FlutterErrorDetails details) {
         FlutterError.presentError(details);
         _logError(details.exception, details.stack);
@@ -108,7 +113,11 @@ class ErrorHandler {
 
     _initialized = true;
     debugPrint(
-      '✅ ErrorHandler initialized (${kIsWeb ? "Web" : "Native"} mode)',
+      '✅ ErrorHandler initialized (${kIsWeb
+          ? "Web"
+          : Platform.isWindows
+          ? "Windows"
+          : "Native"} mode)',
     );
   }
 
@@ -129,10 +138,11 @@ class ErrorHandler {
     if (kIsWeb) {
       // Web: Log to Firestore
       ErrorLoggingService.logError(error: error, stackTrace: stack);
-    } else {
-      // Mobile/Desktop: Log to Crashlytics (non-fatal)
+    } else if (_supportsCrashlytics) {
+      // Mobile: Log to Crashlytics (non-fatal)
       FirebaseCrashlytics.instance.recordError(error, stack);
     }
+    // Windows: Just console logging (Crashlytics not supported)
   }
 
   /// Report a caught error (use this for try-catch blocks)
@@ -156,7 +166,7 @@ class ErrorHandler {
         stackTrace: stack,
         severity: ErrorSeverity.warning,
       );
-    } else {
+    } else if (_supportsCrashlytics) {
       FirebaseCrashlytics.instance.log(message);
       FirebaseCrashlytics.instance.recordError(error, stack);
     }
@@ -164,7 +174,7 @@ class ErrorHandler {
 
   /// Set user identifier for crash reports
   static Future<void> setUser(String? userId, {String? email}) async {
-    if (!kIsWeb && userId != null) {
+    if (_supportsCrashlytics && userId != null) {
       await FirebaseCrashlytics.instance.setUserIdentifier(userId);
       if (email != null) {
         await FirebaseCrashlytics.instance.setCustomKey('email', email);
@@ -174,7 +184,7 @@ class ErrorHandler {
 
   /// Log a custom message/breadcrumb
   static void log(String message) {
-    if (!kIsWeb) {
+    if (_supportsCrashlytics) {
       FirebaseCrashlytics.instance.log(message);
     }
     if (kDebugMode) {

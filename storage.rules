@@ -2,13 +2,21 @@ rules_version = '2';
 
 service firebase.storage {
   match /b/{bucket}/o {
-    // Users can read/write their own files
+    // Users can read/write their own files (logos, profile images)
     match /users/{userId}/{allPaths=**} {
       allow read: if request.auth != null && request.auth.uid == userId;
       allow write: if request.auth != null && request.auth.uid == userId
                    && request.resource.size < 2 * 1024 * 1024 // Max 2MB
                    && request.resource.contentType.matches('image/.*');
       allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+    
+    // Public read for update files (version.json, installers)
+    // Windows/Android updaters check these without auth
+    match /updates/{allPaths=**} {
+      allow read: if true;
+      // Only admin uploads (done via gsutil/Firebase Console)
+      allow write: if false;
     }
     
     // Deny all other access

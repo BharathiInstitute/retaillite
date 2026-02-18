@@ -1,7 +1,8 @@
-/// Windows Update Dialog
+/// Windows Update Dialog (Layer 4)
 ///
-/// Shows a dialog when a new version is available.
-/// Handles download progress and silent install.
+/// Shows a dialog when silent updates have failed 3+ times.
+/// User can click "Update Now" to download with visible progress,
+/// or dismiss to see the persistent banner instead.
 library;
 
 import 'dart:io';
@@ -15,10 +16,15 @@ class UpdateDialog extends StatefulWidget {
 
   const UpdateDialog({super.key, required this.versionInfo});
 
-  /// Show the update dialog. Call this on app start.
+  /// Check if dialog should be shown and show it. Call on app start.
   static Future<void> checkAndShow(BuildContext context) async {
     if (!Platform.isWindows) return;
 
+    // Only show if Layer 4 is triggered (3+ silent failures)
+    final shouldShow = await WindowsUpdateService.shouldShowDialog();
+    if (!shouldShow) return;
+
+    // Fetch latest version info
     final result = await WindowsUpdateService.checkForUpdate();
     if (result.status != UpdateStatus.updateAvailable) return;
     if (!context.mounted) return;
@@ -53,7 +59,20 @@ class _UpdateDialogState extends State<UpdateDialog> {
       },
     );
 
-    if (!success && mounted) {
+    if (!mounted) return;
+
+    if (success) {
+      Navigator.of(context).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Update downloaded! It will install when you close the app.',
+          ),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 5),
+        ),
+      );
+    } else {
       setState(() {
         _downloading = false;
         _error = 'Download failed. Please try again.';
@@ -79,6 +98,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
           Text(
             'Version ${widget.versionInfo.version} is available!',
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'The automatic update could not complete. Please update manually.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),
           const SizedBox(height: 12),
           if (widget.versionInfo.changelog.isNotEmpty) ...[
@@ -136,7 +160,11 @@ class _UpdateDialogState extends State<UpdateDialog> {
       actions: [
         if (!widget.versionInfo.forceUpdate && !_downloading)
           TextButton(
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              // Mark dismissed so banner shows instead
+              WindowsUpdateService.markDialogDismissed();
+              Navigator.of(context).pop();
+            },
             child: const Text('Later'),
           ),
         if (!_downloading)

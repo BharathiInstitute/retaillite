@@ -26,6 +26,34 @@ class SettingsWebScreen extends ConsumerStatefulWidget {
 }
 
 class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
+  // Text controllers for editable fields
+  late TextEditingController _shopNameController;
+  late TextEditingController _ownerNameController;
+  late TextEditingController _contactNumberController;
+  late TextEditingController _shopAddressController;
+  late TextEditingController _emailController;
+
+  @override
+  void initState() {
+    super.initState();
+    final user = ref.read(currentUserProvider);
+    _shopNameController = TextEditingController(text: user?.shopName ?? '');
+    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
+    _contactNumberController = TextEditingController(text: user?.phone ?? '');
+    _shopAddressController = TextEditingController(text: user?.address ?? '');
+    _emailController = TextEditingController(text: user?.email ?? '');
+  }
+
+  @override
+  void dispose() {
+    _shopNameController.dispose();
+    _ownerNameController.dispose();
+    _contactNumberController.dispose();
+    _shopAddressController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
   SettingsTab get _selectedTab {
     switch (widget.initialTab) {
       case 'account':
@@ -40,11 +68,51 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   void _navigateToTab(SettingsTab tab) {
+    if (tab == SettingsTab.hardware || tab == SettingsTab.billing) {
+      _showComingSoonDialog(tab.name);
+    }
     context.go('/settings/${tab.name}');
+  }
+
+  bool _hasShownComingSoon = false;
+
+  void _showComingSoonDialog([String? tabName]) {
+    if (_hasShownComingSoon) return;
+    _hasShownComingSoon = true;
+    final featureName = tabName == 'billing' ? 'Billing' : 'Hardware';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(
+            Icons.construction,
+            size: 48,
+            color: AppColors.warning,
+          ),
+          title: const Text('Coming Soon'),
+          content: Text(
+            '$featureName settings are under development. These features will be available in a future update.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _hasShownComingSoon = false;
+                context.go('/settings/general');
+              },
+              child: const Text('Go Back'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   bool _isSyncing = false;
   bool _isUploadingLogo = false;
+  bool _isUploadingProfileImage = false;
 
   bool get _isMobileView =>
       ResponsiveHelper.isMobile(context) || ResponsiveHelper.isTablet(context);
@@ -73,6 +141,32 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     }
   }
 
+  Future<void> _pickProfileImage() async {
+    setState(() => _isUploadingProfileImage = true);
+    try {
+      final downloadUrl = await ImageService.pickAndUploadProfileImage();
+      if (downloadUrl != null && mounted) {
+        final success = await ref
+            .read(authNotifierProvider.notifier)
+            .updateProfileImage(downloadUrl);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                success
+                    ? 'Profile picture updated!'
+                    : 'Failed to update profile picture',
+              ),
+              backgroundColor: success ? AppColors.primary : AppColors.error,
+            ),
+          );
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingProfileImage = false);
+    }
+  }
+
   Future<void> _removeShopLogo() async {
     setState(() => _isUploadingLogo = true);
     try {
@@ -90,6 +184,31 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       }
     } finally {
       if (mounted) setState(() => _isUploadingLogo = false);
+    }
+  }
+
+  Future<void> _saveSettings() async {
+    final success = await ref
+        .read(authNotifierProvider.notifier)
+        .updateShopInfo(
+          shopName: _shopNameController.text.trim(),
+          ownerName: _ownerNameController.text.trim(),
+          phone: _contactNumberController.text.trim(),
+          address: _shopAddressController.text.trim(),
+          email: _emailController.text.trim(),
+        );
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Settings saved successfully!'
+                : 'Failed to save settings',
+          ),
+          backgroundColor: success ? AppColors.primary : AppColors.error,
+        ),
+      );
     }
   }
 
@@ -156,6 +275,86 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     return const Icon(Icons.store, size: 28, color: Colors.grey);
   }
 
+  /// Build profile avatar that handles URLs and shows loading state
+  Widget _buildProfileAvatar(String? logoPath, double radius) {
+    if (_isUploadingLogo) {
+      return CircleAvatar(
+        radius: radius,
+        child: SizedBox(
+          width: radius,
+          height: radius,
+          child: const CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    final hasImage = logoPath != null && logoPath.isNotEmpty;
+
+    if (!hasImage) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Theme.of(context).dividerColor,
+        child: Icon(Icons.person, size: radius, color: Colors.grey),
+      );
+    }
+
+    if (logoPath.startsWith('http')) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(logoPath),
+        backgroundColor: Theme.of(context).dividerColor,
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    // Fallback
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).dividerColor,
+      child: Icon(Icons.person, size: radius, color: Colors.grey),
+    );
+  }
+
+  /// Build user profile avatar (separate from shop logo)
+  Widget _buildUserProfileAvatar(String? imagePath, double radius) {
+    if (_isUploadingProfileImage) {
+      return CircleAvatar(
+        radius: radius,
+        child: SizedBox(
+          width: radius,
+          height: radius,
+          child: const CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+    }
+
+    final hasImage = imagePath != null && imagePath.isNotEmpty;
+
+    if (!hasImage) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: Theme.of(context).dividerColor,
+        child: Icon(Icons.person, size: radius, color: Colors.grey),
+      );
+    }
+
+    if (imagePath.startsWith('http')) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(imagePath),
+        backgroundColor: Theme.of(context).dividerColor,
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    // Fallback
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: Theme.of(context).dividerColor,
+      child: Icon(Icons.person, size: radius, color: Colors.grey),
+    );
+  }
+
   /// Two columns on desktop, stacked on mobile
   Widget _responsiveColumns(
     List<Widget> leftChildren,
@@ -214,8 +413,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       icon: Icons.person,
       label: 'Account',
       title: 'Account Settings',
-      subtitle:
-          'Manage your personal profile, security preferences, and subscription plan.',
+      subtitle: 'Manage your personal profile and security preferences.',
     ),
     SettingsTab.hardware: (
       icon: Icons.print,
@@ -339,7 +537,14 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           // Notification icon (for consistency)
           IconButton(
             icon: const Icon(Icons.notifications_outlined, size: 22),
-            onPressed: () {},
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('No new notifications'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
             style: IconButton.styleFrom(
               foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
@@ -361,6 +566,15 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => context.go(AppRoutes.dashboard),
         ),
+        actions: [
+          TextButton.icon(
+            onPressed: _saveSettings,
+            icon: const Icon(Icons.save, size: 18),
+            label: const Text('Save'),
+            style: TextButton.styleFrom(foregroundColor: AppColors.primary),
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
       body: Column(
         children: [
@@ -566,11 +780,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           ),
           // Save button
           ElevatedButton.icon(
-            onPressed: () {
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('Settings saved')));
-            },
+            onPressed: _saveSettings,
             icon: const Icon(Icons.save, size: 18),
             label: const Text('Save Changes'),
             style: ElevatedButton.styleFrom(
@@ -591,8 +801,14 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       case SettingsTab.account:
         return _buildAccountTab();
       case SettingsTab.hardware:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showComingSoonDialog();
+        });
         return _buildHardwareTab();
       case SettingsTab.billing:
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _showComingSoonDialog('billing');
+        });
         return _buildBillingTab();
     }
   }
@@ -689,27 +905,27 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               ),
               const SizedBox(height: 20),
               _buildFieldLabel('Shop Name', required: true),
-              _buildTextField(value: user?.shopName ?? ''),
+              _buildTextField(controller: _shopNameController),
               const SizedBox(height: 16),
               _responsiveFields([
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Owner Name'),
-                    _buildTextField(value: user?.ownerName ?? ''),
+                    _buildTextField(controller: _ownerNameController),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Contact Number'),
-                    _buildTextField(value: user?.phone ?? ''),
+                    _buildTextField(controller: _contactNumberController),
                   ],
                 ),
               ]),
               const SizedBox(height: 16),
               _buildFieldLabel('Shop Address'),
-              _buildTextField(value: user?.address ?? '', maxLines: 2),
+              _buildTextField(controller: _shopAddressController, maxLines: 2),
             ],
           ),
         ),
@@ -842,9 +1058,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                       Expanded(
                         child: Slider(
                           value: themeSettings.fontSizeScale,
-                          min: 0.8,
-                          max: 1.4,
-                          divisions: 6,
+                          min: 0.85,
+                          max: 1.15,
+                          divisions: 2,
                           label: _getFontSizeLabel(themeSettings.fontSizeScale),
                           onChanged: (v) => themeNotifier.setFontSizeScale(v),
                         ),
@@ -970,6 +1186,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   // ============ ACCOUNT TAB ============
   Widget _buildAccountTab() {
     final user = ref.watch(currentUserProvider);
+    final profileImagePath = user?.profileImagePath;
 
     final leftChildren = <Widget>[
       // User Profile
@@ -982,35 +1199,35 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           children: [
             Row(
               children: [
-                Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 40,
-                      backgroundColor: Theme.of(context).dividerColor,
-                      child: const Icon(
-                        Icons.person,
-                        size: 40,
-                        color: Colors.grey,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFBBF24),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+                InkWell(
+                  borderRadius: BorderRadius.circular(40),
+                  onTap: _isUploadingProfileImage ? null : _pickProfileImage,
+                  child: Stack(
+                    children: [
+                      _buildUserProfileAvatar(profileImagePath, 40),
+                      if (!_isUploadingProfileImage)
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary,
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: Theme.of(context).cardColor,
+                                width: 2,
+                              ),
+                            ),
+                            child: const Icon(
+                              Icons.camera_alt,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                          ),
                         ),
-                        child: const Icon(
-                          Icons.edit,
-                          size: 12,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 16),
                 Column(
@@ -1039,239 +1256,92 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildFieldLabel('Full Name'),
-                  _buildTextField(value: user?.ownerName ?? ''),
+                  _buildTextField(controller: _ownerNameController),
                 ],
               ),
               Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _buildFieldLabel('Email Address'),
-                  _buildTextField(value: user?.email ?? ''),
-                ],
-              ),
-            ]),
-            const SizedBox(height: 24),
-            const Text(
-              'Change Password',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            _responsiveFields([
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFieldLabel('New Password'),
-                  _buildTextField(value: '••••••••', obscure: true),
-                ],
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildFieldLabel('Confirm Password'),
-                  _buildTextField(value: '••••••••', obscure: true),
+                  _buildTextField(controller: _emailController, enabled: false),
                 ],
               ),
             ]),
           ],
         ),
       ),
-      const SizedBox(height: 24),
 
-      // Security
+      // Verification Status
       _SectionCard(
-        icon: Icons.security,
-        iconColor: const Color(0xFFA855F7),
-        title: 'Security',
+        icon: Icons.verified_user,
+        iconColor: AppColors.success,
+        title: 'Verification Status',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Two-Factor Authentication (2FA)',
-                        style: TextStyle(fontWeight: FontWeight.w600),
-                      ),
-                      SizedBox(height: 4),
-                      Text(
-                        'Add an extra layer of security to your account by requiring a code from your phone in addition to your password.',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: AppColors.textSecondary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: false,
-                  onChanged: (v) => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Two-factor authentication requires additional setup through your account security settings',
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Recent Login History',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                TextButton(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Login history feature - check your email for detailed security logs',
-                      ),
-                    ),
-                  ),
-                  child: const Text('View All'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (_isMobileView)
-              const Text(
-                'Login history available on desktop view.',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              )
-            else
-              _buildLoginHistoryTable(),
-          ],
-        ),
-      ),
-    ];
-
-    final rightChildren = <Widget>[
-      _SectionCard(
-        icon: Icons.star,
-        iconColor: const Color(0xFFFBBF24),
-        title: 'Subscription Plan',
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'CURRENT PLAN',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.textMuted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDCFCE7),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'ACTIVE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: AppColors.success,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Standard',
-              style: TextStyle(fontSize: 28, fontWeight: FontWeight.bold),
-            ),
-            const Text('₹499 / month', style: TextStyle(color: Colors.grey)),
-            const SizedBox(height: 16),
-            LinearProgressIndicator(
-              value: 0.7,
-              backgroundColor: Theme.of(context).dividerColor,
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                AppColors.success,
+            // Firebase UID
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withAlpha(80),
+                borderRadius: BorderRadius.circular(8),
               ),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Flexible(
-                  child: Text(
-                    '22 Days remaining',
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.fingerprint,
+                    size: 16,
+                    color: Theme.of(context).colorScheme.outline,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'UID: ',
                     style: TextStyle(
-                      fontSize: 12,
+                      fontSize: 11,
                       color: Theme.of(context).colorScheme.outline,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                ),
-                TextButton(
-                  onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text(
-                        'Subscription renewal - please contact support or upgrade through settings',
+                  Expanded(
+                    child: SelectableText(
+                      user?.id ?? '—',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ),
                     ),
                   ),
-                  child: const Text(
-                    'Renew now',
-                    style: TextStyle(fontSize: 12),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Plan Features',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 12),
-            _buildFeatureRow('Unlimited Invoices', true),
-            _buildFeatureRow('Inventory Management', true),
-            _buildFeatureRow('GST Reports', true),
-            _buildFeatureRow('Multi-store Support', false),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Premium upgrade coming soon! Contact support for early access.',
-                    ),
-                  ),
-                ),
-                icon: const Icon(Icons.rocket_launch, size: 18),
-                label: const Text('Upgrade to Premium'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.textPrimary,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
+                ],
               ),
             ),
-            const SizedBox(height: 8),
-            const Center(
-              child: Text(
-                'Start your 14-day free trial of Premium',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-              ),
+            const SizedBox(height: 16),
+
+            // Phone verification row
+            _buildVerificationRow(
+              icon: Icons.phone_android,
+              label: 'Phone Number',
+              value: user?.phone ?? '—',
+              isVerified: user?.phoneVerified ?? false,
+              verifiedAt: user?.phoneVerifiedAt,
+            ),
+            const Divider(height: 24),
+
+            // Email verification row
+            _buildVerificationRow(
+              icon: Icons.email_outlined,
+              label: 'Email Address',
+              value: user?.email ?? '—',
+              isVerified: user?.emailVerified ?? false,
             ),
           ],
         ),
       ),
     ];
+
+    final rightChildren = <Widget>[];
 
     if (_isMobileView) {
       return Column(
@@ -2106,12 +2176,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
 
   /// Get font size label from scale value
   String _getFontSizeLabel(double scale) {
-    if (scale <= 0.85) return 'Small';
-    if (scale <= 0.95) return 'Compact';
-    if (scale <= 1.05) return 'Normal';
-    if (scale <= 1.15) return 'Large';
-    if (scale <= 1.25) return 'Larger';
-    return 'Extra Large';
+    if (scale <= 0.90) return 'Small';
+    if (scale <= 1.05) return 'Compact';
+    return 'Large';
   }
 
   Widget _buildFieldLabel(String label, {bool required = false}) {
@@ -2134,14 +2201,15 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   Widget _buildTextField({
-    required String value,
+    String? value,
+    TextEditingController? controller,
     String? hint,
     bool obscure = false,
     int maxLines = 1,
     bool enabled = true,
   }) {
     return TextField(
-      controller: TextEditingController(text: value),
+      controller: controller ?? TextEditingController(text: value ?? ''),
       obscureText: obscure,
       maxLines: maxLines,
       enabled: enabled,
@@ -2268,20 +2336,20 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('About RetailLite'),
+        title: const Text('About Tulasi Stores'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tulasi Shop Lite',
+              'Tulasi Stores',
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             Text('Version 1.0.0'),
             SizedBox(height: 16),
             Text('Simple POS for Small Retailers'),
             SizedBox(height: 16),
-            Text('© 2026 RetailLite', style: TextStyle(color: Colors.grey)),
+            Text('© 2026 Tulasi Stores', style: TextStyle(color: Colors.grey)),
           ],
         ),
         actions: [
@@ -2294,102 +2362,74 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildLoginHistoryTable() {
-    return Table(
-      columnWidths: const {
-        0: FlexColumnWidth(2),
-        1: FlexColumnWidth(1.5),
-        2: FlexColumnWidth(),
-      },
+  Widget _buildVerificationRow({
+    required IconData icon,
+    required String label,
+    required String value,
+    required bool isVerified,
+    DateTime? verifiedAt,
+  }) {
+    return Row(
       children: [
-        const TableRow(
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Device',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Location',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: 8),
-              child: Text(
-                'Time',
-                style: TextStyle(fontSize: 12, color: AppColors.textMuted),
-              ),
-            ),
-          ],
+        Icon(
+          icon,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
         ),
-        _buildLoginRow('Chrome on Windows', 'Mumbai, India', 'Just now', true),
-        _buildLoginRow(
-          'RetailLite Mobile App',
-          'Mumbai, India',
-          'Yesterday',
-          false,
-        ),
-      ],
-    );
-  }
-
-  TableRow _buildLoginRow(
-    String device,
-    String location,
-    String time,
-    bool isCurrent,
-  ) {
-    return TableRow(
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Row(
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                device.contains('Mobile') ? Icons.phone_android : Icons.laptop,
-                size: 16,
-                color: AppColors.textSecondary,
-              ),
-              const SizedBox(width: 8),
-              Text(device, style: const TextStyle(fontSize: 13)),
-              if (isCurrent) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.success,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: const Text(
-                    'CURRENT',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 9,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.outline,
                 ),
-              ],
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
             ],
           ),
         ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(location, style: const TextStyle(fontSize: 13)),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          child: Text(
-            time,
-            style: const TextStyle(fontSize: 13, color: AppColors.textMuted),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+          decoration: BoxDecoration(
+            color: isVerified
+                ? AppColors.success.withAlpha(25)
+                : AppColors.error.withAlpha(25),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isVerified
+                  ? AppColors.success.withAlpha(80)
+                  : AppColors.error.withAlpha(80),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isVerified ? Icons.check_circle : Icons.cancel,
+                size: 14,
+                color: isVerified ? AppColors.success : AppColors.error,
+              ),
+              const SizedBox(width: 4),
+              Text(
+                isVerified ? 'Verified' : 'Not Verified',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: isVerified ? AppColors.success : AppColors.error,
+                ),
+              ),
+            ],
           ),
         ),
       ],
@@ -2411,7 +2451,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             feature,
             style: TextStyle(
               decoration: included ? null : TextDecoration.lineThrough,
-              color: included ? AppColors.textPrimary : AppColors.textMuted,
+              color: included
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ),
         ],

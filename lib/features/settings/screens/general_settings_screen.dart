@@ -223,9 +223,9 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                       Expanded(
                         child: Slider(
                           value: themeSettings.fontSizeScale,
-                          min: 0.8,
-                          max: 1.4,
-                          divisions: 6,
+                          min: 0.85,
+                          max: 1.15,
+                          divisions: 2,
                           label: _getFontSizeLabel(themeSettings.fontSizeScale),
                           onChanged: (v) => themeNotifier.setFontSizeScale(v),
                         ),
@@ -307,12 +307,9 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
   }
 
   String _getFontSizeLabel(double scale) {
-    if (scale <= 0.85) return 'Small';
-    if (scale <= 0.95) return 'Compact';
-    if (scale <= 1.05) return 'Normal';
-    if (scale <= 1.15) return 'Large';
-    if (scale <= 1.25) return 'Larger';
-    return 'Extra Large';
+    if (scale <= 0.90) return 'Small';
+    if (scale <= 1.05) return 'Compact';
+    return 'Large';
   }
 
   void _saveSettings() {

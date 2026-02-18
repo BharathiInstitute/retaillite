@@ -63,3 +63,7 @@ firebase-adminsdk*.json
 # Debug info from obfuscated builds
 build/debug-info/
 *.symbols
+
+# Deploy artifacts
+deploy-backups/
+dist/

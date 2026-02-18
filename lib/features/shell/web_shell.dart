@@ -2,10 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/utils/website_url.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
+import 'package:retaillite/features/auth/widgets/email_verification_banner.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// User-toggled sidebar collapse state. null = auto (follow screen width)
 final sidebarCollapsedProvider = StateProvider<bool?>((ref) => null);
@@ -34,6 +37,9 @@ class WebShell extends ConsumerWidget {
         children: [
           // Demo mode banner at the very top if active
           const DemoModeBanner(),
+
+          // Email verification banner
+          const EmailVerificationBanner(),
 
           Expanded(
             child: Row(
@@ -82,6 +88,34 @@ class _WebSidebar extends ConsumerWidget {
     required this.currentPath,
   });
 
+  /// Build profile avatar that handles both URL and local file
+  Widget _buildProfileAvatar(String? logoPath, double radius, bool isSelected) {
+    final hasImage = logoPath != null && logoPath.isNotEmpty;
+
+    if (!hasImage) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: isSelected ? AppColors.primary : Colors.grey,
+        child: Icon(Icons.person, size: radius, color: Colors.white),
+      );
+    }
+
+    if (logoPath.startsWith('http')) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(logoPath),
+        backgroundColor: isSelected ? AppColors.primary : Colors.grey,
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: isSelected ? AppColors.primary : Colors.grey,
+      child: Icon(Icons.person, size: radius, color: Colors.white),
+    );
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final user = ref.watch(currentUserProvider);
@@ -112,7 +146,7 @@ class _WebSidebar extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Flexible(
                         child: Text(
-                          user?.shopName ?? 'Tulasi Shop Lite',
+                          user?.shopName ?? 'Tulasi Stores',
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -211,8 +245,30 @@ class _WebSidebar extends ConsumerWidget {
                   label: 'Notifications',
                   isSelected: false,
                   isCollapsed: isCollapsed,
-                  onTap: () {},
+                  onTap: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('No new notifications'),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  },
                 ),
+
+                // "Visit Website" — web only, hidden on Android/Windows
+                if (showWebsiteLink)
+                  _SidebarItem(
+                    icon: Icons.language_rounded,
+                    label: 'Visit Website',
+                    isSelected: false,
+                    isCollapsed: isCollapsed,
+                    onTap: () {
+                      launchUrl(
+                        Uri.parse(websiteUrl),
+                        webOnlyWindowName: '_self',
+                      );
+                    },
+                  ),
               ],
             ),
           ),
@@ -258,16 +314,10 @@ class _WebSidebar extends ConsumerWidget {
                     ),
                     child: Row(
                       children: [
-                        CircleAvatar(
-                          radius: 16,
-                          backgroundColor: isSettings
-                              ? AppColors.primary
-                              : Colors.grey,
-                          child: const Icon(
-                            Icons.person,
-                            size: 16,
-                            color: Colors.white,
-                          ),
+                        _buildProfileAvatar(
+                          user?.profileImagePath,
+                          16,
+                          isSettings,
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -316,7 +366,7 @@ class _WebSidebar extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Text(
-                'Powered by Tulasi Shop Lite',
+                'Powered by Tulasi Stores',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -514,7 +564,14 @@ class _WebHeader extends StatelessWidget {
 
           // Header Actions (optional)
           IconButton(
-            onPressed: () {},
+            onPressed: () {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('No new notifications'),
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
             icon: Icon(
               Icons.notifications_outlined,
               color: Theme.of(context).colorScheme.onSurfaceVariant,

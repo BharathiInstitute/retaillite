@@ -12,7 +12,12 @@
           "package_name": "com.example.dataset"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
@@ -20,7 +25,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "576503526807-7kammm2b146tiecimt9433pb6r46hm5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.jiomart"
+              }
+            }
+          ]
         }
       }
     },
@@ -31,7 +48,12 @@
           "package_name": "com.example.jiomart"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
@@ -39,7 +61,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "576503526807-7kammm2b146tiecimt9433pb6r46hm5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.jiomart"
+              }
+            }
+          ]
         }
       }
     },
@@ -50,7 +84,12 @@
           "package_name": "com.example.retaillite"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
@@ -58,7 +97,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "576503526807-7kammm2b146tiecimt9433pb6r46hm5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.jiomart"
+              }
+            }
+          ]
         }
       }
     },
@@ -69,7 +120,12 @@
           "package_name": "com.example.webbuilder"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
@@ -77,7 +133,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "576503526807-7kammm2b146tiecimt9433pb6r46hm5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.jiomart"
+              }
+            }
+          ]
         }
       }
     },
@@ -88,7 +156,28 @@
           "package_name": "in.liteapp.retaillite"
         }
       },
-      "oauth_client": [],
+      "oauth_client": [
+        {
+          "client_id": "576503526807-v6sj9niq1ps2d454d85v38gv47nj994q.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.liteapp.retaillite",
+            "certificate_hash": "1d221b0b4fd9e53f1ca90d696fe25c42507468ee"
+          }
+        },
+        {
+          "client_id": "576503526807-vf7d8uuourj7nvkt9gj68c4kvo0udg50.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.liteapp.retaillite",
+            "certificate_hash": "a20d57824c27f93ddfbdea658d5af80b822d10f0"
+          }
+        },
+        {
+          "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
       "api_key": [
         {
           "current_key": "AIzaSyBqOxCE0Pzdkuwdb-cXOJ6qLBSzIAQVkqk"
@@ -96,7 +185,19 @@
       ],
       "services": {
         "appinvite_service": {
-          "other_platform_oauth_client": []
+          "other_platform_oauth_client": [
+            {
+              "client_id": "576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "576503526807-7kammm2b146tiecimt9433pb6r46hm5m.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.jiomart"
+              }
+            }
+          ]
         }
       }
     }

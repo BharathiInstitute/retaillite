@@ -1,4 +1,4 @@
-/// Product model for LITE app
+/// Product model for Tulasi Stores app
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';

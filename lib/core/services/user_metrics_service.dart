@@ -6,6 +6,7 @@ import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Subscription plans
@@ -153,7 +154,7 @@ class UserLimits {
 class UserMetricsService {
   UserMetricsService._();
 
-  static const String _appVersion = '1.0.0';
+  static String _appVersion = '1.0.0';
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseAuth _auth = FirebaseAuth.instance;
   static SharedPreferences? _prefs;
@@ -166,6 +167,13 @@ class UserMetricsService {
   /// Initialize
   static Future<void> initialize() async {
     _prefs = await SharedPreferences.getInstance();
+    // Get real version from PackageInfo
+    try {
+      final info = await PackageInfo.fromPlatform();
+      _appVersion = '${info.version}+${info.buildNumber}';
+    } catch (_) {
+      // Fallback stays at '1.0.0'
+    }
   }
 
   /// Get current user ID (from auth or settings)
@@ -186,9 +194,17 @@ class UserMetricsService {
       String platform = 'unknown';
 
       if (!kIsWeb) {
-        platform = Platform.isAndroid
-            ? 'android'
-            : (Platform.isIOS ? 'ios' : 'desktop');
+        if (Platform.isAndroid) {
+          platform = 'android';
+        } else if (Platform.isIOS) {
+          platform = 'ios';
+        } else if (Platform.isWindows) {
+          platform = 'windows';
+        } else if (Platform.isMacOS) {
+          platform = 'macos';
+        } else if (Platform.isLinux) {
+          platform = 'linux';
+        }
       } else {
         platform = 'web';
       }
@@ -366,7 +382,11 @@ class UserMetricsService {
         'activity': {
           'lastActiveAt': FieldValue.serverTimestamp(),
           'appVersion': _appVersion,
-          'platform': kIsWeb ? 'web' : (Platform.isAndroid ? 'android' : 'ios'),
+          'platform': kIsWeb
+              ? 'web'
+              : (Platform.isAndroid
+                    ? 'android'
+                    : (Platform.isWindows ? 'windows' : 'ios')),
         },
       }, SetOptions(merge: true));
 

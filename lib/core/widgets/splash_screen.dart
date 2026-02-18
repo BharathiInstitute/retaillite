@@ -54,7 +54,7 @@ class SplashScreen extends StatelessWidget {
 
                 // App Name
                 const Text(
-                  'Tulasi Shop Lite',
+                  'Tulasi Stores',
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,

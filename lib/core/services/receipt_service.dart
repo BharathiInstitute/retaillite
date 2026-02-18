@@ -30,7 +30,7 @@ class ReceiptService {
         pageFormat: PdfPageFormat.roll80, // 80mm thermal printer
         build: (context) => _buildReceipt(
           bill: bill,
-          shopName: shopName ?? 'LITE',
+          shopName: shopName ?? 'Tulasi Stores',
           shopAddress: shopAddress,
           shopPhone: shopPhone,
           gstNumber: gstNumber,
@@ -340,7 +340,7 @@ class ReceiptService {
         pw.Text('धन्यवाद! फिर आइए।', style: const pw.TextStyle(fontSize: 8)),
         pw.SizedBox(height: 4),
         pw.Text(
-          'Powered by LITE',
+          'Powered by Tulasi Stores',
           style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
         ),
         pw.SizedBox(height: 20), // Space for tear

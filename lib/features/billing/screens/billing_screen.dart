@@ -57,13 +57,19 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
             color: Theme.of(context).cardColor,
             borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
-          child: _buildCartSheetContent(scrollController),
+          child: Consumer(
+            builder: (context, ref, _) =>
+                _buildCartSheetContent(scrollController, ref),
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildCartSheetContent(ScrollController scrollController) {
+  Widget _buildCartSheetContent(
+    ScrollController scrollController,
+    WidgetRef ref,
+  ) {
     final l10n = context.l10n;
     final cart = ref.watch(cartProvider);
 
@@ -120,7 +126,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   itemCount: cart.items.length,
                   itemBuilder: (context, index) {
                     final item = cart.items[index];
-                    return _buildCartItem(item);
+                    return _buildCartItem(item, ref);
                   },
                 ),
         ),
@@ -185,7 +191,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     );
   }
 
-  Widget _buildCartItem(CartItem item) {
+  Widget _buildCartItem(CartItem item, WidgetRef ref) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
       child: Row(
@@ -230,17 +236,20 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                InkWell(
-                  onTap: () => ref
+                IconButton(
+                  onPressed: () => ref
                       .read(cartProvider.notifier)
                       .decrementQuantity(item.productId),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(Icons.remove, size: 16),
+                  icon: const Icon(Icons.remove, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
                   ),
+                  padding: EdgeInsets.zero,
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: Text(
                     '${item.quantity}',
                     style: TextStyle(
@@ -249,14 +258,17 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                     ),
                   ),
                 ),
-                InkWell(
-                  onTap: () => ref
+                IconButton(
+                  onPressed: () => ref
                       .read(cartProvider.notifier)
                       .incrementQuantity(item.productId),
-                  child: const Padding(
-                    padding: EdgeInsets.all(6),
-                    child: Icon(Icons.add, size: 16),
+                  icon: const Icon(Icons.add, size: 16),
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 36,
+                    minHeight: 36,
                   ),
+                  padding: EdgeInsets.zero,
                 ),
               ],
             ),
@@ -319,26 +331,32 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
     final useTabletLayout = isTablet && screenWidth >= 768;
     final useMobileLayout = !isDesktop && !useTabletLayout;
 
-    return Scaffold(
-      resizeToAvoidBottomInset: false,
-      body: GestureDetector(
-        onTap: () => FocusScope.of(context).unfocus(),
-        behavior: HitTestBehavior.translucent,
-        child: isDesktop
-            ? const PosWebScreen()
-            : useTabletLayout
-            ? _buildTabletLayout(productsAsync, cart)
-            : _buildMobileLayout(productsAsync, cart),
+    return PopScope(
+      onPopInvokedWithResult: (didPop, result) {
+        // Dismiss keyboard on back press
+        FocusScope.of(context).unfocus();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: GestureDetector(
+          onTap: () => FocusScope.of(context).unfocus(),
+          behavior: HitTestBehavior.translucent,
+          child: isDesktop
+              ? const PosWebScreen()
+              : useTabletLayout
+              ? _buildTabletLayout(productsAsync, cart)
+              : _buildMobileLayout(productsAsync, cart),
+        ),
+        // Mobile + narrow tablet: sticky cart bar at bottom
+        bottomNavigationBar: useMobileLayout && cart.isNotEmpty
+            ? _MobileCartBar(
+                itemCount: cart.itemCount,
+                total: cart.total,
+                onTap: _showCartSheet,
+                onPay: _showPaymentModal,
+              )
+            : null,
       ),
-      // Mobile + narrow tablet: sticky cart bar at bottom
-      bottomNavigationBar: useMobileLayout && cart.isNotEmpty
-          ? _MobileCartBar(
-              itemCount: cart.itemCount,
-              total: cart.total,
-              onTap: _showCartSheet,
-              onPay: _showPaymentModal,
-            )
-          : null,
     );
   }
 
@@ -742,6 +760,8 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       padding: const EdgeInsets.all(16),
       child: TextField(
         controller: _searchController,
+        textInputAction: TextInputAction.search,
+        onSubmitted: (_) => FocusScope.of(context).unfocus(),
         decoration: InputDecoration(
           hintText: l10n.searchProducts,
           prefixIcon: const Icon(Icons.search),
@@ -754,6 +774,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   onPressed: () {
                     _searchController.clear();
                     setState(() => _searchQuery = '');
+                    FocusScope.of(context).unfocus();
                   },
                 ),
               IconButton(

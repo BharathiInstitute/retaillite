@@ -7,6 +7,7 @@ import 'package:retaillite/features/billing/providers/cart_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/features/billing/widgets/payment_modal.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
@@ -486,20 +487,6 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
           onChanged: (value) =>
               setState(() => _searchQuery = value.toLowerCase()),
         ),
-        const SizedBox(height: 16),
-        // Filters (Visual representation of what could be categories)
-        const SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _FilterChip(label: 'All Items', isSelected: true),
-              SizedBox(width: 8),
-              _FilterChip(label: 'Grocery', isSelected: false),
-              SizedBox(width: 8),
-              _FilterChip(label: 'Dairy', isSelected: false),
-            ],
-          ),
-        ),
       ],
     );
   }
@@ -510,34 +497,6 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
       return p.name.toLowerCase().contains(_searchQuery) ||
           (p.barcode?.toLowerCase().contains(_searchQuery) ?? false);
     }).toList();
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool isSelected;
-
-  const _FilterChip({required this.label, required this.isSelected});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: isSelected ? AppColors.primary : Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: isSelected ? null : AppShadows.small,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: isSelected
-              ? Colors.white
-              : Theme.of(context).colorScheme.onSurface,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-    );
   }
 }
 
@@ -765,9 +724,12 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
         ref.invalidate(salesSummaryProvider);
         ref.invalidate(topProductsProvider);
         ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardBillsProvider);
 
         if (_selectedPayment == PaymentMethod.udhar) {
           ref.invalidate(customersProvider);
+          ref.invalidate(sortedCustomersProvider);
+          ref.invalidate(khataStatsProvider);
         }
 
         ref.read(cartProvider.notifier).clearCart();
@@ -1414,22 +1376,25 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                 // Payment Methods - CASH, UPI, CREDIT
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                  children: PaymentMethod.values.map((method) {
-                    final isSelected = _selectedPayment == method;
-                    return Expanded(
-                      child: Padding(
-                        padding: EdgeInsets.only(
-                          right: method != PaymentMethod.udhar ? 8 : 0,
-                        ),
-                        child: _PosPaymentButton(
-                          method: method,
-                          isSelected: isSelected,
-                          onTap: () =>
-                              setState(() => _selectedPayment = method),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                  children: PaymentMethod.values
+                      .where((m) => m != PaymentMethod.unknown)
+                      .map((method) {
+                        final isSelected = _selectedPayment == method;
+                        return Expanded(
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: method != PaymentMethod.udhar ? 8 : 0,
+                            ),
+                            child: _PosPaymentButton(
+                              method: method,
+                              isSelected: isSelected,
+                              onTap: () =>
+                                  setState(() => _selectedPayment = method),
+                            ),
+                          ),
+                        );
+                      })
+                      .toList(),
                 ),
 
                 // Credit warning - customer required
@@ -1493,12 +1458,13 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                             padding: const EdgeInsets.symmetric(vertical: 16),
                           ),
                           child: const Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Text(
                                 'CHECKOUT',
                                 style: TextStyle(fontWeight: FontWeight.bold),
                               ),
+                              SizedBox(width: 8),
                               Icon(Icons.arrow_forward),
                             ],
                           ),
@@ -2051,9 +2017,7 @@ class _CustomerSelectorSheetState
                                 fontSize: 12,
                               ),
                             )
-                          : (isSelected
-                                ? Icon(Icons.check, color: AppColors.primary)
-                                : null),
+                          : null,
                       onTap: () => widget.onCustomerSelected(customer),
                     );
                   },

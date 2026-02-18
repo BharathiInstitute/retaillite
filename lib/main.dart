@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -9,12 +10,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/app.dart';
 import 'package:retaillite/core/config/app_check_config.dart';
+import 'package:retaillite/core/services/android_update_service.dart';
 import 'package:retaillite/core/services/app_health_service.dart';
 import 'package:retaillite/core/services/connectivity_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/windows_update_service.dart';
+import 'package:retaillite/core/config/remote_config_state.dart';
 import 'package:retaillite/core/utils/error_handler.dart';
 import 'package:retaillite/core/widgets/force_update_screen.dart';
 import 'package:retaillite/core/widgets/maintenance_screen.dart';
@@ -38,6 +41,9 @@ void main() {
 
 /// Initialize all services and launch main app
 Future<void> _initializeApp() async {
+  // Check if running on Windows (Crashlytics/AppCheck not supported)
+  final isWindows = !kIsWeb && Platform.isWindows;
+
   try {
     WidgetsFlutterBinding.ensureInitialized();
 
@@ -47,8 +53,8 @@ Future<void> _initializeApp() async {
     );
 
     // Initialize Firebase App Check — protects all Firebase services
-    // On web, skip App Check if reCAPTCHA key is not configured (avoids JS interop crash)
-    if (!kIsWeb || AppCheckConfig.isWebConfigured) {
+    // Skip on web (if no reCAPTCHA key) and Windows (not supported)
+    if (!isWindows && (!kIsWeb || AppCheckConfig.isWebConfigured)) {
       try {
         await FirebaseAppCheck.instance.activate(
           providerAndroid: kDebugMode
@@ -62,12 +68,14 @@ Future<void> _initializeApp() async {
         debugPrint('⚠️ Firebase App Check activation failed: $e');
         // Non-fatal: app can still work without App Check in debug mode
       }
+    } else if (isWindows) {
+      debugPrint('ℹ️ Skipping App Check on Windows (not supported)');
     } else {
       debugPrint('ℹ️ Skipping App Check on web (no reCAPTCHA key configured)');
     }
 
-    // Initialize Crashlytics (not supported on web)
-    if (!kIsWeb) {
+    // Initialize Crashlytics (not supported on web or Windows)
+    if (!kIsWeb && !isWindows) {
       FlutterError.onError =
           FirebaseCrashlytics.instance.recordFlutterFatalError;
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
@@ -77,33 +85,55 @@ Future<void> _initializeApp() async {
     ErrorHandler.initialize();
 
     // Initialize Remote Config with defaults
-    final remoteConfig = FirebaseRemoteConfig.instance;
-    await remoteConfig.setConfigSettings(
-      RemoteConfigSettings(
-        fetchTimeout: const Duration(seconds: 10),
-        minimumFetchInterval: kDebugMode
-            ? const Duration(minutes: 5)
-            : const Duration(hours: 1),
-      ),
-    );
-    await remoteConfig.setDefaults(const {
-      'maintenance_mode': false,
-      'min_app_version': '1.0.0',
-      'force_update': false,
-      'force_update_url': '',
-      'kill_switch_payments': false,
-      'merchant_upi_id': '',
-    });
-    await remoteConfig.fetchAndActivate();
+    String merchantUpiId = '';
+    bool maintenanceMode = false;
+    String minVersion = '';
+    String forceUpdateUrl = '';
 
-    // Apply Remote Config values
-    final merchantUpiId = remoteConfig.getString('merchant_upi_id');
+    try {
+      final remoteConfig = FirebaseRemoteConfig.instance;
+      await remoteConfig.setConfigSettings(
+        RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          minimumFetchInterval: kDebugMode
+              ? const Duration(minutes: 5)
+              : const Duration(hours: 1),
+        ),
+      );
+      await remoteConfig.setDefaults(const {
+        'maintenance_mode': false,
+        'min_app_version': '1.0.0',
+        'force_update': false,
+        'force_update_url': '',
+        'kill_switch_payments': false,
+        'merchant_upi_id': '',
+        'latest_version': '',
+        'announcement': '',
+      });
+      await remoteConfig.fetchAndActivate();
+
+      // Apply Remote Config values
+      merchantUpiId = remoteConfig.getString('merchant_upi_id');
+      maintenanceMode = remoteConfig.getBool('maintenance_mode');
+      minVersion = remoteConfig.getString('min_app_version');
+      forceUpdateUrl = remoteConfig.getString('force_update_url');
+
+      // Soft nudge + announcements (non-blocking)
+      RemoteConfigState.latestVersion = remoteConfig.getString(
+        'latest_version',
+      );
+      RemoteConfigState.announcement = remoteConfig.getString('announcement');
+    } catch (e) {
+      debugPrint('⚠️ Remote Config initialization failed: $e');
+      // Non-fatal: app can work without Remote Config
+    }
+
     if (merchantUpiId.isNotEmpty) {
       PaymentLinkService.setUpiId(merchantUpiId);
     }
 
     // ─── Check maintenance mode ───
-    if (remoteConfig.getBool('maintenance_mode')) {
+    if (maintenanceMode) {
       runApp(
         MaintenanceScreen(
           onRetry: () {
@@ -116,13 +146,12 @@ Future<void> _initializeApp() async {
     }
 
     // ─── Check force update ───
-    final minVersion = remoteConfig.getString('min_app_version');
     if (_isVersionLower(appVersion, minVersion)) {
       runApp(
         ForceUpdateScreen(
           currentVersion: appVersion,
           requiredVersion: minVersion,
-          updateUrl: remoteConfig.getString('force_update_url'),
+          updateUrl: forceUpdateUrl,
         ),
       );
       return;
@@ -143,15 +172,19 @@ Future<void> _initializeApp() async {
     // Launch the main app
     runApp(const ProviderScope(child: LiteApp()));
 
-    // Zero-click auto-update: check + download in background.
-    // If an update is found, a watchdog installs it when the user closes the app.
+    // ─── Update System ───
+    // Windows: 5-layer silent → dialog → force
     unawaited(WindowsUpdateService.runBackgroundUpdateCheck());
+    // Android: Google Play in-app updates (flexible)
+    unawaited(AndroidUpdateService.checkForUpdate());
+    // Layer 4 dialog: triggered from app.dart (needs BuildContext)
+    // Layer 5 force update: handled above via Remote Config
   } catch (error, stack) {
     // Show error screen with retry option
     debugPrint('❌ App initialization failed: $error');
     debugPrint('Stack: $stack');
 
-    if (!kIsWeb) {
+    if (!kIsWeb && !isWindows) {
       unawaited(
         FirebaseCrashlytics.instance.recordError(error, stack, fatal: true),
       );

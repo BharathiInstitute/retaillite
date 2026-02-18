@@ -194,7 +194,7 @@ class ThermalPrinterService {
       bytes += _escPosText('Time: ${DateTime.now()}\n');
       bytes += _escPosText('${'=' * chars}\n');
       bytes += _escPosCenter();
-      bytes += _escPosText('LITE Billing App\n');
+      bytes += _escPosText('Tulasi Stores\n');
       bytes += _escPosFeed(3);
       bytes += _escPosCut();
 
@@ -230,7 +230,7 @@ class ThermalPrinterService {
       bytes += _escPosCenter();
       bytes += _escPosBold(true);
       bytes += _escPosDoubleHeight(true);
-      bytes += _escPosText('${shopName ?? 'LITE'}\n');
+      bytes += _escPosText('${shopName ?? 'Tulasi Stores'}\n');
       bytes += _escPosDoubleHeight(false);
       bytes += _escPosBold(false);
 
@@ -330,7 +330,7 @@ class ThermalPrinterService {
       // Footer
       bytes += _escPosCenter();
       bytes += _escPosText('Thank you for shopping!\n');
-      bytes += _escPosText('Powered by LITE\n');
+      bytes += _escPosText('Powered by Tulasi Stores\n');
 
       // Feed and cut
       bytes += _escPosFeed(3);

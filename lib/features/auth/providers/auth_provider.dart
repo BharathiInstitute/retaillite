@@ -3,9 +3,11 @@
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
@@ -21,6 +23,7 @@ class AuthState {
   final UserModel? user;
   final bool isLoggedIn;
   final bool isShopSetupComplete;
+  final bool isEmailVerified;
   final bool isDemoMode;
   final bool isLoading;
   final String? error;
@@ -31,6 +34,7 @@ class AuthState {
     this.user,
     this.isLoggedIn = false,
     this.isShopSetupComplete = false,
+    this.isEmailVerified = false,
     this.isDemoMode = false,
     this.isLoading = true,
     this.error,
@@ -42,6 +46,7 @@ class AuthState {
     UserModel? user,
     bool? isLoggedIn,
     bool? isShopSetupComplete,
+    bool? isEmailVerified,
     bool? isDemoMode,
     bool? isLoading,
     String? error,
@@ -52,6 +57,7 @@ class AuthState {
       user: user ?? this.user,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isShopSetupComplete: isShopSetupComplete ?? this.isShopSetupComplete,
+      isEmailVerified: isEmailVerified ?? this.isEmailVerified,
       isDemoMode: isDemoMode ?? this.isDemoMode,
       isLoading: isLoading ?? this.isLoading,
       error: error,
@@ -71,6 +77,36 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
   /// Initialize - listen to auth state changes
   void _init() {
+    // Safety timeout: if authStateChanges doesn't fire within 5 seconds,
+    // resolve loading state based on currentUser (prevents stuck loading screen on web)
+    Future.delayed(const Duration(seconds: 5), () {
+      if (state.isLoading) {
+        debugPrint('🔐 Auth timeout - resolving from currentUser');
+        final user = _auth.currentUser;
+        if (user != null) {
+          _loadUserProfile(user);
+        } else {
+          state = const AuthState(isLoading: false);
+        }
+      }
+    });
+
+    // Handle redirect result when page returns from Google sign-in (Layer 3 fallback)
+    if (kIsWeb) {
+      _auth
+          .getRedirectResult()
+          .then((result) async {
+            if (result.user != null) {
+              debugPrint(
+                '🔐 Google redirect sign-in complete: ${result.user!.email}',
+              );
+              await _ensureFirestoreDoc(result.user!);
+            }
+          })
+          .catchError((e) {
+            debugPrint('🔐 Redirect result check: $e');
+          });
+    }
     _auth.authStateChanges().listen((User? user) async {
       if (user != null) {
         debugPrint('🔐 Firebase Auth: User logged in - ${user.email}');
@@ -80,6 +116,46 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         state = const AuthState(isLoading: false);
       }
     });
+  }
+
+  /// Ensure Firestore user document exists (called after redirect sign-in)
+  Future<void> _ensureFirestoreDoc(User user) async {
+    try {
+      final doc = await _firestore.collection('users').doc(user.uid).get();
+      if (!doc.exists) {
+        await _firestore.collection('users').doc(user.uid).set({
+          'email': user.email?.toLowerCase() ?? '',
+          'ownerName': user.displayName ?? '',
+          'phone': user.phoneNumber ?? '',
+          'photoUrl': user.photoURL ?? '',
+          'isShopSetupComplete': false,
+          'emailVerified': true,
+          'phoneVerified': false,
+          'authProvider': 'google',
+          'createdAt': FieldValue.serverTimestamp(),
+          'subscription': {
+            'plan': 'free',
+            'startDate': FieldValue.serverTimestamp(),
+          },
+        });
+        debugPrint('✅ Created Firestore doc for redirect user: ${user.email}');
+      } else {
+        // Update Google profile data
+        final data = doc.data()!;
+        final updates = <String, dynamic>{};
+        if (!(data['emailVerified'] as bool? ?? false)) {
+          updates['emailVerified'] = true;
+        }
+        if (user.photoURL != null && user.photoURL!.isNotEmpty) {
+          updates['photoUrl'] = user.photoURL;
+        }
+        if (updates.isNotEmpty) {
+          await _firestore.collection('users').doc(user.uid).update(updates);
+        }
+      }
+    } catch (e) {
+      debugPrint('🔐 Error ensuring Firestore doc: $e');
+    }
   }
 
   /// Load user profile from Firestore
@@ -103,6 +179,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           firebaseUser: firebaseUser,
           isLoggedIn: true,
           isShopSetupComplete: isShopSetupComplete,
+          isEmailVerified:
+              (data['emailVerified'] as bool?) ?? firebaseUser.emailVerified,
           isLoading: false,
           user: UserModel(
             id: firebaseUser.uid,
@@ -113,7 +191,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             address: data['address'] as String?,
             gstNumber: data['gstNumber'] as String?,
             shopLogoPath: data['shopLogoPath'] as String?,
+            profileImagePath: data['profileImagePath'] as String?,
+            photoUrl: data['photoUrl'] as String? ?? firebaseUser.photoURL,
             settings: const UserSettings(),
+            phoneVerified: (data['phoneVerified'] as bool?) ?? false,
+            emailVerified:
+                (data['emailVerified'] as bool?) ?? firebaseUser.emailVerified,
+            phoneVerifiedAt: (data['phoneVerifiedAt'] as Timestamp?)?.toDate(),
             createdAt:
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
@@ -124,6 +208,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.authenticated,
           firebaseUser: firebaseUser,
           isLoggedIn: true,
+          isEmailVerified: false,
           isLoading: false,
           user: UserModel(
             id: firebaseUser.uid,
@@ -148,67 +233,146 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
-  /// Register a new user
-  Future<bool> register({
-    String? email,
-    String? phone,
-    required String password,
-  }) async {
-    // Firebase Auth requires email - phone auth would need different flow
-    if (email == null || email.isEmpty) {
-      state = state.copyWith(error: 'Email is required for registration');
-      return false;
-    }
-
+  /// Sign in with Google — multi-layer approach for maximum reliability
+  /// Layer 1 (Web): signInWithPopup → fastest, shows Google account picker
+  /// Layer 2 (Web): GoogleSignIn package → GIS inline flow
+  /// Layer 3 (Web): signInWithRedirect → redirects entire page to Google
+  /// Mobile: GoogleSignIn package directly
+  Future<bool> signInWithGoogle() async {
     try {
-      state = state.copyWith(isLoading: true);
-
-      final credential = await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-
-      if (credential.user != null) {
-        // Create user document in Firestore
-        await _firestore.collection('users').doc(credential.user!.uid).set({
-          'email': email.trim().toLowerCase(),
-          'phone': phone ?? '',
-          'isShopSetupComplete': false,
-          'createdAt': FieldValue.serverTimestamp(),
-          'subscription': {
-            'plan': 'free',
-            'startDate': FieldValue.serverTimestamp(),
-          },
-        });
-
-        debugPrint('✅ User registered: ${credential.user!.email}');
-        return true;
+      if (kIsWeb) {
+        return await _googleSignInWeb();
+      } else {
+        return await _googleSignInMobile();
       }
-      return false;
-    } on FirebaseAuthException catch (e) {
-      String message;
-      switch (e.code) {
-        case 'email-already-in-use':
-          message = 'This email is already registered. Please login.';
-          break;
-        case 'weak-password':
-          message = 'Password is too weak. Use at least 6 characters.';
-          break;
-        case 'invalid-email':
-          message = 'Invalid email address.';
-          break;
-        default:
-          message = 'Registration failed: ${e.message}';
-      }
-      state = state.copyWith(isLoading: false, error: message);
-      return false;
     } catch (e) {
+      debugPrint('🔐 Google sign-in error (all layers failed): $e');
       state = state.copyWith(
         isLoading: false,
-        error: 'Registration failed: $e',
+        error: 'Google sign-in failed. Please try again.',
       );
       return false;
     }
+  }
+
+  /// Web Layer 1: Firebase signInWithPopup
+  Future<bool> _googleSignInWeb() async {
+    // --- Layer 1: signInWithPopup ---
+    try {
+      debugPrint('🔐 Google Sign-In: Trying Layer 1 (signInWithPopup)...');
+      final googleProvider = GoogleAuthProvider();
+      googleProvider.addScope('email');
+      googleProvider.addScope('profile');
+      final userCredential = await _auth.signInWithPopup(googleProvider);
+      final user = userCredential.user;
+      if (user != null) {
+        await _ensureFirestoreDoc(user);
+        debugPrint('✅ Google Sign-In Layer 1 success: ${user.email}');
+        return true;
+      }
+    } on FirebaseAuthException catch (e) {
+      debugPrint('🔐 Layer 1 failed: ${e.code} - ${e.message}');
+
+      // If user deliberately cancelled, don't try other layers
+      if (e.code == 'popup-closed-by-user' ||
+          e.code == 'cancelled-popup-request') {
+        return false;
+      }
+
+      // Account conflict - show specific message, don't try other layers
+      if (e.code == 'account-exists-with-different-credential') {
+        state = state.copyWith(
+          isLoading: false,
+          error:
+              'An account already exists with this email using a different sign-in method.',
+        );
+        return false;
+      }
+
+      // For popup-blocked or other errors, try Layer 2
+    } catch (e) {
+      debugPrint('🔐 Layer 1 failed: $e');
+      // Continue to Layer 2
+    }
+
+    // --- Layer 2: GoogleSignIn package (GIS flow) ---
+    try {
+      debugPrint('🔐 Google Sign-In: Trying Layer 2 (GoogleSignIn package)...');
+      final googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+        clientId:
+            '576503526807-gjpgq9da62trcc0t09gediob7uina6g0.apps.googleusercontent.com',
+      );
+
+      final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+      if (googleUser == null) {
+        return false; // User cancelled
+      }
+
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user != null) {
+        await _ensureFirestoreDoc(user);
+        debugPrint('✅ Google Sign-In Layer 2 success: ${user.email}');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('🔐 Layer 2 failed: $e');
+      // Continue to Layer 3
+    }
+
+    // --- Layer 3: signInWithRedirect (last resort) ---
+    try {
+      debugPrint('🔐 Google Sign-In: Trying Layer 3 (signInWithRedirect)...');
+      final googleProvider = GoogleAuthProvider();
+      googleProvider.addScope('email');
+      googleProvider.addScope('profile');
+      await _auth.signInWithRedirect(googleProvider);
+      // Page will redirect — on return, authStateChanges handles login
+      return true;
+    } catch (e) {
+      debugPrint('🔐 Layer 3 failed: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error:
+            'Google sign-in failed. Please check your internet connection and try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Mobile: GoogleSignIn package
+  Future<bool> _googleSignInMobile() async {
+    final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+    final GoogleSignInAccount? googleUser = await googleSignIn.signIn();
+    if (googleUser == null) {
+      return false;
+    }
+
+    final GoogleSignInAuthentication googleAuth =
+        await googleUser.authentication;
+
+    final credential = GoogleAuthProvider.credential(
+      accessToken: googleAuth.accessToken,
+      idToken: googleAuth.idToken,
+    );
+
+    final userCredential = await _auth.signInWithCredential(credential);
+    final user = userCredential.user;
+    if (user != null) {
+      await _ensureFirestoreDoc(user);
+      debugPrint('✅ Google Sign-In: ${user.email}');
+      return true;
+    }
+    return false;
   }
 
   /// Sign in with email and password
@@ -253,13 +417,134 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         case 'too-many-requests':
           message = 'Too many attempts. Please try again later.';
           break;
+        case 'user-disabled':
+          message = 'This account has been disabled. Please contact support.';
+          break;
         default:
-          message = 'Login failed: ${e.message}';
+          message =
+              'Login failed. Please check your credentials and try again.';
       }
       state = state.copyWith(isLoading: false, error: message);
       return false;
     } catch (e) {
-      state = state.copyWith(isLoading: false, error: 'Login failed: $e');
+      debugPrint('🔐 Login error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Login failed. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Register with email and password
+  Future<bool> register({
+    required String email,
+    required String password,
+    required String name,
+    bool emailVerified = false,
+  }) async {
+    try {
+      state = state.copyWith(isLoading: true);
+
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email: email.trim(),
+        password: password,
+      );
+
+      final user = credential.user;
+      if (user != null) {
+        // Update display name
+        await user.updateDisplayName(name.trim());
+
+        // Send email verification only if not already verified via OTP
+        if (!emailVerified) {
+          try {
+            await user.sendEmailVerification();
+            debugPrint('📧 Verification email sent to: ${user.email}');
+          } catch (e) {
+            debugPrint('📧 Failed to send verification email: $e');
+          }
+        }
+
+        // Create Firestore doc
+        await _firestore.collection('users').doc(user.uid).set({
+          'email': email.trim().toLowerCase(),
+          'ownerName': name.trim(),
+          'phone': '',
+          'photoUrl': '',
+          'isShopSetupComplete': false,
+          'emailVerified': emailVerified,
+          'phoneVerified': false,
+          'authProvider': 'email',
+          'createdAt': FieldValue.serverTimestamp(),
+          'subscription': {
+            'plan': 'free',
+            'startDate': FieldValue.serverTimestamp(),
+          },
+        });
+
+        debugPrint('✅ User registered: ${user.email}');
+        return true;
+      }
+      return false;
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'email-already-in-use':
+          message = 'An account already exists with this email. Please login.';
+          break;
+        case 'weak-password':
+          message = 'Password is too weak. Use at least 6 characters.';
+          break;
+        case 'invalid-email':
+          message = 'Invalid email format.';
+          break;
+        default:
+          message = 'Registration failed. Please try again later.';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+      return false;
+    } catch (e) {
+      debugPrint('🔐 Registration error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Registration failed. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Send password reset email
+  Future<bool> sendPasswordResetEmail(String email) async {
+    try {
+      state = state.copyWith(isLoading: true);
+      await _auth.sendPasswordResetEmail(email: email.trim());
+      state = state.copyWith(isLoading: false);
+      debugPrint('✅ Password reset email sent to: $email');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'user-not-found':
+          message = 'No account found with this email.';
+          break;
+        case 'invalid-email':
+          message = 'Invalid email format.';
+          break;
+        case 'too-many-requests':
+          message = 'Too many attempts. Please try again later.';
+          break;
+        default:
+          message = 'Failed to send reset email. Please try again later.';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+      return false;
+    } catch (e) {
+      debugPrint('🔐 Password reset error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Failed to send reset email. Please try again.',
+      );
       return false;
     }
   }
@@ -282,6 +567,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   Future<bool> completeShopSetup({
     required String shopName,
     required String ownerName,
+    String? phone,
+    bool phoneVerified = false,
     String? address,
     String? gstNumber,
   }) async {
@@ -289,19 +576,33 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     if (user == null) return false;
 
     try {
-      await _firestore.collection('users').doc(user.uid).set({
+      final data = <String, dynamic>{
         'shopName': shopName,
         'ownerName': ownerName,
         'address': address,
         'gstNumber': gstNumber,
         'isShopSetupComplete': true,
-      }, SetOptions(merge: true));
+      };
+      if (phone != null && phone.isNotEmpty) {
+        data['phone'] = phone;
+        data['phoneVerified'] = phoneVerified;
+        if (phoneVerified) {
+          data['phoneVerifiedAt'] = FieldValue.serverTimestamp();
+        }
+      }
+
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(data, SetOptions(merge: true));
 
       state = state.copyWith(
         isShopSetupComplete: true,
         user: state.user?.copyWith(
           shopName: shopName,
           ownerName: ownerName,
+          phone: phone ?? state.user?.phone,
+          phoneVerified: phoneVerified,
           address: address,
           gstNumber: gstNumber,
         ),
@@ -309,7 +610,11 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
       return true;
     } catch (e) {
-      state = state.copyWith(error: 'Failed to save shop details: $e');
+      debugPrint('🔐 Shop setup error: $e');
+      state = state.copyWith(
+        error:
+            'Failed to save shop details. Please check your internet and try again.',
+      );
       return false;
     }
   }
@@ -336,6 +641,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     String? phone,
     String? address,
     String? gstNumber,
+    String? email,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -347,6 +653,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       if (phone != null) updates['phone'] = phone;
       if (address != null) updates['address'] = address;
       if (gstNumber != null) updates['gstNumber'] = gstNumber;
+      if (email != null) updates['email'] = email;
 
       if (updates.isEmpty) return true;
 
@@ -361,6 +668,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             phone: phone ?? state.user!.phone,
             address: address ?? state.user!.address,
             gstNumber: gstNumber ?? state.user!.gstNumber,
+            email: email ?? state.user!.email,
           ),
         );
       }
@@ -397,39 +705,267 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Update user profile image (separate from shop logo)
+  Future<bool> updateProfileImage(String imagePath) async {
+    try {
+      final user = state.firebaseUser;
+      if (user == null) return false;
+
+      // Update Firestore
+      await _firestore.collection('users').doc(user.uid).update({
+        'profileImagePath': imagePath,
+      });
+
+      // Update local state
+      if (state.user != null) {
+        state = state.copyWith(
+          user: state.user!.copyWith(profileImagePath: imagePath),
+        );
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('🔐 Error updating profile image: $e');
+      return false;
+    }
+  }
+
+  /// Link a phone credential to the current email/password account
+  /// This allows future phone-based login to reach the same account
+  Future<bool> linkPhoneToAccount(PhoneAuthCredential credential) async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      await user.linkWithCredential(credential);
+      debugPrint('📱 Phone credential linked to account: ${user.email}');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'credential-already-in-use') {
+        debugPrint('📱 Phone already linked to another account');
+      } else if (e.code == 'provider-already-linked') {
+        debugPrint('📱 Phone provider already linked to this account');
+      } else {
+        debugPrint('📱 Failed to link phone: ${e.code} - ${e.message}');
+      }
+      // Non-fatal: phone is still saved in Firestore even if linking fails
+      return false;
+    } catch (e) {
+      debugPrint('📱 Failed to link phone credential: $e');
+      return false;
+    }
+  }
+
+  /// Send registration OTP via Cloud Function (no auth required)
+  Future<bool> sendRegistrationOTP(String email) async {
+    try {
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('sendRegistrationOTP');
+      final result = await callable.call({'email': email.trim().toLowerCase()});
+      final data = result.data as Map<String, dynamic>;
+
+      if (data['success'] == true) {
+        debugPrint('📧 Registration OTP sent to $email');
+        return true;
+      } else {
+        final error = data['error'] as String? ?? 'Failed to send code';
+        debugPrint('📧 OTP send failed: $error');
+        state = state.copyWith(error: error);
+        return false;
+      }
+    } catch (e) {
+      debugPrint('📧 Failed to send registration OTP: $e');
+      state = state.copyWith(
+        error: 'Failed to send verification code. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Verify registration OTP via Cloud Function (no auth required)
+  Future<bool> verifyRegistrationOTP(String email, String otp) async {
+    try {
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('verifyRegistrationOTP');
+      final result = await callable.call({
+        'email': email.trim().toLowerCase(),
+        'otp': otp,
+      });
+      final data = result.data as Map<String, dynamic>;
+
+      if (data['success'] == true) {
+        debugPrint('✅ Registration OTP verified for $email');
+        return true;
+      } else {
+        final error = data['error'] as String? ?? 'Invalid code';
+        state = state.copyWith(error: error);
+        return false;
+      }
+    } catch (e) {
+      debugPrint('📧 OTP verification error: $e');
+      state = state.copyWith(error: 'Verification failed. Please try again.');
+      return false;
+    }
+  }
+
+  /// Mark the user's email as verified in Firestore and local state
+  Future<void> markEmailVerified() async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'emailVerified': true,
+      });
+
+      state = state.copyWith(
+        isEmailVerified: true,
+        user: state.user?.copyWith(emailVerified: true),
+      );
+      debugPrint('✅ Email marked as verified for ${user.email}');
+    } catch (e) {
+      debugPrint('🔐 Error marking email verified: $e');
+    }
+  }
+
   /// Clear error
   void clearError() {
     state = state.copyWith();
   }
 
-  /// Check if user is registered (for forgot password)
-  /// Note: fetchSignInMethodsForEmail was removed in firebase_auth 6.x
-  /// for security (email enumeration protection). We now attempt to send
-  /// a password reset email — if it fails, the user likely doesn't exist.
-  Future<bool> isUserRegistered(String emailOrPhone) async {
+  /// Set a custom error message
+  void setError(String message) {
+    state = state.copyWith(error: message);
+  }
+
+  /// Get sign-in methods for an email (for smart login detection - Option C)
+  /// Returns list like ['password'], ['google.com'], or ['google.com', 'password']
+  ///
+  /// NOTE: fetchSignInMethodsForEmail is deprecated when Email Enumeration
+  /// Protection is enabled in Firebase. This method first tries a reliable
+  /// Firestore lookup (authProvider field), then falls back to the deprecated
+  /// Firebase method as a secondary check.
+  Future<List<String>?> getSignInMethodsForEmail(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: emailOrPhone.trim());
-      // If no exception, the user exists (reset email was sent)
-      return true;
-    } on FirebaseAuthException catch (e) {
-      if (e.code == 'user-not-found') return false;
-      // Other errors (network, etc.) — assume registered to avoid blocking
-      debugPrint('🔐 Error checking if user registered: $e');
-      return true;
+      // Primary: Firestore-based lookup (reliable, not affected by deprecation)
+      final provider = await getAuthProviderForEmail(email);
+      if (provider != null) {
+        switch (provider) {
+          case 'google':
+            return ['google.com'];
+          case 'email':
+            return ['password'];
+          default:
+            return [provider];
+        }
+      }
+      // No user found in Firestore
+      return [];
     } catch (e) {
-      debugPrint('🔐 Error checking if user registered: $e');
-      return true;
+      debugPrint('🔐 Error fetching sign-in methods: $e');
+      return null;
     }
   }
 
-  /// Send password reset email
-  Future<bool> sendPasswordResetEmail(String email) async {
+  /// Check auth provider for an email via Firestore
+  /// Returns: 'google', 'email', or null (not found)
+  /// This is NOT affected by Firebase's Email Enumeration Protection
+  Future<String?> getAuthProviderForEmail(String email) async {
     try {
-      await _auth.sendPasswordResetEmail(email: email.trim());
-      return true;
+      final query = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email.trim().toLowerCase())
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.data()['authProvider'] as String?;
+      }
+      return null;
     } catch (e) {
-      state = state.copyWith(error: 'Failed to send reset email: $e');
+      debugPrint('🔐 Error checking auth provider: $e');
+      return null;
+    }
+  }
+
+  /// Look up a user's verified phone number from Firestore by email
+  /// Used for phone-based password reset
+  Future<String?> getPhoneForEmail(String email) async {
+    try {
+      final query = await _firestore
+          .collection('users')
+          .where('email', isEqualTo: email.trim().toLowerCase())
+          .where('phoneVerified', isEqualTo: true)
+          .limit(1)
+          .get();
+
+      if (query.docs.isNotEmpty) {
+        return query.docs.first.data()['phone'] as String?;
+      }
+      return null;
+    } catch (e) {
+      debugPrint('🔐 Error looking up phone for email: $e');
+      return null;
+    }
+  }
+
+  /// Update phone verified status in Firestore
+  Future<void> updatePhoneVerified({required String phone}) async {
+    final user = _auth.currentUser;
+    if (user == null) return;
+
+    try {
+      await _firestore.collection('users').doc(user.uid).update({
+        'phoneVerified': true,
+        'phone': phone,
+        'phoneVerifiedAt': FieldValue.serverTimestamp(),
+      });
+
+      if (state.user != null) {
+        state = state.copyWith(
+          user: state.user!.copyWith(
+            phoneVerified: true,
+            phone: phone,
+            phoneVerifiedAt: DateTime.now(),
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('🔐 Error updating phone verified status: $e');
+    }
+  }
+
+  /// Check if a phone number is already used by another store/account
+  /// Returns true if phone is taken by a different user
+  Future<bool> isPhoneAlreadyUsed(String phone) async {
+    final currentUid = _auth.currentUser?.uid;
+    if (currentUid == null) return false;
+
+    try {
+      // Normalize phone to E.164 format (+91XXXXXXXXXX)
+      final normalizedPhone = phone.startsWith('+91') ? phone : '+91$phone';
+
+      final query = await _firestore
+          .collection('users')
+          .where('phone', isEqualTo: normalizedPhone)
+          .where('phoneVerified', isEqualTo: true)
+          .get();
+
+      // Check if any result belongs to a different user
+      for (final doc in query.docs) {
+        if (doc.id != currentUid) {
+          debugPrint(
+            '📱 Phone $normalizedPhone already used by user: ${doc.id}',
+          );
+          return true;
+        }
+      }
       return false;
+    } catch (e) {
+      debugPrint('🔐 Error checking phone uniqueness: $e');
+      return false; // Don't block on error — fail open
     }
   }
 
@@ -456,7 +992,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       if (e.code == 'wrong-password') {
         throw Exception('Current password is incorrect');
       }
-      throw Exception('Failed to change password: ${e.message}');
+      debugPrint('🔐 Change password error: ${e.code} - ${e.message}');
+      throw Exception('Failed to change password. Please try again.');
     }
   }
 
@@ -488,20 +1025,6 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     // Clear demo data
     DemoDataService.clearDemoData();
     state = const AuthState(isLoading: false);
-  }
-
-  /// Register from demo mode (placeholder - needs implementation)
-  Future<bool> registerFromDemoMode({
-    String? email,
-    String? phone,
-    required String password,
-    required bool keepDemoData,
-  }) async {
-    // First exit demo mode
-    await exitDemoMode();
-
-    // Then register with Firebase
-    return register(email: email ?? '', password: password, phone: phone);
   }
 }
 

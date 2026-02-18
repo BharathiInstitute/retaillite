@@ -85,9 +85,9 @@ class DemoModeBanner extends ConsumerWidget {
     showDialog(
       context: outerContext,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Register to Save Data'),
+        title: const Text('Sign Up to Save Data'),
         content: const Text(
-          'Start fresh with your own data or keep demo data for reference?',
+          'Sign in with Google to create your account and keep your data.',
         ),
         actions: [
           // Keep Demo Data - secondary (text button)
@@ -96,7 +96,7 @@ class DemoModeBanner extends ConsumerWidget {
               Navigator.pop(dialogContext);
               await OfflineStorageService.saveSetting('keep_demo_data', true);
               if (outerContext.mounted) {
-                unawaited(outerContext.push('/register'));
+                unawaited(outerContext.push('/login'));
               }
             },
             child: const Text('Keep Demo Data'),
@@ -107,7 +107,7 @@ class DemoModeBanner extends ConsumerWidget {
               Navigator.pop(dialogContext);
               await OfflineStorageService.saveSetting('keep_demo_data', false);
               if (outerContext.mounted) {
-                unawaited(outerContext.push('/register'));
+                unawaited(outerContext.push('/login'));
               }
             },
             style: ElevatedButton.styleFrom(

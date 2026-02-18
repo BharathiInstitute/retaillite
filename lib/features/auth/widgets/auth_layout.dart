@@ -1,8 +1,11 @@
 /// Shared auth layout for consistent login/register screens
 library;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:retaillite/core/utils/website_url.dart';
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 /// Modern auth layout with split-screen design
 /// Left: Branding panel with gradient
@@ -76,9 +79,7 @@ class AuthLayout extends StatelessWidget {
         ),
       ),
       textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: AppColors.primary,
-        ),
+        style: TextButton.styleFrom(foregroundColor: AppColors.primary),
       ),
       iconTheme: const IconThemeData(color: AppColors.textSecondary),
       textTheme: base.textTheme.apply(
@@ -143,23 +144,13 @@ class AuthLayout extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // App icon
-                  Container(
-                    padding: const EdgeInsets.all(AppSizes.md),
-                    decoration: BoxDecoration(
-                      color: AppColors.primary.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(AppSizes.radiusLg),
-                    ),
-                    child: Icon(icon, size: 36, color: AppColors.primary),
-                  ),
-                  const SizedBox(height: AppSizes.md),
                   // App name - main focus
-                  const Text(
-                    'Tulasi Shop Lite',
+                  Text(
+                    'Tulasi Stores',
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
+                      color: AppColors.primary,
                       letterSpacing: 0.5,
                     ),
                   ),
@@ -191,10 +182,7 @@ class AuthLayout extends StatelessWidget {
             Expanded(
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(AppSizes.xl),
-                child: Theme(
-                  data: _lightAuthTheme(context),
-                  child: child,
-                ),
+                child: Theme(data: _lightAuthTheme(context), child: child),
               ),
             ),
           ],
@@ -225,39 +213,23 @@ class AuthLayout extends StatelessWidget {
                       padding: EdgeInsets.all(isTablet ? 32 : 48),
                       child: ConstrainedBox(
                         constraints: BoxConstraints(
-                          minHeight: constraints.maxHeight - (isTablet ? 64 : 96),
+                          minHeight:
+                              constraints.maxHeight - (isTablet ? 64 : 96),
                         ),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            // Logo and app name
-                            Row(
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.all(AppSizes.cardPadding),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.2),
-                                    borderRadius: BorderRadius.circular(
-                                      AppSizes.radiusMd,
-                                    ),
-                                  ),
-                                  child: Icon(icon, size: 28, color: Colors.white),
-                                ),
-                                const SizedBox(width: AppSizes.md),
-                                const Flexible(
-                                  child: Text(
-                                    'Tulasi Shop Lite',
-                                    style: TextStyle(
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                      letterSpacing: 2,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                            // App name
+                            const Text(
+                              'Tulasi Stores',
+                              style: TextStyle(
+                                fontSize: 26,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.white,
+                                letterSpacing: 2,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: AppSizes.xl),
                             // Main content group
@@ -266,7 +238,9 @@ class AuthLayout extends StatelessWidget {
                               children: [
                                 // Main heading
                                 Text(
-                                  isAdminMode ? 'Admin Portal' : 'Welcome Back!',
+                                  isAdminMode
+                                      ? 'Admin Portal'
+                                      : 'Welcome Back!',
                                   style: TextStyle(
                                     fontSize: isTablet ? 34 : 40,
                                     fontWeight: FontWeight.bold,
@@ -296,16 +270,45 @@ class AuthLayout extends StatelessWidget {
                                 const SizedBox(height: AppSizes.md),
                                 _buildFeatureItem(
                                   Icons.cloud_sync,
-                                  isAdminMode ? 'User Management' : 'Cloud Sync & Backup',
+                                  isAdminMode
+                                      ? 'User Management'
+                                      : 'Cloud Sync & Backup',
                                 ),
                                 const SizedBox(height: AppSizes.md),
                                 _buildFeatureItem(
-                                  isAdminMode ? Icons.security : Icons.receipt_long,
-                                  isAdminMode ? 'Secure Access' : 'GST Ready Invoices',
+                                  isAdminMode
+                                      ? Icons.security
+                                      : Icons.receipt_long,
+                                  isAdminMode
+                                      ? 'Secure Access'
+                                      : 'GST Ready Invoices',
                                 ),
                               ],
                             ),
                             const SizedBox(height: 24),
+                            // Visit Website link (web only)
+                            if (kIsWeb && !isAdminMode)
+                              TextButton.icon(
+                                onPressed: () {
+                                  launchUrl(
+                                    Uri.parse(websiteUrl),
+                                    webOnlyWindowName: '_self',
+                                  );
+                                },
+                                icon: const Icon(
+                                  Icons.language,
+                                  size: AppSizes.iconSm,
+                                  color: Colors.white70,
+                                ),
+                                label: const Text(
+                                  '← Visit Website',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontWeight: FontWeight.w500,
+                                    fontSize: 13,
+                                  ),
+                                ),
+                              ),
                           ],
                         ),
                       ),
@@ -332,7 +335,9 @@ class AuthLayout extends StatelessWidget {
                           // Back button
                           if (onBack != null)
                             Padding(
-                              padding: const EdgeInsets.only(bottom: AppSizes.xl),
+                              padding: const EdgeInsets.only(
+                                bottom: AppSizes.xl,
+                              ),
                               child: TextButton.icon(
                                 onPressed: onBack,
                                 icon: const Icon(
@@ -365,10 +370,7 @@ class AuthLayout extends StatelessWidget {
                           ],
                           const SizedBox(height: AppSizes.xl + AppSizes.md),
                           // Form content — forced light theme for all widgets
-                          Theme(
-                            data: _lightAuthTheme(context),
-                            child: child,
-                          ),
+                          Theme(data: _lightAuthTheme(context), child: child),
                         ],
                       ),
                     ),

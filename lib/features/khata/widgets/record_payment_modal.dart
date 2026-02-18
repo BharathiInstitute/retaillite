@@ -2,11 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/razorpay_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
+import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 
 class RecordPaymentModal extends ConsumerStatefulWidget {
@@ -62,27 +66,48 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
     setState(() => _isLoading = true);
 
     try {
-      // Save to Hive
-      // 1. Update customer balance (subtract payment)
-      await OfflineStorageService.updateCustomerBalance(
-        widget.customer.id,
-        -_amount, // Negative to reduce balance
-      );
+      final isDemoMode = ref.read(isDemoModeProvider);
 
-      // 2. Save payment transaction
-      await OfflineStorageService.saveTransaction(
-        customerId: widget.customer.id,
-        type: 'payment',
-        amount: _amount,
-        note: _noteController.text.isEmpty
-            ? _paymentMode
-            : '$_paymentMode: ${_noteController.text}',
-      );
+      if (isDemoMode) {
+        // Demo mode: Update in-memory data
+        DemoDataService.updateCustomerBalance(
+          widget.customer.id,
+          -_amount, // Negative to reduce balance
+        );
+        // Add transaction to demo data
+        DemoDataService.addTransaction(
+          customerId: widget.customer.id,
+          type: TransactionType.payment,
+          amount: _amount,
+          note: _noteController.text.isEmpty
+              ? _paymentMode
+              : '$_paymentMode: ${_noteController.text}',
+        );
+      } else {
+        // Real mode: Save to Firestore
+        // 1. Update customer balance (subtract payment)
+        await OfflineStorageService.updateCustomerBalance(
+          widget.customer.id,
+          -_amount, // Negative to reduce balance
+        );
 
-      // 3. Invalidate providers to refresh UI
+        // 2. Save payment transaction
+        await OfflineStorageService.saveTransaction(
+          customerId: widget.customer.id,
+          type: 'payment',
+          amount: _amount,
+          note: _noteController.text.isEmpty
+              ? _paymentMode
+              : '$_paymentMode: ${_noteController.text}',
+        );
+      }
+
+      // 3. Invalidate providers to refresh UI immediately
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
+      ref.invalidate(sortedCustomersProvider);
+      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);
@@ -141,6 +166,8 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
             ref.invalidate(customerProvider(widget.customer.id));
             ref.invalidate(customerTransactionsProvider(widget.customer.id));
             ref.invalidate(customersProvider);
+            ref.invalidate(sortedCustomersProvider);
+            ref.invalidate(khataStatsProvider);
 
             if (mounted) {
               Navigator.pop(context);

@@ -13,6 +13,7 @@ import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/expense_model.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
+import 'package:retaillite/features/reports/providers/reports_provider.dart';
 
 /// Bills History Screen
 class BillsHistoryScreen extends ConsumerWidget {
@@ -29,59 +30,60 @@ class BillsHistoryScreen extends ConsumerWidget {
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: Column(
         children: [
-          // Header
-          Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: ResponsiveHelper.isMobile(context) ? 16 : 24,
-              vertical: ResponsiveHelper.isMobile(context) ? 12 : 16,
-            ),
-            decoration: BoxDecoration(color: Theme.of(context).cardColor),
-            child: Row(
-              children: [
-                const Spacer(),
+          // Header - Desktop only (hide on mobile & tablet to prevent overflow)
+          if (ResponsiveHelper.isDesktop(context))
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+              decoration: BoxDecoration(color: Theme.of(context).cardColor),
+              child: Row(
+                children: [
+                  const Spacer(),
 
-                // Date & Time
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
-                    borderRadius: BorderRadius.circular(8),
-                    boxShadow: AppShadows.small,
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.calendar_today, size: 16),
-                      const SizedBox(width: 8),
-                      Text(
-                        DateFormat('MMM dd, yyyy').format(now),
-                        style: const TextStyle(fontWeight: FontWeight.w500),
-                      ),
-                      const SizedBox(width: 16),
-                      Text(
-                        DateFormat('hh:mm a').format(now),
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  // Date & Time
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: AppShadows.small,
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.calendar_today, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          DateFormat('MMM dd, yyyy').format(now),
+                          style: const TextStyle(fontWeight: FontWeight.w500),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 16),
+                        Text(
+                          DateFormat('hh:mm a').format(now),
+                          style: TextStyle(
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 16),
+                  const SizedBox(width: 16),
 
-                // Print Report Button
-                OutlinedButton.icon(
-                  onPressed: () {
-                    // TODO: Implement print report
-                  },
-                  icon: const Icon(Icons.print, size: 18),
-                  label: const Text('Print Report'),
-                ),
-              ],
+                  // Print Report Button
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      // TODO: Implement print report
+                    },
+                    icon: const Icon(Icons.print, size: 18),
+                    label: const Text('Print Report'),
+                  ),
+                ],
+              ),
             ),
-          ),
 
           // Filters Section - Responsive
           _buildFiltersSection(context, ref, filter),
@@ -225,11 +227,27 @@ class BillsHistoryScreen extends ConsumerWidget {
                         : 'Date',
                   ),
                   onPressed: () async {
+                    final isDark =
+                        Theme.of(context).brightness == Brightness.dark;
                     final range = await showDateRangePicker(
                       context: context,
                       firstDate: DateTime(2020),
                       lastDate: DateTime.now(),
                       initialDateRange: filter.dateRange,
+                      builder: (context, child) {
+                        return Theme(
+                          data: Theme.of(context).copyWith(
+                            colorScheme: isDark
+                                ? ColorScheme.dark(
+                                    primary: AppColors.primary,
+                                    onPrimary: Colors.white,
+                                    surface: const Color(0xFF1E1E2E),
+                                  )
+                                : ColorScheme.light(primary: AppColors.primary),
+                          ),
+                          child: child!,
+                        );
+                      },
                     );
                     if (range != null) {
                       ref.read(billsFilterProvider.notifier).state = filter
@@ -289,11 +307,26 @@ class BillsHistoryScreen extends ConsumerWidget {
   ) {
     return InkWell(
       onTap: () async {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
         final range = await showDateRangePicker(
           context: context,
           firstDate: DateTime(2020),
           lastDate: DateTime.now(),
           initialDateRange: filter.dateRange,
+          builder: (context, child) {
+            return Theme(
+              data: Theme.of(context).copyWith(
+                colorScheme: isDark
+                    ? ColorScheme.dark(
+                        primary: AppColors.primary,
+                        onPrimary: Colors.white,
+                        surface: const Color(0xFF1E1E2E),
+                      )
+                    : ColorScheme.light(primary: AppColors.primary),
+              ),
+              child: child!,
+            );
+          },
         );
         if (range != null) {
           ref.read(billsFilterProvider.notifier).state = filter.copyWith(
@@ -359,18 +392,20 @@ class BillsHistoryScreen extends ConsumerWidget {
           hint: const Text('All Payments'),
           items: [
             const DropdownMenuItem(child: Text('All Payments')),
-            ...PaymentMethod.values.map((method) {
-              return DropdownMenuItem(
-                value: method,
-                child: Row(
-                  children: [
-                    Text(method.emoji),
-                    const SizedBox(width: 8),
-                    Text(method.displayName),
-                  ],
-                ),
-              );
-            }),
+            ...PaymentMethod.values
+                .where((m) => m != PaymentMethod.unknown)
+                .map((method) {
+                  return DropdownMenuItem(
+                    value: method,
+                    child: Row(
+                      children: [
+                        Text(method.emoji),
+                        const SizedBox(width: 8),
+                        Text(method.displayName),
+                      ],
+                    ),
+                  );
+                }),
           ],
           onChanged: (value) {
             ref.read(billsFilterProvider.notifier).state = filter.copyWith(
@@ -481,21 +516,23 @@ class BillsHistoryScreen extends ConsumerWidget {
                 Navigator.pop(context);
               },
             ),
-            ...PaymentMethod.values.map(
-              (method) => ListTile(
-                leading: Text(
-                  method.emoji,
-                  style: const TextStyle(fontSize: 20),
+            ...PaymentMethod.values
+                .where((m) => m != PaymentMethod.unknown)
+                .map(
+                  (method) => ListTile(
+                    leading: Text(
+                      method.emoji,
+                      style: const TextStyle(fontSize: 20),
+                    ),
+                    title: Text(method.displayName),
+                    selected: filter.paymentMethod == method,
+                    onTap: () {
+                      ref.read(billsFilterProvider.notifier).state = filter
+                          .copyWith(paymentMethod: method, page: 1);
+                      Navigator.pop(context);
+                    },
+                  ),
                 ),
-                title: Text(method.displayName),
-                selected: filter.paymentMethod == method,
-                onTap: () {
-                  ref.read(billsFilterProvider.notifier).state = filter
-                      .copyWith(paymentMethod: method, page: 1);
-                  Navigator.pop(context);
-                },
-              ),
-            ),
           ],
         ),
       ),
@@ -979,14 +1016,18 @@ class _BillRow extends ConsumerWidget {
           // Amount
           Expanded(
             flex: 2,
-            child: Text(
-              '+ ${Formatters.currency(bill.total)}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppColors.primaryDark,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '+ ${Formatters.currency(bill.total)}',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primaryDark,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
             ),
           ),
 
@@ -997,37 +1038,53 @@ class _BillRow extends ConsumerWidget {
           Expanded(
             flex: 2,
             child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.visibility_outlined, size: 20),
-                  tooltip: 'View',
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => BillDetailsPopup(bill: bill),
-                    );
-                  },
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.share_outlined,
-                    size: 20,
-                    color: AppColors.primary,
+                Flexible(
+                  child: IconButton(
+                    icon: const Icon(Icons.visibility_outlined, size: 20),
+                    tooltip: 'View',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => BillDetailsPopup(bill: bill),
+                      );
+                    },
                   ),
-                  tooltip: 'Share',
-                  onPressed: () {
-                    showDialog(
-                      context: context,
-                      builder: (context) => _SharePopup(bill: bill),
-                    );
-                  },
                 ),
-                IconButton(
-                  icon: const Icon(Icons.print_outlined, size: 20),
-                  tooltip: 'Print',
-                  onPressed: () {
-                    BillShareService.downloadPdf(bill, context: context);
-                  },
+                const SizedBox(width: 8),
+                Flexible(
+                  child: IconButton(
+                    icon: Icon(
+                      Icons.share_outlined,
+                      size: 20,
+                      color: AppColors.primary,
+                    ),
+                    tooltip: 'Share',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => _SharePopup(bill: bill),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: IconButton(
+                    icon: const Icon(Icons.print_outlined, size: 20),
+                    tooltip: 'Print',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      BillShareService.downloadPdf(bill, context: context);
+                    },
+                  ),
                 ),
               ],
             ),
@@ -1133,11 +1190,17 @@ class _ExpenseRow extends StatelessWidget {
           // Amount
           Expanded(
             flex: 2,
-            child: Text(
-              '- ${Formatters.currency(expense.amount)}',
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                color: AppColors.error,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '- ${Formatters.currency(expense.amount)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.error,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ),
@@ -1149,24 +1212,35 @@ class _ExpenseRow extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                IconButton(
-                  icon: const Icon(Icons.edit_outlined, size: 20),
-                  tooltip: 'Edit',
-                  onPressed: () {
-                    // TODO: Implement edit expense
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    size: 20,
-                    color: AppColors.error,
+                Flexible(
+                  child: IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    tooltip: 'Edit',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      // TODO: Implement edit expense
+                    },
                   ),
-                  tooltip: 'Delete',
-                  onPressed: () {
-                    // TODO: Implement delete expense
-                  },
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: IconButton(
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      size: 20,
+                      color: AppColors.error,
+                    ),
+                    tooltip: 'Delete',
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    onPressed: () {
+                      // TODO: Implement delete expense
+                    },
+                  ),
                 ),
               ],
             ),
@@ -1252,26 +1326,30 @@ class _PaymentChip extends StatelessWidget {
         break;
     }
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
-          Text(
-            method.displayName,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w500,
-              color: color,
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 12, color: color),
+            const SizedBox(width: 4),
+            Text(
+              method.displayName,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+                color: color,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1329,8 +1407,10 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
         await OfflineStorageService.saveExpense(expense);
       }
 
-      // Refresh the expenses list
+      // Refresh the expenses list and dashboard
       ref.invalidate(filteredExpensesProvider);
+      ref.invalidate(salesSummaryProvider);
+      ref.invalidate(periodBillsProvider);
 
       if (mounted) {
         Navigator.of(context).pop();
@@ -1356,11 +1436,15 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.of(context).size.width;
+    final dialogWidth = screenWidth < 500 ? screenWidth * 0.9 : 450.0;
+
     return Dialog(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
       child: Container(
-        width: 450,
-        padding: const EdgeInsets.all(24),
+        width: dialogWidth,
+        padding: EdgeInsets.all(screenWidth < 500 ? 16 : 24),
         child: Form(
           key: _formKey,
           child: Column(
@@ -1462,24 +1546,40 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
                 children: [
                   // Payment Method
                   Expanded(
+                    flex: 5,
                     child: DropdownButtonFormField<PaymentMethod>(
                       initialValue: _selectedPaymentMethod,
+                      isExpanded: true,
                       decoration: InputDecoration(
-                        labelText: 'Payment Method',
+                        labelText: 'Payment Meth...',
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
                       ),
                       items: PaymentMethod.values
-                          .where((m) => m != PaymentMethod.udhar)
+                          .where(
+                            (m) =>
+                                m != PaymentMethod.udhar &&
+                                m != PaymentMethod.unknown,
+                          )
                           .map((method) {
                             return DropdownMenuItem(
                               value: method,
                               child: Row(
+                                mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text(method.emoji),
-                                  const SizedBox(width: 8),
-                                  Text(method.displayName),
+                                  const SizedBox(width: 6),
+                                  Flexible(
+                                    child: Text(
+                                      method.displayName,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
                                 ],
                               ),
                             );
@@ -1492,10 +1592,11 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
                       },
                     ),
                   ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
 
                   // Date Picker
                   Expanded(
+                    flex: 5,
                     child: InkWell(
                       onTap: () async {
                         final date = await showDatePicker(
@@ -1514,15 +1615,26 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
                           border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 14,
+                          ),
                         ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today, size: 18),
-                            const SizedBox(width: 8),
-                            Text(
-                              DateFormat('MMM dd, yyyy').format(_selectedDate),
-                            ),
-                          ],
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.calendar_today, size: 16),
+                              const SizedBox(width: 6),
+                              Text(
+                                DateFormat(
+                                  'MMM dd, yyyy',
+                                ).format(_selectedDate),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),

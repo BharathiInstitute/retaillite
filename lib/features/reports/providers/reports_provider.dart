@@ -159,3 +159,12 @@ final topProductsProvider = FutureProvider<List<ProductSale>>((ref) async {
 
   return sorted.take(10).toList();
 });
+
+/// Dashboard bills provider - fetches last 7 days of bills for recent activity
+final dashboardBillsProvider = FutureProvider<List<BillModel>>((ref) async {
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  final now = DateTime.now();
+  final end = now;
+  final start = now.subtract(const Duration(days: 7));
+  return _getBillsForRange(DateRange(start: start, end: end), isDemoMode);
+});

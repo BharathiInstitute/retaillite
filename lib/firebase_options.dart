@@ -78,11 +78,11 @@ class DefaultFirebaseOptions {
   );
 
   static const FirebaseOptions windows = FirebaseOptions(
-    apiKey: 'YOUR_WINDOWS_API_KEY',
-    appId: '1:000000000000:windows:0000000000000000000000',
-    messagingSenderId: '000000000000',
-    projectId: 'your-project-id',
-    authDomain: 'your-project-id.firebaseapp.com',
-    storageBucket: 'your-project-id.appspot.com',
+    apiKey: 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48',
+    appId: '1:576503526807:web:23cf36d320396b512300d2',
+    messagingSenderId: '576503526807',
+    projectId: 'login-radha',
+    authDomain: 'login-radha.firebaseapp.com',
+    storageBucket: 'login-radha.firebasestorage.app',
   );
 }

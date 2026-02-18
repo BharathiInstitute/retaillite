@@ -77,6 +77,62 @@ class ImageService {
     }
   }
 
+  /// Cross-platform profile image picker: works on Web, Android, Windows
+  /// Uploads to Firebase Storage as profile_image.jpg (separate from shop logo)
+  /// Returns the download URL string on success, null on cancel/error
+  static Future<String?> pickAndUploadProfileImage() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+
+      // Use file_picker which works on all platforms
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true, // needed for web
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+
+      Uint8List? bytes = file.bytes;
+      if (bytes == null && !kIsWeb && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+      if (bytes == null) return null;
+
+      // Resize image (use compute on non-web, direct call on web)
+      Uint8List resizedBytes;
+      if (kIsWeb) {
+        resizedBytes = _resizeImageBytes(bytes, ImageSizes.logoSize);
+      } else {
+        resizedBytes = await compute(
+          (data) => _resizeImageBytes(
+            data['bytes'] as Uint8List,
+            data['size'] as int,
+          ),
+          {'bytes': bytes, 'size': ImageSizes.logoSize},
+        );
+      }
+
+      // Upload to Firebase Storage (different path from shop logo)
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'users/$uid/profile_image.jpg',
+      );
+
+      await storageRef.putData(
+        resizedBytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      // Get download URL
+      final downloadUrl = await storageRef.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Error picking/uploading profile image: $e');
+      return null;
+    }
+  }
+
   /// Delete logo from Firebase Storage
   static Future<void> deleteLogoFromStorage() async {
     try {

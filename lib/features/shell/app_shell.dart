@@ -8,6 +8,7 @@ import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/color_utils.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
+import 'package:retaillite/features/auth/widgets/email_verification_banner.dart';
 import 'package:retaillite/features/shell/web_shell.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/user_model.dart';
@@ -68,7 +69,7 @@ class AppShell extends ConsumerWidget {
     final user = ref.watch(currentUserProvider);
 
     return Scaffold(
-      resizeToAvoidBottomInset: false,
+      resizeToAvoidBottomInset: true,
       appBar: deviceType == DeviceType.mobile
           ? AppBar(
               automaticallyImplyLeading: false,
@@ -83,11 +84,11 @@ class AppShell extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      user?.shopName ?? 'Tulasi Shop Lite',
-                      style: const TextStyle(
+                      user?.shopName ?? 'Tulasi Stores',
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: AppColors.textPrimary,
+                        color: Theme.of(context).colorScheme.onSurface,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -107,15 +108,7 @@ class AppShell extends ConsumerWidget {
                   },
                 ),
                 IconButton(
-                  icon: CircleAvatar(
-                    radius: 16,
-                    backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                    child: Icon(
-                      Icons.person,
-                      size: 18,
-                      color: AppColors.primary,
-                    ),
-                  ),
+                  icon: _buildProfileAvatar(user?.profileImagePath, 16),
                   onPressed: () => _showProfileSheet(context, ref),
                 ),
               ],
@@ -128,6 +121,9 @@ class AppShell extends ConsumerWidget {
         children: [
           // Demo mode banner
           const DemoModeBanner(),
+
+          // Email verification banner
+          const EmailVerificationBanner(),
 
           // Main content with navigation
           Expanded(
@@ -153,6 +149,35 @@ class AppShell extends ConsumerWidget {
       bottomNavigationBar: deviceType == DeviceType.mobile
           ? _buildBottomNavigation(context, selectedIndex)
           : null,
+    );
+  }
+
+  /// Build profile avatar that handles both URL and local file
+  Widget _buildProfileAvatar(String? logoPath, double radius) {
+    final hasImage = logoPath != null && logoPath.isNotEmpty;
+
+    if (!hasImage) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+        child: Icon(Icons.person, size: radius, color: AppColors.primary),
+      );
+    }
+
+    if (logoPath.startsWith('http')) {
+      return CircleAvatar(
+        radius: radius,
+        backgroundImage: NetworkImage(logoPath),
+        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    // Fallback to icon
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+      child: Icon(Icons.person, size: radius, color: AppColors.primary),
     );
   }
 
@@ -182,36 +207,68 @@ class AppShell extends ConsumerWidget {
               ),
               const SizedBox(height: 16),
 
-              // User info
-              CircleAvatar(
-                radius: 28,
-                backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                child: Icon(Icons.person, size: 28, color: AppColors.primary),
+              // User info with edit button
+              Stack(
+                children: [
+                  _buildProfileAvatar(user?.profileImagePath, 28),
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: GestureDetector(
+                      onTap: () {
+                        Navigator.pop(ctx);
+                        context.go('/settings/account');
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: Theme.of(context).scaffoldBackgroundColor,
+                            width: 2,
+                          ),
+                        ),
+                        child: const Icon(
+                          Icons.edit,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: 10),
+              // Shop name (prominent)
+              if (user?.shopName != null && user!.shopName.isNotEmpty) ...[
+                Text(
+                  user.shopName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 2),
+              ],
+              // Owner name
               Text(
                 user?.ownerName ?? 'User',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                user?.shopName ?? 'Shop',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
               if (user?.email != null) ...[
                 const SizedBox(height: 2),
                 Text(
                   user!.email!,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
-                    color: AppColors.textMuted,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurfaceVariant.withValues(alpha: 0.7),
                   ),
                 ),
               ],
@@ -222,9 +279,9 @@ class AppShell extends ConsumerWidget {
               // Settings
               ListTile(
                 dense: true,
-                leading: const Icon(
+                leading: Icon(
                   Icons.settings_outlined,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   size: 22,
                 ),
                 title: const Text('Settings'),
@@ -241,9 +298,9 @@ class AppShell extends ConsumerWidget {
               // Contact / Support
               ListTile(
                 dense: true,
-                leading: const Icon(
+                leading: Icon(
                   Icons.help_outline,
-                  color: AppColors.textSecondary,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
                   size: 22,
                 ),
                 title: const Text('Help & Support'),
@@ -286,7 +343,7 @@ class AppShell extends ConsumerWidget {
 
               const SizedBox(height: 16),
               Text(
-                'Powered by Tulasi Shop Lite',
+                'Powered by Tulasi Stores',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -471,7 +528,7 @@ class AppShell extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
-                'Powered by Tulasi Shop Lite',
+                'Powered by Tulasi Stores',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

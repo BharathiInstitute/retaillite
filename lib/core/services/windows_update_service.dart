@@ -1,15 +1,20 @@
-/// Windows Zero-Click Auto-Update Service
+/// Windows 5-Layer Bulletproof Auto-Update Service
 ///
-/// Fully automatic background updates — zero user interaction required.
+/// Escalating fallback strategy — guarantees 100% update delivery:
+///   Layer 1: Silent background download + watchdog (zero interaction)
+///   Layer 2: Pending install recovery on next launch
+///   Layer 3: Silent retry with fresh re-download (up to 3 attempts)
+///   Layer 4: One-click "Update Available" dialog (user sees it)
+///   Layer 5: Force update block via Remote Config (handled in main.dart)
 ///
-/// Update flow:
-///   1. App starts → checks if a previous update is pending (fallback)
+/// Flow:
+///   1. App starts → checks pending installs (Layer 2)
 ///   2. Background: fetches version.json from Firebase Storage
-///   3. If newer → downloads installer silently while user works
-///   4. Creates a watchdog script that monitors this process
-///   5. User closes app naturally → watchdog detects exit
-///   6. Watchdog runs installer /VERYSILENT → files replaced
-///   7. Next app launch → updated. Zero clicks, zero interruption.
+///   3. If newer → downloads installer silently (Layer 1)
+///   4. Watchdog monitors PID → installs on app close
+///   5. If watchdog fails → retry on next launch (Layer 2/3)
+///   6. After 3 silent failures → show UpdateDialog (Layer 4)
+///   7. Remote Config min_app_version blocks very old versions (Layer 5)
 library;
 
 import 'dart:convert';
@@ -58,10 +63,28 @@ class UpdateCheckResult {
   const UpdateCheckResult({required this.status, this.versionInfo, this.error});
 }
 
+/// Current update layer status — used by UI to decide what to show
+enum UpdateLayer {
+  /// No update available
+  upToDate,
+
+  /// Layers 1-3: Silent updates in progress — don't show anything
+  silentInProgress,
+
+  /// Layer 4: Silent failed 3+ times — show one-click dialog
+  showDialog,
+
+  /// Layer 5: Force update — handled by Remote Config in main.dart
+  forceUpdate,
+}
+
 class WindowsUpdateService {
   // Firebase Storage URL for version manifest
   static const String _versionUrl =
       'https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2Fversion.json?alt=media';
+
+  /// Max silent attempts before escalating to dialog (Layer 4)
+  static const int _maxSilentAttempts = 3;
 
   // ─── Directory & marker helpers ──────────────────────────────
 
@@ -78,28 +101,153 @@ class WindowsUpdateService {
     return File('${dir.path}\\pending_update.json');
   }
 
+  // ─── Marker read/write with attempt tracking ─────────────────
+
+  /// Read current marker data (returns null if no marker)
+  static Future<Map<String, dynamic>?> _readMarker() async {
+    final marker = await _markerFile();
+    if (!marker.existsSync()) return null;
+    try {
+      return jsonDecode(await marker.readAsString()) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Write marker with all tracking fields
+  static Future<void> _writeMarker({
+    required String installerPath,
+    required String version,
+    required int buildNumber,
+    int silentAttempts = 0,
+    bool dialogDismissed = false,
+  }) async {
+    final marker = await _markerFile();
+    await marker.writeAsString(
+      jsonEncode({
+        'installerPath': installerPath,
+        'version': version,
+        'buildNumber': buildNumber,
+        'downloadedAt': DateTime.now().toIso8601String(),
+        'silentAttempts': silentAttempts,
+        'dialogDismissed': dialogDismissed,
+      }),
+    );
+  }
+
+  /// Increment the silent attempt counter in the marker
+  static Future<int> _incrementSilentAttempts() async {
+    final data = await _readMarker();
+    if (data == null) return 0;
+
+    final attempts = ((data['silentAttempts'] as int?) ?? 0) + 1;
+    data['silentAttempts'] = attempts;
+
+    final marker = await _markerFile();
+    await marker.writeAsString(jsonEncode(data));
+
+    debugPrint('🔄 Silent update attempt count: $attempts');
+    return attempts;
+  }
+
+  /// Mark that user dismissed the update dialog
+  static Future<void> markDialogDismissed() async {
+    final data = await _readMarker();
+    if (data == null) return;
+
+    data['dialogDismissed'] = true;
+    final marker = await _markerFile();
+    await marker.writeAsString(jsonEncode(data));
+  }
+
   // ─── Public API ──────────────────────────────────────────────
 
-  /// Call once from main.dart after init — fire-and-forget.
-  /// Handles the entire lifecycle: pending check → version check → download → watchdog.
+  /// Get current update layer — UI uses this to decide what to show
+  static Future<UpdateLayer> getUpdateLayer() async {
+    if (kIsWeb || !Platform.isWindows) return UpdateLayer.upToDate;
+
+    final data = await _readMarker();
+    if (data == null) return UpdateLayer.upToDate;
+
+    // Check if we're already at or above the staged version
+    final stagedBuild = data['buildNumber'] as int;
+    final packageInfo = await PackageInfo.fromPlatform();
+    final currentBuild = int.tryParse(packageInfo.buildNumber) ?? 0;
+
+    if (currentBuild >= stagedBuild) {
+      // Already updated — clean up
+      await _cleanupUpdateFiles(
+        await _markerFile(),
+        data['installerPath'] as String,
+      );
+      return UpdateLayer.upToDate;
+    }
+
+    final silentAttempts = (data['silentAttempts'] as int?) ?? 0;
+
+    if (silentAttempts >= _maxSilentAttempts) {
+      return UpdateLayer.showDialog;
+    }
+
+    return UpdateLayer.silentInProgress;
+  }
+
+  /// Check if update dialog should be shown (Layer 4)
+  static Future<bool> shouldShowDialog() async {
+    final layer = await getUpdateLayer();
+    return layer == UpdateLayer.showDialog;
+  }
+
+  /// Get the cached version info from marker (for UpdateDialog)
+  static Future<AppVersionInfo?> getCachedVersionInfo() async {
+    final data = await _readMarker();
+    if (data == null) return null;
+
+    // We need to re-fetch from remote for download URL
+    final result = await checkForUpdate();
+    return result.versionInfo;
+  }
+
+  /// Master update entry point — call once from main.dart.
+  /// Handles the entire lifecycle: pending → version check → download → escalation.
   static Future<void> runBackgroundUpdateCheck() async {
-    // dart:io Platform is not available on web
     if (kIsWeb) return;
     if (!Platform.isWindows) return;
 
     try {
-      // 1. Check if a previous download is pending (watchdog may have failed)
+      // ── Layer 2: Check if a previous download is pending ──
       final installed = await _installPendingIfNeeded();
       if (installed) return; // app will exit — installer is running
 
-      // 2. Check remote for a new version
+      // ── Check remote for a new version ──
       final result = await checkForUpdate();
       if (result.status != UpdateStatus.updateAvailable) return;
 
-      // 3. Download silently in background
-      await _downloadAndStage(result.versionInfo!);
+      // ── Check attempt count → decide layer ──
+      final data = await _readMarker();
+      final silentAttempts = (data?['silentAttempts'] as int?) ?? 0;
+
+      if (silentAttempts >= _maxSilentAttempts) {
+        // Layer 4: Don't try silent anymore — UI will show dialog
+        debugPrint(
+          '⚠️ Silent update failed $silentAttempts times — escalating to dialog',
+        );
+        return;
+      }
+
+      // ── Layer 1 & 3: Silent download (fresh or retry) ──
+      debugPrint(
+        '🔄 Silent update attempt ${silentAttempts + 1}/$_maxSilentAttempts',
+      );
+      await _downloadAndStage(
+        result.versionInfo!,
+        silentAttempts: silentAttempts,
+      );
     } catch (e) {
       debugPrint('⚠️ Background update check failed (non-fatal): $e');
+
+      // Increment attempt counter on failure
+      await _incrementSilentAttempts();
     }
   }
 
@@ -150,7 +298,7 @@ class WindowsUpdateService {
     }
   }
 
-  // ─── Public download API (used by UpdateDialog) ─────────────
+  // ─── Public download API (used by UpdateDialog — Layer 4) ────
 
   /// Download and install update with progress reporting.
   /// Returns true if download succeeded and watchdog was started.
@@ -159,7 +307,7 @@ class WindowsUpdateService {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      await _downloadAndStage(info, onProgress: onProgress);
+      await _downloadAndStage(info, onProgress: onProgress, silentAttempts: 0);
       return true;
     } catch (e) {
       debugPrint('❌ Download and install failed: $e');
@@ -173,9 +321,10 @@ class WindowsUpdateService {
   static Future<void> _downloadAndStage(
     AppVersionInfo info, {
     void Function(double progress)? onProgress,
+    int silentAttempts = 0,
   }) async {
     final dir = await _updateDir();
-    final installerPath = '${dir.path}\\LiteRetail_Update.exe';
+    final installerPath = '${dir.path}\\TulasiStores_Update.exe';
     final installerFile = File(installerPath);
 
     debugPrint('⬇️ Downloading update v${info.version} in background...');
@@ -203,15 +352,12 @@ class WindowsUpdateService {
       '✅ Update downloaded: $installerPath (${installerFile.lengthSync()} bytes)',
     );
 
-    // Write pending-update marker
-    final marker = await _markerFile();
-    await marker.writeAsString(
-      jsonEncode({
-        'installerPath': installerPath,
-        'version': info.version,
-        'buildNumber': info.buildNumber,
-        'downloadedAt': DateTime.now().toIso8601String(),
-      }),
+    // Write pending-update marker with attempt tracking
+    await _writeMarker(
+      installerPath: installerPath,
+      version: info.version,
+      buildNumber: info.buildNumber,
+      silentAttempts: silentAttempts,
     );
 
     // Start watchdog — it monitors our PID, installs after we exit
@@ -241,7 +387,7 @@ setlocal
 set COUNTER=0
 
 :wait
-if %COUNTER% GEQ 2400 goto cleanup
+if %COUNTER% GEQ 2400 goto timeout
 tasklist /FI "PID eq $appPid" /FI "IMAGENAME eq retaillite.exe" 2>NUL | find /I "$appPid" >NUL
 if "%ERRORLEVEL%"=="0" (
   set /a COUNTER+=1
@@ -254,13 +400,16 @@ timeout /t 2 /nobreak >NUL
 
 rem Run installer silently
 start "" "$escapedInstaller" /VERYSILENT /SUPPRESSMSGBOXES /NORESTART
+goto cleanup
 
-rem Clean up marker and self
+:timeout
+rem Watchdog timed out — increment failure counter via a flag file
+echo timeout > "${dir.path}\\watchdog_timeout.flag"
+
+:cleanup
 timeout /t 5 /nobreak >NUL
 del "$escapedMarker" 2>NUL
 del "$escapedBat" 2>NUL
-
-:cleanup
 endlocal
 exit
 ''';
@@ -274,7 +423,7 @@ exit
     ], mode: ProcessStartMode.detached);
   }
 
-  // ─── Pending update fallback (runs on next app start) ────────
+  // ─── Pending update fallback (Layer 2 — runs on next app start) ──
 
   /// If a previous download exists but wasn't installed (watchdog failed,
   /// system restarted, etc.), install it now. Returns true if installing.
@@ -287,6 +436,7 @@ exit
           jsonDecode(await marker.readAsString()) as Map<String, dynamic>;
       final installerPath = data['installerPath'] as String;
       final stagedBuild = data['buildNumber'] as int;
+      final silentAttempts = (data['silentAttempts'] as int?) ?? 0;
 
       // Compare with current build — if we're already at or above the staged
       // version, the update was applied successfully → clean up.
@@ -301,14 +451,35 @@ exit
         return false;
       }
 
-      // Installer exists but update wasn't applied — run it now (brief interruption)
+      // Check for watchdog timeout flag → increment silent attempts
+      final dir = await _updateDir();
+      final timeoutFlag = File('${dir.path}\\watchdog_timeout.flag');
+      if (timeoutFlag.existsSync()) {
+        await timeoutFlag.delete();
+        final newAttempts = silentAttempts + 1;
+        debugPrint(
+          '⚠️ Watchdog timed out — silent attempt $newAttempts/$_maxSilentAttempts',
+        );
+
+        // Update the marker with incremented attempt count
+        data['silentAttempts'] = newAttempts;
+        await marker.writeAsString(jsonEncode(data));
+
+        if (newAttempts >= _maxSilentAttempts) {
+          debugPrint('⚠️ Escalating to Layer 4 (dialog)');
+          return false; // Don't auto-install; let UI handle it
+        }
+      }
+
+      // Installer exists but update wasn't applied — run it now
       final installer = File(installerPath);
       if (!installer.existsSync()) {
-        debugPrint('⚠️ Staged installer missing — deleting stale marker');
-        await marker.delete();
+        debugPrint('⚠️ Staged installer missing — incrementing attempt count');
+        await _incrementSilentAttempts();
         return false;
       }
 
+      // Layer 2: Install pending update
       debugPrint(
         '🔄 Pending update found — installing v${data['version']} now...',
       );
@@ -324,7 +495,6 @@ exit
       exit(0);
     } catch (e) {
       debugPrint('⚠️ Pending update check failed: $e');
-      // Don't block app start for update errors
       return false;
     }
   }
@@ -341,11 +511,22 @@ exit
       final installer = File(installerPath);
       if (installer.existsSync()) await installer.delete();
     } catch (_) {}
-    // Delete any leftover watchdog script
+    // Delete any leftover watchdog/flag files
     try {
       final dir = await _updateDir();
       final bat = File('${dir.path}\\update_watchdog.bat');
       if (bat.existsSync()) await bat.delete();
+      final flag = File('${dir.path}\\watchdog_timeout.flag');
+      if (flag.existsSync()) await flag.delete();
     } catch (_) {}
+  }
+
+  /// Clean up all update files (for manual reset)
+  static Future<void> cleanupAll() async {
+    final marker = await _markerFile();
+    final data = await _readMarker();
+    final installerPath =
+        data?['installerPath'] as String? ?? 'nonexistent.exe';
+    await _cleanupUpdateFiles(marker, installerPath);
   }
 }

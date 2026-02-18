@@ -2,12 +2,14 @@
 /// Mirrors Web Account Tab
 library;
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/app_colors.dart';
-import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/core/services/image_service.dart';
-import 'dart:io';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
 class AccountSettingsScreen extends ConsumerStatefulWidget {
   const AccountSettingsScreen({super.key});
@@ -20,6 +22,7 @@ class AccountSettingsScreen extends ConsumerStatefulWidget {
 class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   late TextEditingController _emailController;
   late TextEditingController _phoneController;
+  bool _isUploadingImage = false;
 
   @override
   void initState() {
@@ -37,24 +40,81 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   }
 
   Future<void> _pickProfileImage() async {
-    final imagePath = await ImageService.pickAndResizeLogo();
-    if (imagePath != null && mounted) {
-      await ref.read(authNotifierProvider.notifier).updateShopLogo(imagePath);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profile picture updated'),
-          backgroundColor: AppColors.primary,
-        ),
+    debugPrint('🖼️ _pickProfileImage called');
+    setState(() => _isUploadingImage = true);
+    try {
+      final downloadUrl = await ImageService.pickAndUploadProfileImage();
+      debugPrint('🖼️ downloadUrl: $downloadUrl');
+      if (downloadUrl != null && mounted) {
+        final success = await ref
+            .read(authNotifierProvider.notifier)
+            .updateProfileImage(downloadUrl);
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Profile picture updated'
+                  : 'Failed to update profile picture',
+            ),
+            backgroundColor: success ? AppColors.primary : AppColors.error,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('🖼️ Error: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to pick image: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isUploadingImage = false);
+    }
+  }
+
+  Widget _buildProfileImage(String? imagePath) {
+    if (_isUploadingImage) {
+      return const CircleAvatar(radius: 50, child: CircularProgressIndicator());
+    }
+
+    final hasImage = imagePath != null && imagePath.isNotEmpty;
+
+    if (!hasImage) {
+      return const CircleAvatar(
+        radius: 50,
+        child: Icon(Icons.person, size: 50),
       );
     }
+
+    // Check if it's a URL or local file
+    if (imagePath.startsWith('http')) {
+      return CircleAvatar(
+        radius: 50,
+        backgroundImage: NetworkImage(imagePath),
+        onBackgroundImageError: (_, __) {},
+      );
+    }
+
+    // Local file (non-web only)
+    if (!kIsWeb && File(imagePath).existsSync()) {
+      return CircleAvatar(
+        radius: 50,
+        backgroundImage: FileImage(File(imagePath)),
+      );
+    }
+
+    return const CircleAvatar(radius: 50, child: Icon(Icons.person, size: 50));
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
-    final logoPath = user?.shopLogoPath;
+    final profileImagePath = user?.profileImagePath;
 
     return Scaffold(
       appBar: AppBar(
@@ -75,37 +135,33 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                 children: [
                   // Profile Picture
                   Center(
-                    child: GestureDetector(
-                      onTap: _pickProfileImage,
+                    child: InkWell(
+                      borderRadius: BorderRadius.circular(50),
+                      onTap: _isUploadingImage ? null : _pickProfileImage,
                       child: Stack(
                         children: [
-                          CircleAvatar(
-                            radius: 50,
-                            backgroundImage:
-                                logoPath != null && File(logoPath).existsSync()
-                                ? FileImage(File(logoPath))
-                                : null,
-                            child:
-                                logoPath == null || !File(logoPath).existsSync()
-                                ? const Icon(Icons.person, size: 50)
-                                : null,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(4),
-                              decoration: BoxDecoration(
-                                color: theme.colorScheme.primary,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.camera_alt,
-                                size: 20,
-                                color: Colors.white,
+                          _buildProfileImage(profileImagePath),
+                          if (!_isUploadingImage)
+                            Positioned(
+                              bottom: 0,
+                              right: 0,
+                              child: Container(
+                                padding: const EdgeInsets.all(6),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.cardColor,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  size: 18,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                          ),
                         ],
                       ),
                     ),
@@ -120,10 +176,12 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                   ),
                   const SizedBox(height: 24),
 
-                  // Email
+                  // Email (read-only)
                   TextField(
                     controller: _emailController,
                     keyboardType: TextInputType.emailAddress,
+                    readOnly: true,
+                    enabled: false,
                     decoration: const InputDecoration(
                       labelText: 'Email',
                       prefixIcon: Icon(Icons.email),
@@ -145,86 +203,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             ),
           ),
           const SizedBox(height: 24),
-
-          // Security Section
-          _buildSectionHeader(theme, 'Security'),
-          Card(
-            child: Column(
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.lock),
-                  title: const Text('Change Password'),
-                  subtitle: const Text('Update your account password'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showChangePasswordDialog(context),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.history),
-                  title: const Text('Login History'),
-                  subtitle: const Text('View recent login activity'),
-                  trailing: const Icon(Icons.chevron_right),
-                  onTap: () => _showLoginHistory(context),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Subscription Section
-          _buildSectionHeader(theme, 'Subscription'),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          color: AppColors.primaryBg,
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          'Active',
-                          style: TextStyle(
-                            color: AppColors.primaryDark,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'Free Plan',
-                        style: theme.textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _buildFeatureRow('Unlimited Products', true),
-                  _buildFeatureRow('Basic Reports', true),
-                  _buildFeatureRow('Thermal Printing', true),
-                  _buildFeatureRow('Cloud Backup', false),
-                  _buildFeatureRow('Multi-device Sync', false),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: () {},
-                      child: const Text('Upgrade to Pro'),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
         ],
       ),
     );
@@ -254,7 +232,15 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             color: included ? AppColors.primary : Colors.grey,
           ),
           const SizedBox(width: 12),
-          Text(feature),
+          Text(
+            feature,
+            style: TextStyle(
+              decoration: included ? null : TextDecoration.lineThrough,
+              color: included
+                  ? Theme.of(context).colorScheme.onSurface
+                  : Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -371,68 +357,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  void _showLoginHistory(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Login History'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildLoginItem('Chrome on Windows', 'Just now', true),
-            const Divider(),
-            _buildLoginItem('Chrome on Android', '2 hours ago', false),
-            const Divider(),
-            _buildLoginItem('Safari on iPhone', 'Yesterday', false),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoginItem(String device, String time, bool isCurrent) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  device,
-                  style: const TextStyle(fontWeight: FontWeight.w500),
-                ),
-                Text(
-                  time,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-          if (isCurrent)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-              decoration: BoxDecoration(
-                color: AppColors.primaryBg,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Text(
-                'Current',
-                style: TextStyle(fontSize: 10, color: AppColors.primary),
-              ),
-            ),
-        ],
       ),
     );
   }

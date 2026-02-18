@@ -1,4 +1,4 @@
-/// User/Shop model for LITE app
+/// User/Shop model for Tulasi Stores app
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -12,8 +12,13 @@ class UserModel {
   final String? address;
   final String? gstNumber;
   final String? shopLogoPath;
+  final String? profileImagePath;
+  final String? photoUrl;
   final UserSettings settings;
   final bool isPaid;
+  final bool phoneVerified;
+  final bool emailVerified;
+  final DateTime? phoneVerifiedAt;
   final DateTime createdAt;
   final DateTime? updatedAt;
 
@@ -26,8 +31,13 @@ class UserModel {
     this.address,
     this.gstNumber,
     this.shopLogoPath,
+    this.profileImagePath,
+    this.photoUrl,
     required this.settings,
     this.isPaid = false,
+    this.phoneVerified = false,
+    this.emailVerified = false,
+    this.phoneVerifiedAt,
     required this.createdAt,
     this.updatedAt,
   });
@@ -43,10 +53,15 @@ class UserModel {
       address: data['address'] as String?,
       gstNumber: data['gstNumber'] as String?,
       shopLogoPath: data['shopLogoPath'] as String?,
+      profileImagePath: data['profileImagePath'] as String?,
+      photoUrl: data['photoUrl'] as String?,
       settings: UserSettings.fromMap(
         (data['settings'] as Map<String, dynamic>?) ?? {},
       ),
       isPaid: (data['isPaid'] as bool?) ?? false,
+      phoneVerified: (data['phoneVerified'] as bool?) ?? false,
+      emailVerified: (data['emailVerified'] as bool?) ?? false,
+      phoneVerifiedAt: (data['phoneVerifiedAt'] as Timestamp?)?.toDate(),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
     );
@@ -61,8 +76,15 @@ class UserModel {
       'address': address,
       'gstNumber': gstNumber,
       'shopLogoPath': shopLogoPath,
+      'profileImagePath': profileImagePath,
+      'photoUrl': photoUrl,
       'settings': settings.toMap(),
       'isPaid': isPaid,
+      'phoneVerified': phoneVerified,
+      'emailVerified': emailVerified,
+      'phoneVerifiedAt': phoneVerifiedAt != null
+          ? Timestamp.fromDate(phoneVerifiedAt!)
+          : null,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
     };
@@ -76,8 +98,13 @@ class UserModel {
     String? address,
     String? gstNumber,
     String? shopLogoPath,
+    String? profileImagePath,
+    String? photoUrl,
     UserSettings? settings,
     bool? isPaid,
+    bool? phoneVerified,
+    bool? emailVerified,
+    DateTime? phoneVerifiedAt,
   }) {
     return UserModel(
       id: id,
@@ -88,8 +115,13 @@ class UserModel {
       address: address ?? this.address,
       gstNumber: gstNumber ?? this.gstNumber,
       shopLogoPath: shopLogoPath ?? this.shopLogoPath,
+      profileImagePath: profileImagePath ?? this.profileImagePath,
+      photoUrl: photoUrl ?? this.photoUrl,
       settings: settings ?? this.settings,
       isPaid: isPaid ?? this.isPaid,
+      phoneVerified: phoneVerified ?? this.phoneVerified,
+      emailVerified: emailVerified ?? this.emailVerified,
+      phoneVerifiedAt: phoneVerifiedAt ?? this.phoneVerifiedAt,
       createdAt: createdAt,
       updatedAt: DateTime.now(),
     );

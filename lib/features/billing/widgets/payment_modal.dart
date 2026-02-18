@@ -14,6 +14,8 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/billing/providers/cart_provider.dart';
 
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
+import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
 import 'package:retaillite/features/reports/providers/reports_provider.dart';
 
 import 'package:retaillite/models/bill_model.dart';
@@ -52,12 +54,6 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Cart is empty')));
-      return;
-    }
-
-    // For UPI payment, create and send payment link
-    if (_selectedMethod == PaymentMethod.upi) {
-      await _processUpiPaymentLink(cart);
       return;
     }
 
@@ -111,10 +107,13 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         ref.invalidate(salesSummaryProvider);
         ref.invalidate(topProductsProvider);
         ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardBillsProvider);
 
         // Invalidate customers if Udhar payment was made
         if (_selectedMethod == PaymentMethod.udhar) {
           ref.invalidate(customersProvider);
+          ref.invalidate(sortedCustomersProvider);
+          ref.invalidate(khataStatsProvider);
         }
 
         ref.read(cartProvider.notifier).clearCart();
@@ -334,6 +333,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         ref.invalidate(salesSummaryProvider);
         ref.invalidate(topProductsProvider);
         ref.invalidate(filteredBillsProvider);
+        ref.invalidate(dashboardBillsProvider);
 
         ref.read(cartProvider.notifier).clearCart();
         Navigator.of(context).pop();
@@ -614,7 +614,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                     child: Row(
                       children: [
                         CircleAvatar(
-                          radius: 14,
+                          radius: 12,
                           backgroundColor: AppColors.primary.withValues(
                             alpha: 0.1,
                           ),
@@ -623,35 +623,31 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                                 ? customer.name[0].toUpperCase()
                                 : '?',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 10,
                               color: AppColors.primary,
                             ),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                customer.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              if (customer.balance > 0)
-                                Text(
-                                  'Balance: ${customer.balance.asCurrency}',
-                                  style: const TextStyle(
-                                    fontSize: 11,
-                                    color: AppColors.udhar,
-                                  ),
-                                ),
-                            ],
+                          child: Text(
+                            '${customer.name} • ${customer.phone}',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w500,
+                              fontSize: 13,
+                            ),
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
+                        if (customer.balance > 0)
+                          Text(
+                            customer.balance.asCurrency,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: AppColors.udhar,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
                       ],
                     ),
                   ),
@@ -745,11 +741,27 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
               const SizedBox(height: 12),
 
               // Customer selection
-              Text(
-                'Customer (Optional)',
-                style: Theme.of(context).textTheme.labelLarge,
+              Row(
+                children: [
+                  Text(
+                    'Customer (Optional)',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.person_add, size: 20),
+                    tooltip: 'Add Customer',
+                    onPressed: () {
+                      showModalBottomSheet(
+                        context: context,
+                        isScrollControlled: true,
+                        backgroundColor: Colors.transparent,
+                        builder: (context) => const AddCustomerModal(),
+                      );
+                    },
+                  ),
+                ],
               ),
-              const SizedBox(height: 4),
               _buildCustomerSelector(),
               const SizedBox(height: 12),
 
@@ -760,21 +772,25 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
               ),
               const SizedBox(height: 4),
               Row(
-                children: PaymentMethod.values.map((method) {
-                  final isSelected = _selectedMethod == method;
-                  return Expanded(
-                    child: Padding(
-                      padding: EdgeInsets.only(
-                        right: method != PaymentMethod.udhar ? 8 : 0,
-                      ),
-                      child: _PaymentMethodButton(
-                        method: method,
-                        isSelected: isSelected,
-                        onTap: () => setState(() => _selectedMethod = method),
-                      ),
-                    ),
-                  );
-                }).toList(),
+                children: PaymentMethod.values
+                    .where((m) => m != PaymentMethod.unknown)
+                    .map((method) {
+                      final isSelected = _selectedMethod == method;
+                      return Expanded(
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            right: method != PaymentMethod.udhar ? 8 : 0,
+                          ),
+                          child: _PaymentMethodButton(
+                            method: method,
+                            isSelected: isSelected,
+                            onTap: () =>
+                                setState(() => _selectedMethod = method),
+                          ),
+                        ),
+                      );
+                    })
+                    .toList(),
               ),
               const SizedBox(height: 12),
 
@@ -887,7 +903,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
 
               // Complete button
               AppButton(
-                label: '✅ COMPLETE BILL',
+                label: 'COMPLETE BILL',
                 onPressed:
                     (_selectedMethod == PaymentMethod.udhar &&
                         _selectedCustomer == null)

@@ -119,6 +119,9 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
   @override
   Widget build(BuildContext context) {
     return Container(
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.9,
+      ),
       decoration: BoxDecoration(
         color: Theme.of(context).scaffoldBackgroundColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -160,53 +163,65 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
                 ),
                 const SizedBox(height: 20),
 
-                // Name
-                AppTextField(
-                  label: 'Name *',
-                  hint: 'Customer name',
-                  controller: _nameController,
-                  textInputAction: TextInputAction.next,
-                  prefixIcon: const Icon(Icons.person_outline),
-                  validator: (v) => Validators.name(v),
-                ),
-                const SizedBox(height: 16),
+                // Scrollable form fields
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Name
+                        AppTextField(
+                          label: 'Name *',
+                          hint: 'Customer name',
+                          controller: _nameController,
+                          textInputAction: TextInputAction.next,
+                          prefixIcon: const Icon(Icons.person_outline),
+                          validator: (v) => Validators.name(v),
+                        ),
+                        const SizedBox(height: 16),
 
-                // Phone
-                PhoneTextField(controller: _phoneController),
-                const SizedBox(height: 16),
+                        // Phone
+                        PhoneTextField(controller: _phoneController),
+                        const SizedBox(height: 16),
 
-                // Address (optional)
-                AppTextField(
-                  label: 'Address (Optional)',
-                  hint: 'Customer address',
-                  controller: _addressController,
-                  textInputAction: TextInputAction.next,
-                  prefixIcon: const Icon(Icons.location_on_outlined),
-                ),
-                const SizedBox(height: 16),
+                        // Address (optional)
+                        AppTextField(
+                          label: 'Address (Optional)',
+                          hint: 'Customer address',
+                          controller: _addressController,
+                          textInputAction: TextInputAction.next,
+                          prefixIcon: const Icon(Icons.location_on_outlined),
+                        ),
+                        const SizedBox(height: 16),
 
-                // Opening balance
-                CurrencyTextField(
-                  label: 'Opening Balance (Optional)',
-                  controller: _balanceController,
-                ),
-                const SizedBox(height: 8),
+                        // Opening balance
+                        CurrencyTextField(
+                          label: 'Opening Balance (Optional)',
+                          controller: _balanceController,
+                        ),
+                        const SizedBox(height: 8),
 
-                // Owes me checkbox
-                CheckboxListTile(
-                  value: _owesMe,
-                  onChanged: (v) => setState(() => _owesMe = v ?? true),
-                  title: const Text('Customer owes me (Udhar)'),
-                  contentPadding: EdgeInsets.zero,
-                  controlAffinity: ListTileControlAffinity.leading,
-                ),
-                const SizedBox(height: 20),
+                        // Owes me checkbox
+                        CheckboxListTile(
+                          value: _owesMe,
+                          onChanged: (v) => setState(() => _owesMe = v ?? true),
+                          title: const Text('Customer owes me (Udhar)'),
+                          contentPadding: EdgeInsets.zero,
+                          controlAffinity: ListTileControlAffinity.leading,
+                        ),
+                        const SizedBox(height: 20),
 
-                // Submit button
-                AppButton(
-                  label: _isEditMode ? '✅ UPDATE CUSTOMER' : '✅ ADD CUSTOMER',
-                  onPressed: _submit,
-                  isLoading: _isLoading,
+                        // Submit button
+                        AppButton(
+                          label: _isEditMode
+                              ? 'UPDATE CUSTOMER'
+                              : 'ADD CUSTOMER',
+                          onPressed: _submit,
+                          isLoading: _isLoading,
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),

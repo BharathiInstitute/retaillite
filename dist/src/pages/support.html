@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Support — TULASI STORES</title>
+  <meta name="description" content="Get help with TULASI STORES. Guides, FAQs, troubleshooting, and contact support.">
+  <meta property="og:title" content="Support — TULASI STORES">
+  <meta property="og:description" content="Guides, FAQs, troubleshooting, and contact support for TULASI STORES.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="../../assets/images/app_icon.png?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../favicon.png?v=2">
+  <link rel="apple-touch-icon" href="../../assets/images/app_icon.png?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css?v=3">
+
+  <style>
+    .guide-card {
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .guide-card:hover {
+      border-color: var(--color-primary);
+      transform: translateY(-2px);
+    }
+
+    .guide-step {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .guide-step-num {
+      width: 2rem;
+      height: 2rem;
+      background: var(--color-primary);
+      color: white;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.8125rem;
+      flex-shrink: 0;
+    }
+
+    .guide-step-content h4 {
+      margin-bottom: 0.25rem;
+    }
+
+    .guide-step-content p {
+      font-size: 0.875rem;
+      color: var(--color-text-light);
+    }
+
+    .guide-detail {
+      display: none;
+    }
+
+    .guide-detail.active {
+      display: block;
+    }
+
+    .faq-category {
+      margin-bottom: 2rem;
+    }
+
+    .faq-category h3 {
+      font-size: 1.125rem;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .contact-form {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+
+    .form-group {
+      margin-bottom: 1.25rem;
+    }
+
+    .form-group label {
+      display: block;
+      font-weight: 600;
+      font-size: 0.875rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .form-group input,
+    .form-group textarea,
+    .form-group select {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid var(--color-border);
+      border-radius: 0.5rem;
+      font: inherit;
+      font-size: 0.9375rem;
+      background: var(--color-surface);
+      color: var(--color-text);
+      transition: border-color 0.2s;
+    }
+
+    .form-group input:focus,
+    .form-group textarea:focus,
+    .form-group select:focus {
+      outline: none;
+      border-color: var(--color-primary);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 120px;
+    }
+
+    .troubleshoot-card {
+      border-left: 3px solid var(--color-warning);
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a href="../../index.html" class="navbar-logo"><img src="../../assets/images/app_icon.png?v=2" alt="Tulasi Stores" width="32"
+          height="32"> Tulasi Stores</a>
+      <ul class="navbar-links">
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+        <li><a href="screenshots.html">Screenshots</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="support.html" class="active">Support</a></li>
+      </ul>
+      <div class="navbar-cta"><a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right:0.5rem;">Open App</a><a
+          href="download.html" class="btn btn-primary btn-sm">Download Now</a></div>
+      <button class="navbar-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+    <div class="navbar-mobile">
+      <a href="../../index.html">Home</a><a href="features.html">Features</a>
+      <a href="screenshots.html">Screenshots</a><a href="about.html">About</a><a href="support.html">Support</a>
+      <a href="download.html" style="color:var(--color-primary);font-weight:700;">Download Now</a>
+      <a href="https://stores.tulasierp.com/app/" style="color:var(--color-primary);font-weight:700;">Open App →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="section-gradient" style="padding-top: 7rem;">
+    <div class="container text-center">
+      <div class="badge badge-white" style="margin-bottom: 1rem;">🎯 Help Center</div>
+      <h1>How Can We Help?</h1>
+      <p class="section-subtitle">Guides, tutorials, FAQs — everything you need to get the most from TULASI STORES.</p>
+    </div>
+  </section>
+
+  <!-- GETTING STARTED -->
+  <section class="section" id="getting-started">
+    <div class="container">
+      <h2 class="text-center animate-on-scroll">Getting Started</h2>
+      <p class="section-subtitle text-center">Set up your shop in under 5 minutes.</p>
+
+      <div style="max-width: 700px; margin: 3rem auto 0;">
+        <div class="guide-step animate-on-scroll">
+          <div class="guide-step-num">1</div>
+          <div class="guide-step-content">
+            <h4>Download & Install</h4>
+            <p>Download TULASI STORES from Google Play Store or get the Windows installer. Open the app.</p>
+          </div>
+        </div>
+        <div class="guide-step animate-on-scroll">
+          <div class="guide-step-num">2</div>
+          <div class="guide-step-content">
+            <h4>Create Your Account</h4>
+            <p>Sign up with your phone number or email. Verify via OTP. Choose your language — English, Hindi, or
+              Telugu.</p>
+          </div>
+        </div>
+        <div class="guide-step animate-on-scroll">
+          <div class="guide-step-num">3</div>
+          <div class="guide-step-content">
+            <h4>Set Up Your Shop</h4>
+            <p>Enter your shop name, address, and GST number (optional). Upload your logo. Configure bill format in
+              Settings → Billing.</p>
+          </div>
+        </div>
+        <div class="guide-step animate-on-scroll">
+          <div class="guide-step-num">4</div>
+          <div class="guide-step-content">
+            <h4>Add Products & Start Billing</h4>
+            <p>Add products manually or scan barcodes. Set prices, stock quantities, and units. Tap "New Bill" to create
+              your first bill!</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FEATURE GUIDES -->
+  <section class="section-alt" id="guides">
+    <div class="container">
+      <h2 class="text-center animate-on-scroll">Feature Guides</h2>
+      <p class="section-subtitle text-center">Tap a topic to learn more.</p>
+
+      <div class="grid-3 mt-5">
+        <!-- Billing -->
+        <div class="card guide-card animate-on-scroll" data-guide="billing">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📱</div>
+          <h4>Billing &amp; POS</h4>
+          <p>Create bills, add products by name/barcode/voice, apply discounts, accept payments.</p>
+        </div>
+        <!-- Products -->
+        <div class="card guide-card animate-on-scroll" data-guide="products">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📦</div>
+          <h4>Products &amp; Inventory</h4>
+          <p>Add products, manage stock, set low-stock alerts, scan barcodes, organize by category.</p>
+        </div>
+        <!-- Khata -->
+        <div class="card guide-card animate-on-scroll" data-guide="khata">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📒</div>
+          <h4>Khata &amp; Udhar</h4>
+          <p>Track credit (udhar), manage customer balances, send payment reminders via WhatsApp.</p>
+        </div>
+        <!-- Reports -->
+        <div class="card guide-card animate-on-scroll" data-guide="reports">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">📊</div>
+          <h4>Sales Reports</h4>
+          <p>Daily, weekly, monthly reports. Sales charts, top products, payment method breakdown.</p>
+        </div>
+        <!-- Printer -->
+        <div class="card guide-card animate-on-scroll" data-guide="printer">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">🖨️</div>
+          <h4>Thermal Printer</h4>
+          <p>Connect Bluetooth thermal printer. Print receipts, configure paper size and format.</p>
+        </div>
+        <!-- Settings -->
+        <div class="card guide-card animate-on-scroll" data-guide="settings">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">⚙️</div>
+          <h4>Settings</h4>
+          <p>Configure shop details, billing options, theme, language, printer, and account settings.</p>
+        </div>
+        <!-- Payments -->
+        <div class="card guide-card animate-on-scroll" data-guide="payments">
+          <div style="font-size: 2rem; margin-bottom: 0.5rem;">💳</div>
+          <h4>Payments</h4>
+          <p>Accept cash, UPI, credit, and online payments via Razorpay. Split payments too.</p>
+        </div>
+      </div>
+
+      <!-- GUIDE DETAILS -->
+      <div id="guide-details" style="margin-top: 3rem;">
+        <div class="guide-detail card" id="guide-billing">
+          <h3>📱 Billing Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Start a New Bill</h4>
+              <p>Tap the "+" or "New Bill" button from the home screen. A new blank bill is created.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Add Products</h4>
+              <p>Search by name, scan barcode with camera, or use voice input (🎤). Tap a product to add it. Adjust
+                quantity with +/- buttons.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Apply Discount</h4>
+              <p>Tap the discount field. Enter percentage or flat amount. Discount is applied to the total.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Choose Payment</h4>
+              <p>Select Cash, UPI, Credit (Udhar), or Online (Razorpay). For cash, enter the amount received to see
+                change.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">5</div>
+            <div class="guide-step-content">
+              <h4>Save &amp; Print</h4>
+              <p>Tap "Save Bill". Optionally print via Bluetooth thermal printer or share the bill as image/PDF on
+                WhatsApp.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-products">
+          <h3>📦 Products Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Add a Product</h4>
+              <p>Go to Products tab → Tap "Add Product". Enter name, price, unit (kg, piece, litre, etc.), stock
+                quantity, and category.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Scan Barcode</h4>
+              <p>Tap the barcode icon to scan a product barcode. If the product exists, it opens. If not, creates a new
+                product with that barcode.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Manage Stock</h4>
+              <p>Stock is automatically reduced when you create a bill. You can also manually adjust stock from the
+                product edit screen.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Low-Stock Alerts</h4>
+              <p>Set a minimum stock level for each product. When stock goes below this level, you'll see a warning
+                icon.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-khata">
+          <h3>📒 Khata Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Add a Customer</h4>
+              <p>Go to Customers tab → "Add Customer". Enter name, phone number, and optional address.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Create Udhar Bill</h4>
+              <p>When creating a bill, select payment method as "Credit" and choose the customer. The amount is
+                automatically added to their khata.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Record Payment</h4>
+              <p>Open a customer's khata → Tap "Record Payment". Enter the amount received. Balance updates
+                automatically.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Send Reminder</h4>
+              <p>Tap the WhatsApp icon next to a customer to send a payment reminder with their balance details.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-reports">
+          <h3>📊 Reports Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>View Dashboard</h4>
+              <p>The home screen shows today's sales summary — total sales, number of bills, and top products.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Sales Reports</h4>
+              <p>Go to Reports tab. View daily, weekly, or monthly sales with interactive charts. See trends and growth.
+              </p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Payment Breakdown</h4>
+              <p>See how much was received via Cash, UPI, Credit, and Online. Identify popular payment methods.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Export Data</h4>
+              <p>Export reports as CSV or PDF for accounting. Share with your CA directly from the app.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-printer">
+          <h3>🖨️ Thermal Printer Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Turn On Printer</h4>
+              <p>Power on your Bluetooth thermal printer. Make sure it has paper loaded.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Pair via Bluetooth</h4>
+              <p>Go to your phone's Bluetooth settings → Pair the printer. Note the printer name.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Connect in Tulasi Stores</h4>
+              <p>Go to Settings → Hardware → Bluetooth Printer. Select your printer from the list. Tap "Test Print" to
+                verify.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Configure Receipt</h4>
+              <p>In Settings → Billing, customize receipt layout: paper size (58mm/80mm), show/hide shop logo, GST
+                details, and footer message.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-settings">
+          <h3>⚙️ Settings Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Shop Details</h4>
+              <p>Settings → Shop Info: Edit shop name, address, phone, GST number, and logo.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>Billing Settings</h4>
+              <p>Configure bill prefix, auto-numbering, paper size, show/hide fields, and default payment method.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Theme &amp; Language</h4>
+              <p>Choose Light or Dark theme. Switch language between English, Hindi, and Telugu. Changes apply
+                instantly.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Account</h4>
+              <p>Manage your account settings or sign out.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="guide-detail card" id="guide-payments">
+          <h3>💳 Payments Guide</h3>
+          <div class="guide-step">
+            <div class="guide-step-num">1</div>
+            <div class="guide-step-content">
+              <h4>Cash Payment</h4>
+              <p>Select "Cash" at checkout. Enter the amount received. The app calculates change automatically.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">2</div>
+            <div class="guide-step-content">
+              <h4>UPI Payment</h4>
+              <p>Select "UPI" at checkout. The bill is marked as UPI paid. Great for tracking digital payments.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">3</div>
+            <div class="guide-step-content">
+              <h4>Credit / Udhar</h4>
+              <p>Select "Credit" and choose customer. Amount is added to their khata balance for later collection.</p>
+            </div>
+          </div>
+          <div class="guide-step">
+            <div class="guide-step-num">4</div>
+            <div class="guide-step-content">
+              <h4>Online via Razorpay</h4>
+              <p>For business users. Customer pays online via UPI, debit/credit card, or net banking through Razorpay's
+                secure gateway.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="section" id="faq">
+    <div class="container">
+      <h2 class="text-center animate-on-scroll">Frequently Asked Questions</h2>
+      <p class="section-subtitle text-center">Quick answers to common questions.</p>
+
+      <div style="max-width: 750px; margin: 3rem auto 0;">
+        <!-- General -->
+        <div class="faq-category">
+          <h3>🏪 General</h3>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Is TULASI STORES really free?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes! TULASI STORES is completely free with no ads, ever. Just download and start billing.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Which devices does it work on?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Android (5.0+), Windows (10+), and any modern web browser. One account works on all your devices.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Does it work offline?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Absolutely! Tulasi Stores is built offline-first. Create bills, manage inventory, and record transactions
+                without internet. Data syncs automatically when you're back online.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Is my data safe?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes. We use Firebase (Google Cloud) with encrypted storage, Firebase Authentication, and Firebase App
+                Check for security. Your data is backed up in real-time to the cloud.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Billing -->
+        <div class="faq-category">
+          <h3>🧾 Billing</h3>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Can I print bills?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes! Connect any Bluetooth thermal printer (58mm or 80mm). You can also share bills as images on
+                WhatsApp or save as PDF.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Does it support GST?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes. Add your GSTIN in Settings → Shop Info. GST is automatically calculated and shown on bills.
+                Supports CGST/SGST and IGST formats.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Can I apply discounts?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes. You can apply percentage or flat-amount discounts on individual items or the total bill.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>How do I scan barcodes?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Tap the barcode icon on the billing screen. Point your phone's camera at the barcode. If the product
+                exists, it's added to the bill. If not, you can create a new product with that barcode.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Inventory -->
+        <div class="faq-category">
+          <h3>📦 Inventory</h3>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>How many products can I add?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Each product can have name, price, stock, unit,
+                barcode, category, and image.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Does stock update automatically?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes. Every time you create a bill, the stock quantity for each product in the bill is automatically
+                reduced.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Can I get low-stock alerts?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes. Set a minimum stock level for each product. When stock reaches that level, you'll see a warning
+                indicator so you can reorder in time.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Khata -->
+        <div class="faq-category">
+          <h3>📒 Khata / Udhar</h3>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>What is Khata?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Khata is the traditional Indian credit ledger system. Tulasi Stores digitizes it — track who owes you money,
+                record partial payments, and see complete transaction history for each customer.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>Can I send payment reminders?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Yes! Tap the WhatsApp icon on any customer's khata to send a friendly payment reminder with their
+                current balance details.</p>
+            </div>
+          </div>
+          <div class="faq-item animate-on-scroll">
+            <div class="faq-question"><span>How many customers can I add?</span><span class="faq-icon">+</span></div>
+            <div class="faq-answer">
+              <p>Each customer has name, phone, address, and
+                complete transaction history.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TROUBLESHOOTING -->
+  <section class="section-alt" id="troubleshoot">
+    <div class="container">
+      <h2 class="text-center animate-on-scroll">Troubleshooting</h2>
+      <p class="section-subtitle text-center">Common issues and how to fix them.</p>
+
+      <div class="grid-2 mt-5" style="max-width: 900px; margin-left: auto; margin-right: auto;">
+        <div class="card troubleshoot-card animate-on-scroll">
+          <h4>🖨️ Printer not connecting</h4>
+          <ul style="font-size: 0.875rem; color: var(--color-text-light); padding-left: 1.25rem; margin-top: 0.5rem;">
+            <li>Make sure printer is powered on with paper loaded</li>
+            <li>Check Bluetooth is enabled on your phone</li>
+            <li>Pair the printer in phone's Bluetooth settings first</li>
+            <li>In Tulasi Stores, go to Settings → Hardware → re-select printer</li>
+            <li>Try turning printer off and on again</li>
+          </ul>
+        </div>
+        <div class="card troubleshoot-card animate-on-scroll">
+          <h4>📷 Barcode scanner not working</h4>
+          <ul style="font-size: 0.875rem; color: var(--color-text-light); padding-left: 1.25rem; margin-top: 0.5rem;">
+            <li>Grant camera permission when prompted</li>
+            <li>Ensure good lighting on the barcode</li>
+            <li>Hold phone steady, 6-8 inches from barcode</li>
+            <li>Clean your camera lens</li>
+            <li>Try restarting the app</li>
+          </ul>
+        </div>
+        <div class="card troubleshoot-card animate-on-scroll">
+          <h4>🔄 Data not syncing</h4>
+          <ul style="font-size: 0.875rem; color: var(--color-text-light); padding-left: 1.25rem; margin-top: 0.5rem;">
+            <li>Check your internet connection</li>
+            <li>Tulasi Stores works offline — data auto-syncs when online</li>
+            <li>Pull down to refresh on the home screen</li>
+            <li>Sign out and sign back in</li>
+            <li>Update to the latest app version</li>
+          </ul>
+        </div>
+        <div class="card troubleshoot-card animate-on-scroll">
+          <h4>🐛 App crashing or slow</h4>
+          <ul style="font-size: 0.875rem; color: var(--color-text-light); padding-left: 1.25rem; margin-top: 0.5rem;">
+            <li>Update to the latest version</li>
+            <li>Clear app cache (Settings → Apps → Tulasi Stores → Clear Cache)</li>
+            <li>Ensure enough free storage space (100MB+)</li>
+            <li>Restart your device</li>
+            <li>Contact support with crash details</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- CONTACT FORM -->
+  <section class="section" id="contact">
+    <div class="container">
+      <h2 class="text-center animate-on-scroll">Still Need Help?</h2>
+      <p class="section-subtitle text-center">Send us a message and we'll get back to you within 24 hours.</p>
+
+      <div class="contact-form mt-5 animate-on-scroll">
+        <form id="support-form"
+          onsubmit="event.preventDefault(); alert('Thank you! We will get back to you within 24 hours.');">
+          <div class="form-group">
+            <label for="name">Your Name *</label>
+            <input type="text" id="name" name="name" placeholder="Enter your name" required>
+          </div>
+          <div class="form-group">
+            <label for="phone">Phone / WhatsApp *</label>
+            <input type="tel" id="phone" name="phone" placeholder="+91 98765 43210" required>
+          </div>
+          <div class="form-group">
+            <label for="category">Category</label>
+            <select id="category" name="category">
+              <option value="">Select a topic</option>
+              <option value="billing">Billing & POS</option>
+              <option value="inventory">Products & Inventory</option>
+              <option value="khata">Khata & Customers</option>
+              <option value="printer">Thermal Printer</option>
+              <option value="payment">Payments</option>
+              <option value="account">Account & Login</option>
+              <option value="bug">Bug Report</option>
+              <option value="feature">Feature Request</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="message">Describe Your Issue *</label>
+            <textarea id="message" name="message"
+              placeholder="Tell us what happened, what you expected, and any error messages you see..."
+              required></textarea>
+          </div>
+          <button type="submit" class="btn btn-primary btn-lg" style="width: 100%;">Send Message</button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="section-gradient">
+    <div class="container text-center">
+      <h2>Ready to Get Started?</h2>
+      <p class="section-subtitle">Download TULASI STORES and set up your shop in 5 minutes.</p>
+      <div class="btn-group mt-4" style="justify-content: center;">
+        <a href="download.html" class="btn btn-white btn-lg">📥 Download Now</a>
+        <a href="features.html" class="btn btn-ghost btn-lg"
+          style="color: white; border-color: rgba(255,255,255,0.3);">See Features</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="../../index.html" class="navbar-logo" style="color:white;"><img
+              src="../../assets/images/app_icon.png?v=2" alt="Tulasi Stores" width="32" height="32" style="border-radius:6px;"> Tulasi Stores</a>
+          <p>भारत का सबसे आसान बिलिंग ऐप<br>India's Easiest Billing App</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="features.html">Features</a></li>
+            <li><a href="screenshots.html">Screenshots</a></li>
+            <li><a href="download.html">Download</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="about.html">About</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="support.html">Help Center</a></li>
+            <li><a href="support.html#faq">FAQ</a></li>
+            <li><a href="support.html#contact">Contact</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 TULASI STORES. All rights reserved. Made with ❤️ in India.</p>
+        <div class="footer-social"><a href="#">𝕏</a><a href="#">📷</a><a href="#">▶</a><a href="#">💬</a></div>
+      </div>
+    </div>
+  </footer>
+  <button class="scroll-top" aria-label="Scroll to top">↑</button>
+  <script src="../js/main.js?v=3"></script>
+  <script>
+    // Guide card toggle
+    document.querySelectorAll('.guide-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const guideId = card.getAttribute('data-guide');
+        const detail = document.getElementById('guide-' + guideId);
+        if (detail) {
+          document.querySelectorAll('.guide-detail').forEach(d => d.classList.remove('active'));
+          detail.classList.add('active');
+          detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>

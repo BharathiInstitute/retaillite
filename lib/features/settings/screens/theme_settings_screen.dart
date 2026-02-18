@@ -123,9 +123,9 @@ class ThemeSettingsScreen extends ConsumerWidget {
                     Expanded(
                       child: Slider(
                         value: settings.fontSizeScale,
-                        min: 0.8,
-                        max: 1.4,
-                        divisions: 6,
+                        min: 0.85,
+                        max: 1.15,
+                        divisions: 2,
                         label: _getFontSizeLabel(settings.fontSizeScale),
                         onChanged: (v) => notifier.setFontSizeScale(v),
                       ),
@@ -201,11 +201,8 @@ class ThemeSettingsScreen extends ConsumerWidget {
   }
 
   String _getFontSizeLabel(double scale) {
-    if (scale <= 0.85) return 'Small';
-    if (scale <= 0.95) return 'Compact';
-    if (scale <= 1.05) return 'Normal';
-    if (scale <= 1.15) return 'Large';
-    if (scale <= 1.25) return 'Larger';
-    return 'Extra Large';
+    if (scale <= 0.90) return 'Small';
+    if (scale <= 1.05) return 'Compact';
+    return 'Large';
   }
 }

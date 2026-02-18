@@ -1,13 +1,16 @@
-/// Register screen for new users
+/// Register screen — Google Sign-In (primary) or Email/Password (secondary)
+/// Phone verification happens at Shop Setup (for both Google & email users)
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
-import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_layout.dart';
+import 'package:retaillite/features/auth/widgets/auth_social_section.dart';
+import 'package:retaillite/features/auth/widgets/password_strength_indicator.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
@@ -18,52 +21,231 @@ class RegisterScreen extends ConsumerStatefulWidget {
 
 class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _emailPhoneController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _otpController = TextEditingController();
+
   bool _isLoading = false;
+  bool _isGoogleLoading = false;
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  bool _useEmail = true;
+  bool _showEmailForm = false;
+  String _passwordText = '';
+
+  // OTP inline state
+  bool _otpSent = false;
+  bool _emailVerified = false;
+  bool _isSendingOtp = false;
+  bool _isVerifyingOtp = false;
+  bool _isResendingOtp = false;
+  String? _otpError;
 
   @override
   void dispose() {
-    _emailPhoneController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _otpController.dispose();
     super.dispose();
   }
 
+  Future<void> _handleGoogleRegister() async {
+    setState(() => _isGoogleLoading = true);
+    ref.read(authNotifierProvider.notifier).clearError();
+
+    try {
+      final success = await ref
+          .read(authNotifierProvider.notifier)
+          .signInWithGoogle();
+
+      if (success && mounted) {
+        context.go('/shop-setup');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isGoogleLoading = false);
+      }
+    }
+  }
+
+  /// Send OTP to verify email
+  Future<void> _handleSendOtp() async {
+    final name = _nameController.text.trim();
+    final email = _emailController.text.trim();
+
+    if (name.isEmpty || name.length < 2) {
+      setState(() => _otpError = 'Please enter a valid name first');
+      return;
+    }
+    if (email.isEmpty || !RegExp(r'^[^@]+@[^@]+\.[^@]+').hasMatch(email)) {
+      setState(() => _otpError = 'Please enter a valid email first');
+      return;
+    }
+
+    setState(() {
+      _isSendingOtp = true;
+      _otpError = null;
+    });
+    ref.read(authNotifierProvider.notifier).clearError();
+
+    try {
+      // Check if email is already used
+      try {
+        final methods =
+            await ref
+                .read(authNotifierProvider.notifier)
+                .getSignInMethodsForEmail(email) ??
+            [];
+
+        if (!mounted) return;
+
+        if (methods.isNotEmpty) {
+          if (methods.contains('google.com')) {
+            setState(
+              () => _otpError =
+                  'This email is linked to Google. Use "Continue with Google".',
+            );
+          } else {
+            setState(
+              () =>
+                  _otpError = 'Account already exists. Please Sign In instead.',
+            );
+          }
+          return;
+        }
+      } catch (e) {
+        debugPrint('🔐 Error checking auth provider: $e');
+        // Continue even if check fails
+      }
+
+      // Send OTP
+      final sent = await ref
+          .read(authNotifierProvider.notifier)
+          .sendRegistrationOTP(email);
+
+      if (!mounted) return;
+
+      if (sent) {
+        setState(() {
+          _otpSent = true;
+          _otpError = null;
+        });
+      } else {
+        setState(() {
+          _otpError =
+              ref.read(authNotifierProvider).error ??
+              'Could not send code. Please try again.';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSendingOtp = false);
+      }
+    }
+  }
+
+  /// Verify the entered OTP
+  Future<void> _handleVerifyOtp() async {
+    final otp = _otpController.text.trim();
+    if (otp.length != 6) {
+      setState(() => _otpError = 'Enter the 6-digit code');
+      return;
+    }
+
+    setState(() {
+      _isVerifyingOtp = true;
+      _otpError = null;
+    });
+
+    try {
+      final email = _emailController.text.trim();
+      final ok = await ref
+          .read(authNotifierProvider.notifier)
+          .verifyRegistrationOTP(email, otp);
+
+      if (!mounted) return;
+
+      if (ok) {
+        setState(() {
+          _emailVerified = true;
+          _otpError = null;
+        });
+      } else {
+        setState(() {
+          _otpError = ref.read(authNotifierProvider).error ?? 'Invalid code';
+        });
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isVerifyingOtp = false);
+      }
+    }
+  }
+
+  /// Resend OTP
+  Future<void> _handleResendOtp() async {
+    setState(() {
+      _isResendingOtp = true;
+      _otpError = null;
+    });
+
+    try {
+      final email = _emailController.text.trim();
+      final sent = await ref
+          .read(authNotifierProvider.notifier)
+          .sendRegistrationOTP(email);
+
+      if (!mounted) return;
+
+      if (sent) {
+        _otpController.clear();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('New code sent! ✉️'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      } else {
+        setState(() => _otpError = 'Failed to resend. Try again.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isResendingOtp = false);
+      }
+    }
+  }
+
+  /// Create account (only after email is verified)
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
+    if (!_emailVerified) return;
 
     setState(() => _isLoading = true);
     ref.read(authNotifierProvider.notifier).clearError();
 
     try {
-      // Check if registering from demo mode
-      final isDemoMode = ref.read(isDemoModeProvider);
-      final keepDemoData =
-          OfflineStorageService.getSetting<bool>(
-            'keep_demo_data',
-            defaultValue: false,
-          ) ??
-          false;
-
-      // Clear demo data if user doesn't want to keep it
-      if (isDemoMode && !keepDemoData) {
-        await OfflineStorageService.clearDemoData();
-      }
-
       final success = await ref
           .read(authNotifierProvider.notifier)
           .register(
-            email: _useEmail ? _emailPhoneController.text.trim() : null,
-            phone: !_useEmail ? _emailPhoneController.text.trim() : null,
+            email: _emailController.text.trim(),
             password: _passwordController.text,
+            name: _nameController.text.trim(),
+            emailVerified: true,
           );
 
       if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Account created & verified! ✅'),
+            backgroundColor: Colors.green,
+          ),
+        );
         context.go('/shop-setup');
       }
     } finally {
@@ -73,421 +255,477 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     }
   }
 
-  // Password strength calculation
-  double _getPasswordStrength(String password) {
-    if (password.isEmpty) return 0;
-    double strength = 0;
-    if (password.length >= 6) strength += 0.2;
-    if (password.length >= 8) strength += 0.2;
-    if (password.contains(RegExp(r'[A-Z]'))) strength += 0.2;
-    if (password.contains(RegExp(r'[0-9]'))) strength += 0.2;
-    if (password.contains(RegExp(r'[!@#$%^&*(),.?":{}|<>]'))) strength += 0.2;
-    return strength;
-  }
-
-  Color _getStrengthColor(double strength) {
-    if (strength <= 0.2) return Colors.red;
-    if (strength <= 0.4) return Colors.orange;
-    if (strength <= 0.6) return Colors.yellow.shade700;
-    if (strength <= 0.8) return Colors.lightGreen;
-    return AppColors.success;
-  }
-
-  String _getStrengthText(double strength) {
-    if (strength <= 0.2) return 'Weak';
-    if (strength <= 0.4) return 'Fair';
-    if (strength <= 0.6) return 'Good';
-    if (strength <= 0.8) return 'Strong';
-    return 'Very Strong';
-  }
-
   @override
   Widget build(BuildContext context) {
     final error = ref.watch(authErrorProvider);
-    final passwordStrength = _getPasswordStrength(_passwordController.text);
 
     return AuthLayout(
       title: 'Create Account',
-      subtitle: 'Start your journey with LITE billing',
-      icon: Icons.person_add,
+      subtitle: 'Get started with RetailLite',
+      icon: Icons.person_add_outlined,
       onBack: () => context.pop(),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Toggle Email/Phone
-            Container(
-              decoration: BoxDecoration(
-                color: AppColors.divider,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              padding: const EdgeInsets.all(4),
-              child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Error message
+          if (error != null) ...[
+            _buildErrorBox(error),
+            const SizedBox(height: AppSizes.md),
+          ],
+
+          // ── Google + OR + Email Toggle ──
+          AuthSocialSection(
+            isGoogleLoading: _isGoogleLoading,
+            isOtherLoading: _isLoading,
+            showEmailForm: _showEmailForm,
+            emailButtonLabel: 'Register with Email',
+            onGooglePressed: _handleGoogleRegister,
+            onEmailToggle: () => setState(() => _showEmailForm = true),
+          ),
+
+          // ── Email Registration Form ──
+          if (_showEmailForm)
+            Form(
+              key: _formKey,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() {
-                        _useEmail = true;
-                        _emailPhoneController.clear();
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: _useEmail ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: _useEmail
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ]
-                              : null,
+                  // Full Name
+                  TextFormField(
+                    controller: _nameController,
+                    textInputAction: TextInputAction.next,
+                    textCapitalization: TextCapitalization.words,
+                    enabled: !_emailVerified,
+                    decoration: const InputDecoration(
+                      labelText: 'Full Name',
+                      hintText: 'Enter your full name',
+                      prefixIcon: Icon(Icons.person_outlined),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Name is required';
+                      }
+                      if (value.trim().length < 2) {
+                        return 'Name must be at least 2 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSizes.md),
+
+                  // Email
+                  TextFormField(
+                    controller: _emailController,
+                    keyboardType: TextInputType.emailAddress,
+                    textInputAction: TextInputAction.next,
+                    enabled: !_otpSent,
+                    decoration: InputDecoration(
+                      labelText: 'Email',
+                      hintText: 'Enter your email',
+                      prefixIcon: const Icon(Icons.email_outlined),
+                      suffixIcon: _emailVerified
+                          ? const Icon(Icons.check_circle, color: Colors.green)
+                          : null,
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Email is required';
+                      }
+                      if (!RegExp(
+                        r'^[^@]+@[^@]+\.[^@]+',
+                      ).hasMatch(value.trim())) {
+                        return 'Enter a valid email';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSizes.sm),
+
+                  // ── Verify Email Button (before OTP sent) ──
+                  if (!_otpSent && !_emailVerified)
+                    SizedBox(
+                      height: 44,
+                      child: OutlinedButton.icon(
+                        onPressed: _isSendingOtp ? null : _handleSendOtp,
+                        icon: _isSendingOtp
+                            ? const SizedBox(
+                                height: 18,
+                                width: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.send, size: 18),
+                        label: Text(
+                          _isSendingOtp ? 'Sending code...' : 'Verify Email',
                         ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.email_outlined,
-                              size: 18,
-                              color: _useEmail
-                                  ? AppColors.primary
-                                  : AppColors.textSecondary,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.green.shade700,
+                          side: BorderSide(color: Colors.green.shade300),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(
+                              AppSizes.radiusMd,
                             ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Email',
-                              style: TextStyle(
-                                fontWeight: _useEmail
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                color: _useEmail
-                                    ? AppColors.textPrimary
-                                    : AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                  // ── OTP Input Section (after OTP sent, before verified) ──
+                  if (_otpSent && !_emailVerified) ...[
+                    const SizedBox(height: AppSizes.sm),
+                    Container(
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+                        border: Border.all(
+                          color: Colors.blue.withValues(alpha: 0.2),
+                        ),
+                      ),
+                      child: Column(
+                        children: [
+                          Text(
+                            'Enter the 6-digit code sent to\n${_emailController.text.trim()}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade700,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          // OTP Input
+                          TextField(
+                            controller: _otpController,
+                            keyboardType: TextInputType.number,
+                            maxLength: 6,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 26,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 8,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: '000000',
+                              counterText: '',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(12),
+                                borderSide: BorderSide(
+                                  color: Colors.green.shade600,
+                                  width: 2,
+                                ),
+                              ),
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 14,
                               ),
                             ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() {
-                        _useEmail = false;
-                        _emailPhoneController.clear();
-                      }),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        decoration: BoxDecoration(
-                          color: !_useEmail ? Colors.white : Colors.transparent,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: !_useEmail
-                              ? [
-                                  BoxShadow(
-                                    color: Colors.black.withValues(alpha: 0.05),
-                                    blurRadius: 4,
-                                    offset: const Offset(0, 2),
-                                  ),
-                                ]
-                              : null,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.phone_outlined,
-                              size: 18,
-                              color: !_useEmail
-                                  ? AppColors.primary
-                                  : AppColors.textSecondary,
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Phone',
-                              style: TextStyle(
-                                fontWeight: !_useEmail
-                                    ? FontWeight.w600
-                                    : FontWeight.normal,
-                                color: !_useEmail
-                                    ? AppColors.textPrimary
-                                    : AppColors.textSecondary,
+                          ),
+                          const SizedBox(height: 12),
+                          // Verify + Resend buttons
+                          Row(
+                            children: [
+                              // Resend
+                              TextButton.icon(
+                                onPressed: _isResendingOtp
+                                    ? null
+                                    : _handleResendOtp,
+                                icon: _isResendingOtp
+                                    ? const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                        ),
+                                      )
+                                    : const Icon(Icons.refresh, size: 16),
+                                label: const Text('Resend'),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: Colors.grey.shade600,
+                                ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 24),
-
-            // Email/Phone field
-            TextFormField(
-              controller: _emailPhoneController,
-              decoration: InputDecoration(
-                labelText: _useEmail ? 'Email Address' : 'Phone Number',
-                hintText: _useEmail
-                    ? 'you@example.com'
-                    : 'Enter 10-digit number',
-                prefixIcon: Icon(
-                  _useEmail ? Icons.email_outlined : Icons.phone_outlined,
-                  color: AppColors.textSecondary,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.primary, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              keyboardType: _useEmail
-                  ? TextInputType.emailAddress
-                  : TextInputType.phone,
-              validator: (value) {
-                if (value == null || value.trim().isEmpty) {
-                  return _useEmail
-                      ? 'Please enter your email'
-                      : 'Please enter your phone number';
-                }
-                if (_useEmail && !value.contains('@')) {
-                  return 'Please enter a valid email';
-                }
-                if (!_useEmail && value.length < 10) {
-                  return 'Please enter a valid phone number';
-                }
-                return null;
-              },
-            ),
-            const SizedBox(height: 16),
-
-            // Password field
-            TextFormField(
-              controller: _passwordController,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                hintText: 'Create a strong password',
-                prefixIcon: const Icon(
-                  Icons.lock_outline,
-                  color: AppColors.textSecondary,
-                ),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  onPressed: () {
-                    setState(() => _obscurePassword = !_obscurePassword);
-                  },
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.primary, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              obscureText: _obscurePassword,
-              onChanged: (value) => setState(() {}),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter a password';
-                }
-                if (value.length < 6) {
-                  return 'Password must be at least 6 characters';
-                }
-                return null;
-              },
-            ),
-
-            // Password strength indicator
-            if (_passwordController.text.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: passwordStrength,
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: AlwaysStoppedAnimation(
-                          _getStrengthColor(passwordStrength),
-                        ),
-                        minHeight: 4,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Text(
-                    _getStrengthText(passwordStrength),
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: _getStrengthColor(passwordStrength),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-            const SizedBox(height: 16),
-
-            // Confirm password field
-            TextFormField(
-              controller: _confirmPasswordController,
-              decoration: InputDecoration(
-                labelText: 'Confirm Password',
-                hintText: 'Re-enter your password',
-                prefixIcon: const Icon(
-                  Icons.lock_outline,
-                  color: AppColors.textSecondary,
-                ),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscureConfirmPassword
-                        ? Icons.visibility_outlined
-                        : Icons.visibility_off_outlined,
-                    color: AppColors.textSecondary,
-                  ),
-                  onPressed: () {
-                    setState(
-                      () => _obscureConfirmPassword = !_obscureConfirmPassword,
-                    );
-                  },
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: AppColors.border),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(color: AppColors.primary, width: 2),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-              ),
-              obscureText: _obscureConfirmPassword,
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please confirm your password';
-                }
-                if (value != _passwordController.text) {
-                  return 'Passwords do not match';
-                }
-                return null;
-              },
-            ),
-
-            // Error message
-            if (error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppColors.error.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: AppColors.error.withValues(alpha: 0.3),
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.error_outline, color: AppColors.error, size: 20),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Text(
-                        error,
-                        style: const TextStyle(color: AppColors.error, fontSize: 14),
+                              const Spacer(),
+                              // Verify button
+                              FilledButton.icon(
+                                onPressed: _isVerifyingOtp
+                                    ? null
+                                    : _handleVerifyOtp,
+                                icon: _isVerifyingOtp
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(Icons.verified, size: 18),
+                                label: Text(
+                                  _isVerifyingOtp
+                                      ? 'Verifying...'
+                                      : 'Verify Code',
+                                ),
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: Colors.green.shade600,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ],
+
+                  // ── Email Verified Banner ──
+                  if (_emailVerified) ...[
+                    const SizedBox(height: AppSizes.sm),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+                        border: Border.all(
+                          color: Colors.green.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.check_circle,
+                            color: Colors.green,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Email verified successfully!',
+                            style: TextStyle(
+                              color: Colors.green,
+                              fontWeight: FontWeight.w600,
+                              fontSize: 13,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  // ── OTP Error ──
+                  if (_otpError != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      _otpError!,
+                      style: const TextStyle(color: Colors.red, fontSize: 13),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+
+                  const SizedBox(height: AppSizes.md),
+
+                  // Password
+                  TextFormField(
+                    controller: _passwordController,
+                    obscureText: _obscurePassword,
+                    textInputAction: TextInputAction.next,
+                    onChanged: (value) {
+                      setState(() => _passwordText = value);
+                    },
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      hintText: 'At least 6 characters',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscurePassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscurePassword = !_obscurePassword,
+                        ),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Password is required';
+                      }
+                      if (value.length < 6) {
+                        return 'Password must be at least 6 characters';
+                      }
+                      return null;
+                    },
+                  ),
+                  // Password strength indicator
+                  PasswordStrengthIndicator(password: _passwordText),
+                  const SizedBox(height: AppSizes.md),
+                  TextFormField(
+                    controller: _confirmPasswordController,
+                    obscureText: _obscureConfirmPassword,
+                    textInputAction: TextInputAction.done,
+                    onFieldSubmitted: (_) =>
+                        _emailVerified ? _handleRegister() : null,
+                    decoration: InputDecoration(
+                      labelText: 'Confirm Password',
+                      hintText: 'Re-enter your password',
+                      prefixIcon: const Icon(Icons.lock_outlined),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscureConfirmPassword
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined,
+                        ),
+                        onPressed: () => setState(
+                          () => _obscureConfirmPassword =
+                              !_obscureConfirmPassword,
+                        ),
+                      ),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please confirm your password';
+                      }
+                      if (value != _passwordController.text) {
+                        return 'Passwords do not match';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: AppSizes.xl),
+
+                  // Register button — only enabled after email is verified
+                  SizedBox(
+                    height: AppSizes.buttonHeight(context),
+                    child: ElevatedButton.icon(
+                      onPressed: (_isLoading || !_emailVerified)
+                          ? null
+                          : _handleRegister,
+                      icon: _isLoading
+                          ? const SizedBox(
+                              height: 22,
+                              width: 22,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2.5,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.person_add, size: 22),
+                      label: Text(
+                        _isLoading
+                            ? 'Creating account...'
+                            : !_emailVerified
+                            ? 'Verify email first'
+                            : 'Create Account',
+                        style: AppTypography.button,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: AppSizes.md),
+
+                  // Terms & Privacy
+                  Center(
+                    child: Wrap(
+                      alignment: WrapAlignment.center,
+                      children: [
+                        const Text(
+                          'By creating an account, you agree to our ',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => launchUrl(
+                            Uri.parse('https://retaillite.com/terms'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          child: Text(
+                            'Terms',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        const Text(
+                          ' & ',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: AppColors.textMuted,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () => launchUrl(
+                            Uri.parse('https://retaillite.com/privacy'),
+                            mode: LaunchMode.externalApplication,
+                          ),
+                          child: Text(
+                            'Privacy Policy',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          const SizedBox(height: AppSizes.lg),
+
+          // Login link
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text(
+                'Already have an account? ',
+                style: TextStyle(color: AppColors.textSecondary, fontSize: 14),
+              ),
+              TextButton(
+                onPressed: _isLoading ? null : () => context.pop(),
+                child: const Text(
+                  'Sign In',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
                 ),
               ),
             ],
-            const SizedBox(height: 24),
+          ),
+        ],
+      ),
+    );
+  }
 
-            // Register button
-            SizedBox(
-              height: 52,
-              child: ElevatedButton(
-                onPressed: _isLoading ? null : _handleRegister,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  foregroundColor: Colors.white,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: _isLoading
-                    ? const SizedBox(
-                        height: 24,
-                        width: 24,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2.5,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text(
-                        'Create Account',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-              ),
+  Widget _buildErrorBox(String error) {
+    return Container(
+      padding: const EdgeInsets.all(AppSizes.cardPadding),
+      decoration: BoxDecoration(
+        color: AppColors.error.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(AppSizes.radiusMd),
+        border: Border.all(color: AppColors.error.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          const Icon(
+            Icons.error_outline,
+            color: AppColors.error,
+            size: AppSizes.iconMd,
+          ),
+          const SizedBox(width: AppSizes.cardPadding),
+          Expanded(
+            child: Text(
+              error,
+              style: const TextStyle(color: AppColors.error, fontSize: 13),
             ),
-            const SizedBox(height: 24),
-
-            // Login link
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Text(
-                  'Already have an account? ',
-                  style: TextStyle(color: AppColors.textSecondary),
-                ),
-                TextButton(
-                  onPressed: () => context.pop(),
-                  style: TextButton.styleFrom(
-                    foregroundColor: AppColors.primary,
-                    padding: EdgeInsets.zero,
-                  ),
-                  child: const Text(
-                    'Sign In',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

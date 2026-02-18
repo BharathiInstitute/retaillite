@@ -37,6 +37,11 @@ service cloud.firestore {
       return value is number && value >= 0;
     }
     
+    // Helper: limit document size (prevent abuse)
+    function isReasonableSize() {
+      return request.resource.size() < 500000; // 500KB max per document
+    }
+    
     // ===================
     // USER DOCUMENTS
     // ===================
@@ -45,8 +50,7 @@ service cloud.firestore {
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
       
       // Allow both create and update (for upsert operations)
-      // This fixes the "No document to update" error
-      allow write: if isAuthenticated() && isOwner(userId);
+      allow write: if isAuthenticated() && isOwner(userId) && isReasonableSize();
       
       // Admins can update user subscription/limits
       allow update: if isAdmin();
@@ -59,7 +63,7 @@ service cloud.firestore {
       // ===================
       match /settings/{settingId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        allow write: if isAuthenticated() && isOwner(userId);
+        allow write: if isAuthenticated() && isOwner(userId) && isReasonableSize();
       }
       
       // ===================
@@ -69,7 +73,10 @@ service cloud.firestore {
         allow read: if isAuthenticated() && isOwner(userId);
         allow create, update: if isAuthenticated() && isOwner(userId)
           && hasString(request.resource.data.name)
-          && isPositive(request.resource.data.price);
+          && request.resource.data.name.size() <= 200
+          && isPositive(request.resource.data.price)
+          && request.resource.data.price <= 9999999
+          && isReasonableSize();
         allow delete: if isAuthenticated() && isOwner(userId);
       }
       
@@ -82,8 +89,11 @@ service cloud.firestore {
         allow create: if isAuthenticated() && isOwner(userId)
           && request.resource.data.total is number
           && request.resource.data.total >= 0
+          && request.resource.data.total <= 99999999
           && request.resource.data.items is list
-          && request.resource.data.items.size() > 0;
+          && request.resource.data.items.size() > 0
+          && request.resource.data.items.size() <= 500
+          && isReasonableSize();
         // Bills are immutable - no update or delete
         allow update: if false;
         allow delete: if false;
@@ -94,8 +104,10 @@ service cloud.firestore {
       // ===================
       match /customers/{customerId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        // Allow create and update for customers
-        allow write: if isAuthenticated() && isOwner(userId);
+        allow create, update: if isAuthenticated() && isOwner(userId)
+          && hasString(request.resource.data.name)
+          && request.resource.data.name.size() <= 200
+          && isReasonableSize();
         allow delete: if isAuthenticated() && isOwner(userId);
         
         // ===================
@@ -103,7 +115,11 @@ service cloud.firestore {
         // ===================
         match /transactions/{transactionId} {
           allow read: if isAuthenticated() && isOwner(userId);
-          allow create: if isAuthenticated() && isOwner(userId);
+          allow create: if isAuthenticated() && isOwner(userId)
+            && request.resource.data.amount is number
+            && request.resource.data.amount > 0
+            && request.resource.data.amount <= 99999999
+            && isReasonableSize();
           allow update: if false;
           allow delete: if false;
         }
@@ -114,19 +130,24 @@ service cloud.firestore {
       // ===================
       match /expenses/{expenseId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        allow create: if isAuthenticated() && isOwner(userId);
-        allow update: if isAuthenticated() && isOwner(userId);
+        allow create, update: if isAuthenticated() && isOwner(userId)
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount <= 99999999
+          && isReasonableSize();
         allow delete: if isAuthenticated() && isOwner(userId);
       }
       
       // ===================
       // TRANSACTIONS (direct sub-collection under user)
-      // This is where the app stores transactions
       // ===================
       match /transactions/{transactionId} {
         allow read: if isAuthenticated() && isOwner(userId);
-        // Allow create for new transactions (payments, credits)
-        allow create: if isAuthenticated() && isOwner(userId);
+        allow create: if isAuthenticated() && isOwner(userId)
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount <= 99999999
+          && isReasonableSize();
         // Transactions are immutable - no update or delete
         allow update: if false;
         allow delete: if false;
@@ -137,7 +158,6 @@ service cloud.firestore {
     // ADMIN-ONLY COLLECTIONS
     // ===================
     match /_admin/{document=**} {
-      // Super admins can read/write admin data
       allow read, write: if isAdmin();
     }
     
@@ -148,24 +168,22 @@ service cloud.firestore {
     
     // ===================
     // APP HEALTH & PERFORMANCE
+    // Rate-limit: only allow creating docs, not spamming
     // ===================
     match /app_health/{docId} {
-      // Any authenticated user can create health metrics
-      allow create: if isAuthenticated();
-      // Only admin can read all metrics
+      allow create: if isAuthenticated() && isReasonableSize();
       allow read: if isAdmin();
-      // No updates or deletes for data integrity
       allow update, delete: if isAdmin();
     }
     
     match /screen_performance/{docId} {
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && isReasonableSize();
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }
     
     match /error_logs/{docId} {
-      allow create: if isAuthenticated();
+      allow create: if isAuthenticated() && isReasonableSize();
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }
@@ -174,12 +192,9 @@ service cloud.firestore {
     // PAYMENT REQUESTS (for payment links)
     // ===================
     match /payment_requests/{requestId} {
-      // Authenticated users can create payment requests
-      allow create: if isAuthenticated();
-      // Only the creator or admin can read (restrict to owner)
+      allow create: if isAuthenticated() && isReasonableSize();
       allow read: if isAuthenticated() && 
         (resource.data.createdBy == request.auth.uid || isAdmin());
-      // Only admin can update (for status changes from webhooks)
       allow update: if isAdmin();
       allow delete: if false;
     }

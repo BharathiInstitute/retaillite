@@ -26,6 +26,7 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
   bool _taxInclusive = false;
   String? _invoiceLogoPath;
   String? _upiQrPath;
+  bool _hasShownComingSoon = false;
 
   @override
   void initState() {
@@ -34,6 +35,42 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     _taxRateController = TextEditingController(text: '18');
     _termsController = TextEditingController(
       text: 'Thank you for your business!',
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_hasShownComingSoon) {
+        _hasShownComingSoon = true;
+        _showComingSoonDialog();
+      }
+    });
+  }
+
+  void _showComingSoonDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(
+            Icons.construction,
+            size: 48,
+            color: AppColors.warning,
+          ),
+          title: const Text('Coming Soon'),
+          content: const Text(
+            'Billing settings are under development. These features will be available in a future update.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pop(context);
+              },
+              child: const Text('Go Back'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
