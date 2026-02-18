@@ -1,7 +1,7 @@
 {
-  "version": "1.0.0",
-  "buildNumber": 1,
-  "downloadUrl": "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2FTulasiStores_Setup_v1.0.0.exe?alt=media",
-  "changelog": "Initial release\n• Fast POS billing with barcode scanner\n• Customer khata management\n• GST-compliant invoices\n• Hindi, English & Telugu support",
-  "forceUpdate": false
+    "buildNumber":  4,
+    "forceUpdate":  true,
+    "version":  "1.0.1",
+    "downloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2FTulasiStores_Setup_v1.0.1.msix?alt=media",
+    "changelog":  "* auto download"
 }

@@ -37,23 +37,35 @@ function Write-DeployLog {
 
 function Run-WithRetry {
     param([string]$StepName, [scriptblock]$Command, [bool]$CleanOnFail = $true)
+    $ErrorActionPreference = "Continue"
     & $Command
-    if ($LASTEXITCODE -eq 0) { return $true }
+    $exitCode = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($exitCode -eq 0) { return $true }
 
-    Write-Warn "$StepName failed! Auto-fixing..."
+    Write-Warn "$StepName failed (exit code $exitCode). Auto-fixing..."
+    Write-DeployLog "RETRY | $StepName failed, attempting auto-fix"
     if ($CleanOnFail) {
         Write-Info "Running flutter clean..."
-        flutter clean 2>$null | Out-Null
+        $ErrorActionPreference = "Continue"
+        flutter clean 2>&1 | Out-Null
         Write-Info "Running flutter pub get..."
-        flutter pub get 2>$null | Out-Null
+        flutter pub get 2>&1 | Out-Null
+        $ErrorActionPreference = "Stop"
     }
+    Start-Sleep -Seconds 2
     Write-Info "Retrying $StepName..."
+    $ErrorActionPreference = "Continue"
     & $Command
-    if ($LASTEXITCODE -eq 0) {
+    $exitCode2 = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    if ($exitCode2 -eq 0) {
         Write-Ok "$StepName passed on retry!"
+        Write-DeployLog "RETRY | $StepName passed on retry"
         return $true
     }
-    Write-Fail "$StepName failed again after retry!"
+    Write-Fail "$StepName failed again after retry (exit code $exitCode2)!"
+    Write-DeployLog "RETRY | $StepName failed after retry"
     return $false
 }
 
@@ -228,270 +240,358 @@ if ($confirm -ne 'y' -and $confirm -ne 'Y') {
 }
 
 # ===========================================================
-#   PHASE 2: AUTO-RUN EVERYTHING - no more questions!
+#   PHASE 2: AUTO-RUN EVERYTHING with full restart on error
+#   Max 3 attempts. On failure: clean + pub get + restart
 # ===========================================================
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Green
-Write-Host "  Running... sit back and watch!" -ForegroundColor Green
-Write-Host "========================================================" -ForegroundColor Green
+$maxAttempts = 3
+$attempt = 0
+$deploySuccess = $false
 
-Write-DeployLog "DEPLOY START | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
+while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
+    $attempt++
+    $failed = $false
 
-# --- Update pubspec.yaml ---
-if (-not $skipBuild) {
-    Write-Step "Updating version to $newVersion+$newBuild"
-    $pubspecContent = $pubspecContent -replace 'version:\s*\d+\.\d+\.\d+\+\d+', "version: $newVersion+$newBuild"
-    [System.IO.File]::WriteAllText($pubspecPath, $pubspecContent, [System.Text.UTF8Encoding]::new($false))
-    Write-Ok "pubspec.yaml updated"
-}
+    if ($attempt -gt 1) {
+        Write-Host ""
+        Write-Host "========================================================" -ForegroundColor Yellow
+        Write-Host "  RESTARTING - Attempt $attempt of $maxAttempts" -ForegroundColor Yellow
+        Write-Host "========================================================" -ForegroundColor Yellow
+        Write-DeployLog "RESTART | Attempt $attempt of $maxAttempts"
 
-# --- Run Tests (with auto-retry) ---
-if (-not $skipBuild) {
-    Write-Step "Running tests..."
-    $testPass = Run-WithRetry "Tests" { flutter test --reporter compact }
-    if (-not $testPass) {
-        Write-Fail "TESTS FAILED after retry - Deploy blocked!"
-        Write-DeployLog "DEPLOY BLOCKED | Tests failed"
-        $revertContent = Get-Content $pubspecPath -Raw
-        $revertContent = $revertContent -replace "version: $newVersion\+$newBuild", "version: $($currentVersion.version)+$($currentVersion.build)"
-        [System.IO.File]::WriteAllText($pubspecPath, $revertContent, [System.Text.UTF8Encoding]::new($false))
-        Write-Warn "Reverted pubspec.yaml"
-        exit 1
+        Write-Step "Cleaning up before retry..."
+        $ErrorActionPreference = "Continue"
+        flutter clean 2>&1 | Out-Null
+        flutter pub get 2>&1 | Out-Null
+        $ErrorActionPreference = "Stop"
+        Write-Ok "Clean + pub get done"
+        Start-Sleep -Seconds 2
     }
-    Write-Ok "All tests passed"
-    Write-DeployLog "TESTS PASSED"
-
-    Write-Step "Running analyzer..."
-    $analyzePass = Run-WithRetry "Analyzer" { flutter analyze --no-pub }
-    if (-not $analyzePass) {
-        Write-Fail "ANALYSIS FAILED after retry - Deploy blocked!"
-        Write-DeployLog "DEPLOY BLOCKED | Analysis failed"
-        exit 1
-    }
-    Write-Ok "No analysis issues"
-    Write-DeployLog "ANALYSIS PASSED"
-}
-
-# --- Backup ---
-$backupDir = Join-Path $root "deploy-backups"
-$backupTimestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
-
-if ($deployWeb) {
-    $distDir = Join-Path $root "dist"
-    if (Test-Path $distDir) {
-        Write-Step "Backing up current web deployment..."
-        $backupPath = Join-Path $backupDir "dist_$backupTimestamp"
-        New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
-        Copy-Item -Path "$distDir\*" -Destination $backupPath -Recurse -Force
-        Write-Ok "Backup saved to deploy-backups\dist_$backupTimestamp"
-        Write-DeployLog "BACKUP | Web"
-    }
-}
-
-if ($deployWindows) {
-    $winVersionPath = Join-Path $root "installers\version.json"
-    if (Test-Path $winVersionPath) {
-        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-        Copy-Item $winVersionPath (Join-Path $backupDir "version_win_$backupTimestamp.json")
-        Write-Ok "Windows version.json backed up"
-    }
-}
-
-if ($deployAndroid) {
-    $androidVersionPath = Join-Path $root "installers\android-version.json"
-    if (Test-Path $androidVersionPath) {
-        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-        Copy-Item $androidVersionPath (Join-Path $backupDir "version_android_$backupTimestamp.json")
-        Write-Ok "Android version.json backed up"
-    }
-}
-
-# --- Build and Deploy: Web ---
-if ($deployWeb) {
-    Write-Step "Building Web..."
-    $distDir = Join-Path $root "dist"
-    $websiteDir = Join-Path $root "website"
-    $flutterBuildDir = Join-Path $root "build\web"
-
-    if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
-    New-Item -ItemType Directory -Path $distDir -Force | Out-Null
-
-    if (Test-Path $websiteDir) {
-        Copy-Item -Path "$websiteDir\*" -Destination $distDir -Recurse -Force
-        Write-Ok "Copied website/ to dist/"
+    else {
+        Write-Host ""
+        Write-Host "========================================================" -ForegroundColor Green
+        Write-Host "  Running... sit back and watch!" -ForegroundColor Green
+        Write-Host "========================================================" -ForegroundColor Green
     }
 
-    $webBuildPass = Run-WithRetry "Web build" { flutter build web --base-href=/app/ --release }
-    if (-not $webBuildPass) {
-        Write-Fail "Web build failed after retry!"
-        Write-DeployLog "DEPLOY FAILED | Web build error"
-        exit 1
+    Write-DeployLog "DEPLOY START | Attempt $attempt | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
+
+    # --- Update pubspec.yaml ---
+    if (-not $skipBuild) {
+        Write-Step "Updating version to $newVersion+$newBuild"
+        $pubspecContent = Get-Content $pubspecPath -Raw
+        $pubspecContent = $pubspecContent -replace 'version:\s*\d+\.\d+\.\d+\+\d+', "version: $newVersion+$newBuild"
+        [System.IO.File]::WriteAllText($pubspecPath, $pubspecContent, [System.Text.UTF8Encoding]::new($false))
+        Write-Ok "pubspec.yaml updated"
     }
-    $appDir = Join-Path $distDir "app"
-    New-Item -ItemType Directory -Path $appDir -Force | Out-Null
-    Copy-Item -Path "$flutterBuildDir\*" -Destination $appDir -Recurse -Force
-    Write-Ok "Web built to dist/app/"
 
-    $serveJson = '{"rewrites":[{"source":"/app/**","destination":"/app/index.html"}],"headers":[{"source":"**/*","headers":[{"key":"Cache-Control","value":"no-cache"}]}]}'
-    [System.IO.File]::WriteAllText((Join-Path $distDir "serve.json"), $serveJson, [System.Text.UTF8Encoding]::new($false))
+    # --- Run Tests ---
+    if (-not $skipBuild -and -not $failed) {
+        Write-Step "Running tests..."
+        $ErrorActionPreference = "Continue"
+        flutter test --reporter compact
+        $testExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($testExit -ne 0) {
+            Write-Fail "Tests failed!"
+            $failed = $true
+        }
+        else {
+            Write-Ok "All tests passed"
+            Write-DeployLog "TESTS PASSED"
+        }
+    }
 
-    Write-Step "Deploying to Firebase Hosting..."
-    $deployPass = Run-WithRetry "Firebase deploy" { firebase deploy --only hosting } -CleanOnFail $false
-    if ($deployPass) {
-        Write-Ok "Web deployed to Firebase Hosting!"
-        Write-DeployLog "WEB DEPLOYED"
+    # --- Run Analyzer ---
+    if (-not $skipBuild -and -not $failed) {
+        Write-Step "Running analyzer..."
+        $ErrorActionPreference = "Continue"
+        flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
+        $analyzeExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($analyzeExit -ne 0) {
+            Write-Fail "Analysis has real errors!"
+            $failed = $true
+        }
+        else {
+            Write-Ok "Analysis passed"
+            Write-DeployLog "ANALYSIS PASSED"
+        }
+    }
 
-        Write-Step "Health check..."
-        Start-Sleep -Seconds 5
+    # --- Backup ---
+    $backupDir = Join-Path $root "deploy-backups"
+    $backupTimestamp = Get-Date -Format "yyyy-MM-dd_HHmmss"
 
-        $healthUrls = @(
-            "https://login-radha.web.app/",
-            "https://login-radha.web.app/app/"
-        )
+    if (-not $failed -and $deployWeb) {
+        $distDir = Join-Path $root "dist"
+        if (Test-Path $distDir) {
+            Write-Step "Backing up current web deployment..."
+            $backupPath = Join-Path $backupDir "dist_$backupTimestamp"
+            New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+            Copy-Item -Path "$distDir\*" -Destination $backupPath -Recurse -Force
+            Write-Ok "Backup saved"
+            Write-DeployLog "BACKUP | Web"
+        }
+    }
 
-        $allHealthy = $true
-        foreach ($url in $healthUrls) {
-            try {
-                $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
-                if ($response.StatusCode -eq 200) {
-                    Write-Ok "$url -> HTTP 200"
+    if (-not $failed -and $deployWindows) {
+        $winVersionPath = Join-Path $root "installers\version.json"
+        if (Test-Path $winVersionPath) {
+            New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+            Copy-Item $winVersionPath (Join-Path $backupDir "version_win_$backupTimestamp.json")
+        }
+    }
+
+    if (-not $failed -and $deployAndroid) {
+        $androidVersionPath = Join-Path $root "installers\android-version.json"
+        if (Test-Path $androidVersionPath) {
+            New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+            Copy-Item $androidVersionPath (Join-Path $backupDir "version_android_$backupTimestamp.json")
+        }
+    }
+
+    # --- Build and Deploy: Web ---
+    if (-not $failed -and $deployWeb) {
+        Write-Step "Building Web..."
+        $distDir = Join-Path $root "dist"
+        $websiteDir = Join-Path $root "website"
+        $flutterBuildDir = Join-Path $root "build\web"
+
+        if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+        New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+
+        if (Test-Path $websiteDir) {
+            Copy-Item -Path "$websiteDir\*" -Destination $distDir -Recurse -Force
+            Write-Ok "Copied website/ to dist/"
+        }
+
+        $ErrorActionPreference = "Continue"
+        flutter build web --base-href=/app/ --release
+        $webExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($webExit -ne 0) {
+            Write-Fail "Web build failed!"
+            $failed = $true
+        }
+        else {
+            $appDir = Join-Path $distDir "app"
+            New-Item -ItemType Directory -Path $appDir -Force | Out-Null
+            Copy-Item -Path "$flutterBuildDir\*" -Destination $appDir -Recurse -Force
+            Write-Ok "Web built to dist/app/"
+
+            $serveJson = '{"rewrites":[{"source":"/app/**","destination":"/app/index.html"}],"headers":[{"source":"**/*","headers":[{"key":"Cache-Control","value":"no-cache"}]}]}'
+            [System.IO.File]::WriteAllText((Join-Path $distDir "serve.json"), $serveJson, [System.Text.UTF8Encoding]::new($false))
+
+            Write-Step "Deploying to Firebase Hosting..."
+            $ErrorActionPreference = "Continue"
+            firebase deploy --only hosting
+            $fbExit = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            if ($fbExit -eq 0) {
+                Write-Ok "Web deployed to Firebase Hosting!"
+                Write-DeployLog "WEB DEPLOYED"
+
+                Write-Step "Health check..."
+                Start-Sleep -Seconds 5
+                $healthUrls = @(
+                    "https://login-radha.web.app/",
+                    "https://login-radha.web.app/app/"
+                )
+                foreach ($url in $healthUrls) {
+                    try {
+                        $response = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 15 -ErrorAction Stop
+                        if ($response.StatusCode -eq 200) { Write-Ok "$url -> HTTP 200" }
+                        else { Write-Warn "$url -> HTTP $($response.StatusCode)" }
+                    }
+                    catch {
+                        Write-Warn "$url -> Could not reach"
+                    }
+                }
+                Write-DeployLog "HEALTH CHECK DONE"
+            }
+            else {
+                Write-Fail "Firebase deploy failed!"
+                $failed = $true
+            }
+        }
+    }
+
+    # --- Build and Deploy: Windows (MSIX) ---
+    if (-not $failed -and $deployWindows) {
+        Write-Step "Building Windows + MSIX installer..."
+
+        # Update MSIX version in pubspec.yaml (MSIX needs x.x.x.0 format)
+        $msixVersion = "$newVersion.0"
+        $currentPubspec = Get-Content $pubspecPath -Raw
+        $currentPubspec = $currentPubspec -replace 'msix_version:\s*\d+\.\d+\.\d+\.\d+', "msix_version: $msixVersion"
+        [System.IO.File]::WriteAllText($pubspecPath, $currentPubspec, [System.Text.UTF8Encoding]::new($false))
+
+        # Build Windows release
+        $ErrorActionPreference = "Continue"
+        flutter build windows --release
+        $winExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($winExit -ne 0) {
+            Write-Fail "Windows build failed!"
+            $failed = $true
+        }
+        else {
+            Write-Ok "Windows built"
+
+            # Create MSIX installer
+            Write-Step "Creating MSIX installer..."
+            $ErrorActionPreference = "Continue"
+            dart run msix:create
+            $msixExit = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+
+            if ($msixExit -ne 0) {
+                Write-Fail "MSIX creation failed!"
+                $failed = $true
+            }
+            else {
+                $msixFile = Join-Path $root "build\windows\x64\runner\Release\TulasiStores_Setup.msix"
+                if (Test-Path $msixFile) {
+                    $msixSize = "{0:N1} MB" -f ((Get-Item $msixFile).Length / 1MB)
+                    Write-Ok "MSIX created ($msixSize)"
+                    Write-DeployLog "WINDOWS MSIX | $msixSize"
                 }
                 else {
-                    Write-Warn "$url -> HTTP $($response.StatusCode)"
-                    $allHealthy = $false
+                    # Try alternate location
+                    $msixFile = Get-ChildItem -Path (Join-Path $root "build\windows") -Filter "*.msix" -Recurse | Select-Object -First 1
+                    if ($msixFile) {
+                        $msixSize = "{0:N1} MB" -f ($msixFile.Length / 1MB)
+                        Write-Ok "MSIX created ($msixSize) at $($msixFile.FullName)"
+                        $msixFile = $msixFile.FullName
+                    }
+                    else {
+                        Write-Warn "MSIX file not found in build output"
+                    }
+                }
+
+                # Update version.json with MSIX download URL
+                $winVersionPath = Join-Path $root "installers\version.json"
+                $msixStorageName = "TulasiStores_Setup_v$newVersion.msix"
+                $downloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2F$msixStorageName`?alt=media"
+
+                $versionJson = @{
+                    version     = $newVersion
+                    buildNumber = [int]$newBuild
+                    downloadUrl = $downloadUrl
+                    changelog   = $changelog
+                    forceUpdate = ($updateType -eq 3)
+                } | ConvertTo-Json -Depth 3
+                [System.IO.File]::WriteAllText($winVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
+                Write-Ok "version.json updated (MSIX download URL)"
+
+                # Upload to Firebase Storage
+                $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
+                if ($gsutilExists) {
+                    Write-Step "Uploading MSIX + version.json to Firebase Storage..."
+                    $storagePath = "gs://login-radha.firebasestorage.app/updates/windows/"
+                    $ErrorActionPreference = "Continue"
+
+                    # Upload version.json
+                    gsutil cp $winVersionPath "${storagePath}version.json"
+                    gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
+
+                    # Upload MSIX installer
+                    if ($msixFile -and (Test-Path $msixFile)) {
+                        gsutil cp $msixFile "${storagePath}$msixStorageName"
+                        gsutil setmeta -h "Content-Type:application/msix" "${storagePath}$msixStorageName"
+                        Write-Ok "MSIX uploaded: $msixStorageName"
+                    }
+
+                    $ErrorActionPreference = "Stop"
+                    Write-Ok "All Windows files uploaded"
+                    Write-DeployLog "FIREBASE UPLOAD | Windows MSIX + version.json"
+                }
+                else {
+                    Write-Warn "gsutil not found - upload manually:"
+                    Write-Info "  Firebase Console > Storage > updates/windows/"
+                    Write-Info "  Upload: version.json + $msixStorageName"
                 }
             }
-            catch {
-                Write-Fail "$url -> FAILED"
-                $allHealthy = $false
-            }
         }
+    }
 
-        if ($allHealthy) {
-            Write-Ok "Health check passed - site is live!"
-            Write-DeployLog "HEALTH CHECK PASSED"
+    # --- Build and Deploy: Android ---
+    if (-not $failed -and $deployAndroid) {
+        Write-Step "Building Android APK..."
+        $ErrorActionPreference = "Continue"
+        flutter build apk --release
+        $apkExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($apkExit -ne 0) {
+            Write-Fail "Android build failed!"
+            $failed = $true
         }
         else {
-            Write-Warn "Health check issues - verify manually!"
-            Write-DeployLog "HEALTH CHECK WARNING"
-            Write-Info "Rollback: copy deploy-backups\dist_$backupTimestamp\* to dist\ then firebase deploy --only hosting"
-        }
-    }
-    else {
-        Write-Fail "Firebase deploy failed!"
-        Write-DeployLog "DEPLOY FAILED | Firebase Hosting"
-    }
-}
+            $apkPath = Join-Path $root "build\app\outputs\flutter-apk\app-release.apk"
+            $apkSize = if (Test-Path $apkPath) { "{0:N1} MB" -f ((Get-Item $apkPath).Length / 1MB) } else { "unknown" }
+            Write-Ok "APK built ($apkSize)"
+            Write-DeployLog "ANDROID BUILT | $apkSize"
 
-# --- Build and Deploy: Windows ---
-if ($deployWindows) {
-    Write-Step "Building Windows..."
-    $winBuildPass = Run-WithRetry "Windows build" { flutter build windows --release }
-    if (-not $winBuildPass) {
-        Write-Fail "Windows build failed after retry!"
-        Write-DeployLog "DEPLOY FAILED | Windows build"
-    }
-    else {
-        Write-Ok "Windows built"
-        Write-DeployLog "WINDOWS BUILT"
-
-        $winVersionPath = Join-Path $root "installers\version.json"
-        $downloadUrl = ""
-        if (Test-Path $winVersionPath) {
-            $existingJson = Get-Content $winVersionPath -Raw | ConvertFrom-Json
-            $downloadUrl = $existingJson.downloadUrl
-        }
-
-        $versionJson = @{
-            version     = $newVersion
-            buildNumber = $newBuild
-            downloadUrl = $downloadUrl
-            changelog   = $changelog
-            forceUpdate = ($updateType -eq 3)
-        } | ConvertTo-Json -Depth 3
-        [System.IO.File]::WriteAllText($winVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
-        Write-Ok "version.json updated to v$newVersion"
-
-        $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
-        if ($gsutilExists) {
-            Write-Step "Uploading Windows version.json to Firebase Storage..."
-            $storagePath = "gs://login-radha.firebasestorage.app/updates/windows/version.json"
-            gsutil cp $winVersionPath $storagePath
-            gsutil setmeta -h "Cache-Control:no-cache,max-age=0" $storagePath
-            if ($LASTEXITCODE -eq 0) {
-                Write-Ok "version.json uploaded"
-                Write-DeployLog "FIREBASE UPLOAD | Windows version.json"
+            $androidVersionPath = Join-Path $root "installers\android-version.json"
+            $downloadUrl = ""
+            if (Test-Path $androidVersionPath) {
+                $existingJson = Get-Content $androidVersionPath -Raw | ConvertFrom-Json
+                $downloadUrl = $existingJson.downloadUrl
             }
             else {
-                Write-Warn "Upload failed - upload manually to Firebase Console > Storage > updates/windows/"
+                $downloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fandroid%2FTulasiStores_v$newVersion.apk?alt=media"
             }
-        }
-        else {
-            Write-Warn "gsutil not found - upload manually:"
-            Write-Info "  Firebase Console > Storage > updates/windows/ > upload version.json + .exe"
-        }
-    }
-}
+            $versionJson = @{
+                version     = $newVersion
+                buildNumber = $newBuild
+                downloadUrl = $downloadUrl
+                changelog   = $changelog
+                forceUpdate = ($updateType -eq 3)
+            } | ConvertTo-Json -Depth 3
+            [System.IO.File]::WriteAllText($androidVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
+            Write-Ok "android-version.json updated to v$newVersion"
 
-# --- Build and Deploy: Android ---
-if ($deployAndroid) {
-    Write-Step "Building Android APK..."
-    $apkBuildPass = Run-WithRetry "Android build" { flutter build apk --release }
-    if (-not $apkBuildPass) {
-        Write-Fail "Android build failed after retry!"
-        Write-DeployLog "DEPLOY FAILED | Android build"
-    }
-    else {
-        $apkPath = Join-Path $root "build\app\outputs\flutter-apk\app-release.apk"
-        $apkSize = if (Test-Path $apkPath) { "{0:N1} MB" -f ((Get-Item $apkPath).Length / 1MB) } else { "unknown" }
-        Write-Ok "APK built ($apkSize)"
-        Write-DeployLog "ANDROID BUILT | $apkSize"
-
-        $androidVersionPath = Join-Path $root "installers\android-version.json"
-        $downloadUrl = ""
-        if (Test-Path $androidVersionPath) {
-            $existingJson = Get-Content $androidVersionPath -Raw | ConvertFrom-Json
-            $downloadUrl = $existingJson.downloadUrl
-        }
-        else {
-            $downloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fandroid%2FTulasiStores_v$newVersion.apk?alt=media"
-        }
-
-        $versionJson = @{
-            version     = $newVersion
-            buildNumber = $newBuild
-            downloadUrl = $downloadUrl
-            changelog   = $changelog
-            forceUpdate = ($updateType -eq 3)
-        } | ConvertTo-Json -Depth 3
-        [System.IO.File]::WriteAllText($androidVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
-        Write-Ok "android-version.json updated to v$newVersion"
-
-        $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
-        if ($gsutilExists) {
-            Write-Step "Uploading Android files to Firebase Storage..."
-            $storagePath = "gs://login-radha.firebasestorage.app/updates/android/"
-            gsutil cp $androidVersionPath "${storagePath}version.json"
-            gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
-
-            if (Test-Path $apkPath) {
-                $apkStorageName = "TulasiStores_v$newVersion.apk"
-                gsutil cp $apkPath "${storagePath}$apkStorageName"
-                Write-Ok "APK uploaded: $apkStorageName"
-            }
-
-            if ($LASTEXITCODE -eq 0) {
-                Write-Ok "Android files uploaded"
-                Write-DeployLog "FIREBASE UPLOAD | Android version.json + APK"
+            $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
+            if ($gsutilExists) {
+                Write-Step "Uploading Android files..."
+                $storagePath = "gs://login-radha.firebasestorage.app/updates/android/"
+                $ErrorActionPreference = "Continue"
+                gsutil cp $androidVersionPath "${storagePath}version.json"
+                gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
+                if (Test-Path $apkPath) {
+                    gsutil cp $apkPath "${storagePath}TulasiStores_v$newVersion.apk"
+                    Write-Ok "APK uploaded"
+                }
+                $ErrorActionPreference = "Stop"
+                Write-DeployLog "FIREBASE UPLOAD | Android"
             }
             else {
-                Write-Warn "Upload failed - upload manually"
+                Write-Warn "gsutil not found - upload manually"
             }
         }
-        else {
-            Write-Warn "gsutil not found - upload manually:"
-            Write-Info "  Firebase Console > Storage > updates/android/ > upload version.json + APK"
+    }
+
+    # --- Check if all passed ---
+    if (-not $failed) {
+        $deploySuccess = $true
+    }
+    elseif ($attempt -lt $maxAttempts) {
+        Write-Host ""
+        Write-Warn "Attempt $attempt failed. Will auto-fix and restart from top..."
+        Write-DeployLog "ATTEMPT $attempt FAILED | Restarting..."
+    }
+    else {
+        Write-Host ""
+        Write-Fail "ALL $maxAttempts ATTEMPTS FAILED. Deploy aborted."
+        Write-DeployLog "DEPLOY ABORTED | All $maxAttempts attempts failed"
+        # Revert version
+        if (-not $skipBuild) {
+            $revertContent = Get-Content $pubspecPath -Raw
+            $revertContent = $revertContent -replace "version: $newVersion\+$newBuild", "version: $($currentVersion.version)+$($currentVersion.build)"
+            [System.IO.File]::WriteAllText($pubspecPath, $revertContent, [System.Text.UTF8Encoding]::new($false))
+            Write-Warn "Reverted pubspec.yaml to $($currentVersion.version)+$($currentVersion.build)"
         }
+        exit 1
     }
 }
 
@@ -529,7 +629,6 @@ if ($setLatestVersion -or $announcementMsg) {
     Write-Step "MANUAL ACTION: Update Remote Config"
     Write-Host ""
     Write-Host "  Go to Firebase Console > Remote Config:" -ForegroundColor Yellow
-
     if ($setLatestVersion) {
         Write-Host "    Set: latest_version = $newVersion" -ForegroundColor Green
         Write-Host "         Users on older versions see Update available banner" -ForegroundColor Gray
@@ -549,25 +648,22 @@ if ($setLatestVersion -or $announcementMsg) {
 # --- Git Commit + Tag + Push ---
 if (-not $skipBuild) {
     Write-Step "Git commit + tag + push..."
-    git add -A
+    $ErrorActionPreference = "Continue"
+    git add -A 2>&1 | Out-Null
     $commitMsg = switch ($updateType) {
         1 { "release: v$newVersion+$newBuild" }
         2 { "fix: v$newVersion+$newBuild" }
         3 { "CRITICAL: v$newVersion+$newBuild" }
     }
-    git commit -m $commitMsg
-    git tag "v$newVersion+$newBuild"
+    git commit -m $commitMsg 2>&1 | Out-Null
+    git tag "v$newVersion+$newBuild" 2>&1 | Out-Null
     Write-Ok "Committed + tagged: v$newVersion+$newBuild"
 
-    git push 2>$null
-    git push --tags 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        Write-Ok "Pushed to remote"
-        Write-DeployLog "GIT | Pushed v$newVersion+$newBuild"
-    }
-    else {
-        Write-Warn "Push failed - run git push manually"
-    }
+    git push 2>&1 | Out-Null
+    git push --tags 2>&1 | Out-Null
+    Write-Ok "Pushed to remote"
+    Write-DeployLog "GIT | Pushed v$newVersion+$newBuild"
+    $ErrorActionPreference = "Stop"
 }
 
 # --- Cleanup old backups ---
