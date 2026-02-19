@@ -66,4 +66,6 @@ build/debug-info/
 
 # Deploy artifacts
 deploy-backups/
+deploy-state.json
+deploy-history.log
 dist/

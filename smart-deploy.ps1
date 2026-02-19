@@ -1,4 +1,4 @@
-# Smart Deploy Agent v3.0 - Tulasi Stores
+﻿# Smart Deploy Agent v3.0 - Tulasi Stores
 # Asks smart questions first, then runs everything automatically
 #
 # Usage: .\smart-deploy.ps1
@@ -70,210 +70,291 @@ function Run-WithRetry {
 }
 
 # ===========================================================
-#   PHASE 1: ASK ALL QUESTIONS UPFRONT
+#   CHECK FOR RESUME -- skip questions if previous run failed
 # ===========================================================
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  Tulasi Stores - Smart Deploy Agent v3.0" -ForegroundColor Cyan
-Write-Host "  Answer a few questions, then I do the rest!" -ForegroundColor Cyan
-Write-Host "========================================================" -ForegroundColor Cyan
+$statePath = Join-Path $root "deploy-state.json"
+$resumed = $false
 
-# --- Q1: Update type ---
-$updateType = Pick "Q1: What type of update?" @(
-    "Normal      - feature, minor fix",
-    "Patch Fix   - bug fix, quick patch",
-    "Critical    - FORCE all users to update",
-    "Maintenance - block ALL users temporarily",
-    "Config Only - Remote Config change, no code"
-)
-
-$skipBuild = ($updateType -eq 4 -or $updateType -eq 5)
-$deployWeb = $false
-$deployWindows = $false
-$deployAndroid = $false
-
-# --- Q2: Platforms ---
-if (-not $skipBuild) {
-    $platformChoice = Pick "Q2: Deploy to which platforms?" @(
-        "Web only",
-        "Windows only",
-        "Android only",
-        "Web + Windows",
-        "Web + Android",
-        "Windows + Android",
-        "All platforms"
-    )
-    switch ($platformChoice) {
-        1 { $deployWeb = $true }
-        2 { $deployWindows = $true }
-        3 { $deployAndroid = $true }
-        4 { $deployWeb = $true; $deployWindows = $true }
-        5 { $deployWeb = $true; $deployAndroid = $true }
-        6 { $deployWindows = $true; $deployAndroid = $true }
-        7 { $deployWeb = $true; $deployWindows = $true; $deployAndroid = $true }
-    }
-}
-
-# --- Parse current version ---
-$pubspecPath = Join-Path $root "pubspec.yaml"
-$pubspecContent = Get-Content $pubspecPath -Raw
-$currentVersion = if ($pubspecContent -match 'version:\s*(\d+\.\d+\.\d+)\+(\d+)') {
-    @{ version = $matches[1]; build = [int]$matches[2] }
-}
-else {
-    @{ version = "1.0.0"; build = 1 }
-}
-
-$newVersion = $currentVersion.version
-$newBuild = $currentVersion.build
-
-# --- Q3: Version bump ---
-if (-not $skipBuild) {
-    $parts = $currentVersion.version -split '\.'
-    $patchBumped = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
-    $minorBumped = "$($parts[0]).$([int]$parts[1] + 1).0"
-    $majorBumped = "$([int]$parts[0] + 1).0.0"
-    $buildBumped = $currentVersion.build + 1
-
+if (Test-Path $statePath) {
+    $savedState = Get-Content $statePath -Raw | ConvertFrom-Json
     Write-Host ""
-    Write-Host "  Current: $($currentVersion.version)+$($currentVersion.build)" -ForegroundColor Gray
-
-    $bumpChoice = Pick "Q3: Version bump?" @(
-        "Build only     ($($currentVersion.version)+$buildBumped)",
-        "Patch          ($patchBumped+$buildBumped)",
-        "Minor          ($minorBumped+$buildBumped)",
-        "Major          ($majorBumped+$buildBumped)",
-        "Custom         - enter manually"
-    )
-
-    $newBuild = $buildBumped
-    switch ($bumpChoice) {
-        1 { $newVersion = $currentVersion.version }
-        2 { $newVersion = $patchBumped }
-        3 { $newVersion = $minorBumped }
-        4 { $newVersion = $majorBumped }
-        5 {
-            $newVersion = Read-Host "  Enter version (e.g. 1.2.3)"
-            $newBuild = [int](Read-Host "  Enter build number")
-        }
-    }
-}
-
-# --- Q4: Changelog ---
-$changelog = ""
-if (-not $skipBuild) {
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host "  Previous deploy found! (failed or interrupted)" -ForegroundColor Yellow
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host "  Type:       $($savedState.typeName)" -ForegroundColor White
+    Write-Host "  Version:    $($savedState.newVersion)+$($savedState.newBuild)" -ForegroundColor White
+    if ($savedState.platforms) { Write-Host "  Platforms:  $($savedState.platforms)" -ForegroundColor White }
+    if ($savedState.winChoiceLabel) { Write-Host "  Windows:    $($savedState.winChoiceLabel)" -ForegroundColor White }
     Write-Host ""
-    Write-Host "  Q4: What changed? (one per line, blank to finish)" -ForegroundColor White
-    $lines = @()
-    while ($true) {
-        $line = Read-Host "  *"
-        if ([string]::IsNullOrWhiteSpace($line)) { break }
-        $lines += "* $line"
-    }
-    $changelog = $lines -join "`n"
-    if ($changelog -eq "") { $changelog = "Bug fixes and improvements" }
-}
-
-# --- Q5: Force version (critical only) ---
-$forceMinVersion = ""
-if ($updateType -eq 3) {
-    $forceMinVersion = Read-Host "  Q5: Minimum required version to force? (Enter = $newVersion)"
-    if ([string]::IsNullOrWhiteSpace($forceMinVersion)) { $forceMinVersion = $newVersion }
-}
-
-# --- Q5/Q6: Announcement (optional) ---
-$announcementMsg = ""
-$setLatestVersion = $false
-if (-not $skipBuild -and $updateType -le 3) {
-    $setLatestVersion = $true
-
-    Write-Host ""
-    $announcementInput = Read-Host "  Q5: Announcement for ALL users? (Enter = skip)"
-    if (-not [string]::IsNullOrWhiteSpace($announcementInput)) {
-        $announcementMsg = $announcementInput
-    }
-}
-
-# ===========================================================
-#   CONFIRM - Last chance to cancel
-# ===========================================================
-Write-Host ""
-Write-Host "========================================================" -ForegroundColor Cyan
-Write-Host "  Deploy Plan" -ForegroundColor Cyan
-Write-Host "========================================================" -ForegroundColor Cyan
-
-$typeNames = @("", "Normal", "Patch", "Critical", "Maintenance", "Config Only")
-Write-Host "  Type:       $($typeNames[$updateType])" -ForegroundColor White
-if (-not $skipBuild) {
-    Write-Host "  Version:    $newVersion+$newBuild" -ForegroundColor White
-    $platforms = @()
-    if ($deployWeb) { $platforms += "Web" }
-    if ($deployWindows) { $platforms += "Windows" }
-    if ($deployAndroid) { $platforms += "Android" }
-    Write-Host "  Platforms:  $($platforms -join ', ')" -ForegroundColor White
-    if ($changelog) {
-        $previewLen = [Math]::Min(60, $changelog.Length)
-        Write-Host "  Changelog:  $($changelog.Substring(0, $previewLen))..." -ForegroundColor Gray
-    }
-}
-if ($forceMinVersion) { Write-Host "  Force min:  v$forceMinVersion" -ForegroundColor Red }
-if ($announcementMsg) { Write-Host "  Announce:   $announcementMsg" -ForegroundColor Cyan }
-if ($updateType -eq 4) { Write-Host "  Action:     Enable maintenance mode" -ForegroundColor Yellow }
-
-Write-Host ""
-Write-Host "  After confirm, I will automatically:" -ForegroundColor Gray
-if (-not $skipBuild) {
-    Write-Host "    > Run tests + analyzer" -ForegroundColor Gray
-    Write-Host "    > Bump version in pubspec.yaml" -ForegroundColor Gray
-    Write-Host "    > Backup current deployment" -ForegroundColor Gray
-    if ($deployWeb) { Write-Host "    > Build web + deploy to Firebase Hosting + health check" -ForegroundColor Gray }
-    if ($deployWindows) { Write-Host "    > Build Windows + update version.json + upload to Storage" -ForegroundColor Gray }
-    if ($deployAndroid) { Write-Host "    > Build Android APK + update version.json + upload to Storage" -ForegroundColor Gray }
-    Write-Host "    > Git commit + tag + push" -ForegroundColor Gray
-}
-Write-Host ""
-
-$confirm = Read-Host "  Deploy? (y/n)"
-if ($confirm -ne 'y' -and $confirm -ne 'Y') {
-    Write-Host "`n  Deploy cancelled." -ForegroundColor Yellow
-    exit 0
-}
-
-# ===========================================================
-#   PHASE 2: AUTO-RUN EVERYTHING with full restart on error
-#   Max 3 attempts. On failure: clean + pub get + restart
-# ===========================================================
-$maxAttempts = 3
-$attempt = 0
-$deploySuccess = $false
-
-while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
-    $attempt++
-    $failed = $false
-
-    if ($attempt -gt 1) {
+    $resumeChoice = Read-Host "  Resume with same settings? (Y/n)"
+    if ($resumeChoice -ne 'n' -and $resumeChoice -ne 'N') {
+        $resumed = $true
+        $updateType = [int]$savedState.updateType
+        $skipBuild = [bool]$savedState.skipBuild
+        $deployWeb = [bool]$savedState.deployWeb
+        $deployWindows = [bool]$savedState.deployWindows
+        $deployAndroid = [bool]$savedState.deployAndroid
+        $newVersion = $savedState.newVersion
+        $newBuild = [int]$savedState.newBuild
+        $changelog = $savedState.changelog
+        $forceMinVersion = $savedState.forceMinVersion
+        $announcementMsg = $savedState.announcementMsg
+        $setLatestVersion = [bool]$savedState.setLatestVersion
+        $buildMsix = [bool]$savedState.buildMsix
+        $buildExe = [bool]$savedState.buildExe
+        $winChoiceLabel = $savedState.winChoiceLabel
         Write-Host ""
-        Write-Host "========================================================" -ForegroundColor Yellow
-        Write-Host "  RESTARTING - Attempt $attempt of $maxAttempts" -ForegroundColor Yellow
-        Write-Host "========================================================" -ForegroundColor Yellow
-        Write-DeployLog "RESTART | Attempt $attempt of $maxAttempts"
-
-        Write-Step "Cleaning up before retry..."
-        $ErrorActionPreference = "Continue"
-        flutter clean 2>&1 | Out-Null
-        flutter pub get 2>&1 | Out-Null
-        $ErrorActionPreference = "Stop"
-        Write-Ok "Clean + pub get done"
-        Start-Sleep -Seconds 2
+        Write-Ok "Resuming deploy with saved settings!"
+        Write-DeployLog "RESUME | Restarting with saved settings"
     }
     else {
-        Write-Host ""
-        Write-Host "========================================================" -ForegroundColor Green
-        Write-Host "  Running... sit back and watch!" -ForegroundColor Green
-        Write-Host "========================================================" -ForegroundColor Green
+        # User wants fresh start -- delete old state
+        Remove-Item $statePath -Force
+        Write-Info "Previous state cleared. Starting fresh."
+    }
+}
+
+if (-not $resumed) {
+    # ===========================================================
+    #   PHASE 1: ASK ALL QUESTIONS UPFRONT
+    # ===========================================================
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "  Tulasi Stores - Smart Deploy Agent v3.0" -ForegroundColor Cyan
+    Write-Host "  Answer a few questions, then I do the rest!" -ForegroundColor Cyan
+    Write-Host "========================================================" -ForegroundColor Cyan
+
+    # --- Q1: Update type ---
+    $updateType = Pick "Q1: What type of update?" @(
+        "Normal      - feature, minor fix",
+        "Patch Fix   - bug fix, quick patch",
+        "Critical    - FORCE all users to update",
+        "Maintenance - block ALL users temporarily",
+        "Config Only - Remote Config change, no code"
+    )
+
+    $skipBuild = ($updateType -eq 4 -or $updateType -eq 5)
+    $deployWeb = $false
+    $deployWindows = $false
+    $deployAndroid = $false
+
+    # --- Q2: Platforms ---
+    if (-not $skipBuild) {
+        $platformChoice = Pick "Q2: Deploy to which platforms?" @(
+            "Web only",
+            "Windows only",
+            "Android only",
+            "Web + Windows",
+            "Web + Android",
+            "Windows + Android",
+            "All platforms"
+        )
+        switch ($platformChoice) {
+            1 { $deployWeb = $true }
+            2 { $deployWindows = $true }
+            3 { $deployAndroid = $true }
+            4 { $deployWeb = $true; $deployWindows = $true }
+            5 { $deployWeb = $true; $deployAndroid = $true }
+            6 { $deployWindows = $true; $deployAndroid = $true }
+            7 { $deployWeb = $true; $deployWindows = $true; $deployAndroid = $true }
+        }
     }
 
-    Write-DeployLog "DEPLOY START | Attempt $attempt | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
+    # --- Parse current version ---
+    $pubspecPath = Join-Path $root "pubspec.yaml"
+    $pubspecContent = Get-Content $pubspecPath -Raw
+    $currentVersion = if ($pubspecContent -match 'version:\s*(\d+\.\d+\.\d+)\+(\d+)') {
+        @{ version = $matches[1]; build = [int]$matches[2] }
+    }
+    else {
+        @{ version = "1.0.0"; build = 1 }
+    }
+
+    $newVersion = $currentVersion.version
+    $newBuild = $currentVersion.build
+
+    # --- Q3: Version bump ---
+    if (-not $skipBuild) {
+        $parts = $currentVersion.version -split '\.'
+        $patchBumped = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
+        $minorBumped = "$($parts[0]).$([int]$parts[1] + 1).0"
+        $majorBumped = "$([int]$parts[0] + 1).0.0"
+        $buildBumped = $currentVersion.build + 1
+
+        Write-Host ""
+        Write-Host "  Current: $($currentVersion.version)+$($currentVersion.build)" -ForegroundColor Gray
+
+        $bumpChoice = Pick "Q3: Version bump?" @(
+            "Build only     ($($currentVersion.version)+$buildBumped)",
+            "Patch          ($patchBumped+$buildBumped)",
+            "Minor          ($minorBumped+$buildBumped)",
+            "Major          ($majorBumped+$buildBumped)",
+            "Custom         - enter manually"
+        )
+
+        $newBuild = $buildBumped
+        switch ($bumpChoice) {
+            1 { $newVersion = $currentVersion.version }
+            2 { $newVersion = $patchBumped }
+            3 { $newVersion = $minorBumped }
+            4 { $newVersion = $majorBumped }
+            5 {
+                $newVersion = Read-Host "  Enter version (e.g. 1.2.3)"
+                $newBuild = [int](Read-Host "  Enter build number")
+            }
+        }
+    }
+
+    # --- Q4: Changelog ---
+    $changelog = ""
+    if (-not $skipBuild) {
+        Write-Host ""
+        Write-Host "  Q4: What changed? (one per line, blank to finish)" -ForegroundColor White
+        $lines = @()
+        while ($true) {
+            $line = Read-Host "  *"
+            if ([string]::IsNullOrWhiteSpace($line)) { break }
+            $lines += "* $line"
+        }
+        $changelog = $lines -join "`n"
+        if ($changelog -eq "") { $changelog = "Bug fixes and improvements" }
+    }
+
+    # --- Q5: Force version (critical only) ---
+    $forceMinVersion = ""
+    if ($updateType -eq 3) {
+        $forceMinVersion = Read-Host "  Q5: Minimum required version to force? (Enter = $newVersion)"
+        if ([string]::IsNullOrWhiteSpace($forceMinVersion)) { $forceMinVersion = $newVersion }
+    }
+
+    # --- Q5/Q6: Announcement (optional) ---
+    $announcementMsg = ""
+    $setLatestVersion = $false
+    if (-not $skipBuild -and $updateType -le 3) {
+        $setLatestVersion = $true
+
+        Write-Host ""
+        $announcementInput = Read-Host "  Q5: Announcement for ALL users? (Enter = skip)"
+        if (-not [string]::IsNullOrWhiteSpace($announcementInput)) {
+            $announcementMsg = $announcementInput
+        }
+    }
+
+    # --- Q6: Windows installer type (if deploying Windows) ---
+    $buildMsix = $false
+    $buildExe = $false
+    $winChoiceLabel = ""
+    if ($deployWindows) {
+        Write-Host ""
+        Write-Host "  +-----------------------------------------+" -ForegroundColor Cyan
+        Write-Host "  |  Q6: Which Windows installer to build?  |" -ForegroundColor Cyan
+        Write-Host "  |                                         |" -ForegroundColor Cyan
+        Write-Host "  |  [1] Microsoft Store (MSIX only)        |" -ForegroundColor White
+        Write-Host "  |  [2] Web Download (EXE only)            |" -ForegroundColor White
+        Write-Host "  |  [3] Both (MSIX + EXE)                  |" -ForegroundColor Yellow
+        Write-Host "  |                                         |" -ForegroundColor Cyan
+        Write-Host "  +-----------------------------------------+" -ForegroundColor Cyan
+        $winChoice = Read-Host "  Choose [1/2/3]"
+        if ($winChoice -notin @("1", "2", "3")) { $winChoice = "3" }
+        $buildMsix = $winChoice -in @("1", "3")
+        $buildExe = $winChoice -in @("2", "3")
+        $winChoiceLabel = switch ($winChoice) { "1" { "Store (MSIX)" }; "2" { "Web Download (EXE)" }; "3" { "Both (MSIX + EXE)" } }
+    }
+
+    # ===========================================================
+    #   CONFIRM - Last chance to cancel
+    # ===========================================================
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "  Deploy Plan" -ForegroundColor Cyan
+    Write-Host "========================================================" -ForegroundColor Cyan
+
+    $typeNames = @("", "Normal", "Patch", "Critical", "Maintenance", "Config Only")
+    Write-Host "  Type:       $($typeNames[$updateType])" -ForegroundColor White
+    if (-not $skipBuild) {
+        Write-Host "  Version:    $newVersion+$newBuild" -ForegroundColor White
+        $platforms = @()
+        if ($deployWeb) { $platforms += "Web" }
+        if ($deployWindows) { $platforms += "Windows" }
+        if ($deployAndroid) { $platforms += "Android" }
+        Write-Host "  Platforms:  $($platforms -join ', ')" -ForegroundColor White
+        if ($winChoiceLabel) { Write-Host "  Windows:    $winChoiceLabel" -ForegroundColor White }
+        if ($changelog) {
+            $previewLen = [Math]::Min(60, $changelog.Length)
+            Write-Host "  Changelog:  $($changelog.Substring(0, $previewLen))..." -ForegroundColor Gray
+        }
+    }
+    if ($forceMinVersion) { Write-Host "  Force min:  v$forceMinVersion" -ForegroundColor Red }
+    if ($announcementMsg) { Write-Host "  Announce:   $announcementMsg" -ForegroundColor Cyan }
+    if ($updateType -eq 4) { Write-Host "  Action:     Enable maintenance mode" -ForegroundColor Yellow }
+
+    Write-Host ""
+    Write-Host "  After confirm, I will automatically:" -ForegroundColor Gray
+    if (-not $skipBuild) {
+        Write-Host "    > Run tests + analyzer" -ForegroundColor Gray
+        Write-Host "    > Bump version in pubspec.yaml" -ForegroundColor Gray
+        Write-Host "    > Backup current deployment" -ForegroundColor Gray
+        if ($deployWeb) { Write-Host "    > Build web + deploy to Firebase Hosting + health check" -ForegroundColor Gray }
+        if ($deployWindows) { Write-Host "    > Build Windows + MSIX + Inno Setup EXE + upload to Storage" -ForegroundColor Gray }
+        if ($deployAndroid) { Write-Host "    > Build Android APK + update version.json + upload to Storage" -ForegroundColor Gray }
+        Write-Host "    > Git commit + tag + push" -ForegroundColor Gray
+    }
+    Write-Host ""
+
+    $confirm = Read-Host "  Deploy? (y/n)"
+    if ($confirm -ne 'y' -and $confirm -ne 'Y') {
+        Write-Host "`n  Deploy cancelled." -ForegroundColor Yellow
+        exit 0
+    }
+
+    # Save state for resume on failure
+    $pubspecPath = Join-Path $root "pubspec.yaml"
+    $typeNames = @("", "Normal", "Patch", "Critical", "Maintenance", "Config Only")
+    $stateData = @{
+        updateType       = $updateType
+        typeName         = $typeNames[$updateType]
+        skipBuild        = $skipBuild
+        deployWeb        = $deployWeb
+        deployWindows    = $deployWindows
+        deployAndroid    = $deployAndroid
+        newVersion       = $newVersion
+        newBuild         = $newBuild
+        changelog        = $changelog
+        forceMinVersion  = $forceMinVersion
+        announcementMsg  = $announcementMsg
+        setLatestVersion = $setLatestVersion
+        buildMsix        = $buildMsix
+        buildExe         = $buildExe
+        winChoiceLabel   = $winChoiceLabel
+        platforms        = (@($(if ($deployWeb) { 'Web' }), $(if ($deployWindows) { 'Windows' }), $(if ($deployAndroid) { 'Android' })) | Where-Object { $_ }) -join ', '
+        savedAt          = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
+    } | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText($statePath, $stateData, [System.Text.UTF8Encoding]::new($false))
+    Write-Info "Settings saved for resume"
+
+} # end if (-not $resumed)
+
+# ===========================================================
+#   PHASE 2: RUN THE DEPLOY
+#   On error: script stops. Fix the error, re-run the script.
+#   It will resume with same settings automatically.
+# ===========================================================
+$failed = $false
+
+Write-Host ""
+Write-Host "========================================================" -ForegroundColor Green
+if ($resumed) {
+    Write-Host "  Resuming deploy... sit back and watch!" -ForegroundColor Green
+}
+else {
+    Write-Host "  Running... sit back and watch!" -ForegroundColor Green
+}
+Write-Host "========================================================" -ForegroundColor Green
+
+Write-DeployLog "DEPLOY START | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
+
+try {
+    # <- Catch ALL errors -- nothing can stop us!
 
     # --- Update pubspec.yaml ---
     if (-not $skipBuild) {
@@ -350,9 +431,9 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
         }
     }
 
-    # --- Build and Deploy: Windows (MSIX) --- [RUNS FIRST to update download.html before web deploy]
+    # --- Build and Deploy: Windows (MSIX + Inno Setup EXE) --- [RUNS FIRST to update download.html before web deploy]
     if (-not $failed -and $deployWindows) {
-        Write-Step "Building Windows + MSIX installer..."
+        Write-Step "Building Windows -- $winChoiceLabel..."
 
         # Update MSIX version in pubspec.yaml (MSIX needs x.x.x.0 format)
         $msixVersion = "$newVersion.0"
@@ -371,52 +452,157 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
         }
         else {
             Write-Ok "Windows built"
+            $msixFile = $null
+            $exeFile = $null
 
-            # Create MSIX installer
-            Write-Step "Creating MSIX installer..."
-            $ErrorActionPreference = "Continue"
-            dart run msix:create
-            $msixExit = $LASTEXITCODE
-            $ErrorActionPreference = "Stop"
+            # ========== MSIX INSTALLER (for Microsoft Store) ==========
+            if ($buildMsix) {
+                Write-Step "Creating MSIX installer (for Store)..."
+                $ErrorActionPreference = "Continue"
+                dart run msix:create
+                $msixExit = $LASTEXITCODE
+                $ErrorActionPreference = "Stop"
 
-            if ($msixExit -ne 0) {
-                Write-Fail "MSIX creation failed!"
-                $failed = $true
-            }
-            else {
-                $msixFile = Join-Path $root "build\windows\x64\runner\Release\TulasiStores_Setup.msix"
-                if (Test-Path $msixFile) {
-                    $msixSize = "{0:N1} MB" -f ((Get-Item $msixFile).Length / 1MB)
-                    Write-Ok "MSIX created ($msixSize)"
-                    Write-DeployLog "WINDOWS MSIX | $msixSize"
+                if ($msixExit -ne 0) {
+                    Write-Warn "MSIX creation failed"
+                    if ($buildExe) { Write-Warn "Continuing with EXE only" }
+                    Write-DeployLog "WINDOWS MSIX | FAILED"
                 }
                 else {
-                    # Try alternate location
-                    $msixFile = Get-ChildItem -Path (Join-Path $root "build\windows") -Filter "*.msix" -Recurse | Select-Object -First 1
-                    if ($msixFile) {
-                        $msixSize = "{0:N1} MB" -f ($msixFile.Length / 1MB)
-                        Write-Ok "MSIX created ($msixSize) at $($msixFile.FullName)"
-                        $msixFile = $msixFile.FullName
+                    $msixFile = Join-Path $root "build\windows\x64\runner\Release\TulasiStores_Setup.msix"
+                    if (Test-Path $msixFile) {
+                        $msixSize = "{0:N1} MB" -f ((Get-Item $msixFile).Length / 1MB)
+                        Write-Ok "MSIX created ($msixSize)"
+                        Write-DeployLog "WINDOWS MSIX | $msixSize"
                     }
                     else {
-                        Write-Warn "MSIX file not found in build output"
+                        $msixFound = Get-ChildItem -Path (Join-Path $root "build\windows") -Filter "*.msix" -Recurse | Select-Object -First 1
+                        if ($msixFound) {
+                            $msixSize = "{0:N1} MB" -f ($msixFound.Length / 1MB)
+                            Write-Ok "MSIX created ($msixSize) at $($msixFound.FullName)"
+                            $msixFile = $msixFound.FullName
+                        }
+                        else {
+                            Write-Warn "MSIX file not found in build output"
+                            $msixFile = $null
+                        }
                     }
                 }
+            }
 
-                # Update version.json with MSIX download URL
+            # ========== INNO SETUP EXE INSTALLER (for Web Download -- 85-90% coverage) ==========
+            if ($buildExe) {
+                Write-Step "Creating Inno Setup EXE installer (for web download)..."
+                $issPath = Join-Path $root "installer\TulasiStores_Setup.iss"
+                $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+
+                if ((Test-Path $issPath) -and (Test-Path $isccPath)) {
+                    # Update version in .iss file
+                    $issContent = Get-Content $issPath -Raw
+                    $issContent = $issContent -replace '#define MyAppVersion "[\d.]+"', "#define MyAppVersion `"$newVersion`""
+                    [System.IO.File]::WriteAllText($issPath, $issContent, [System.Text.UTF8Encoding]::new($false))
+                    Write-Info "Updated .iss version to $newVersion"
+
+                    # Compile with Inno Setup
+                    $ErrorActionPreference = "Continue"
+                    & $isccPath $issPath
+                    $innoExit = $LASTEXITCODE
+                    $ErrorActionPreference = "Stop"
+
+                    if ($innoExit -ne 0) {
+                        Write-Fail "Inno Setup compilation failed!"
+                        if (-not $msixFile -and -not $buildMsix) {
+                            $failed = $true
+                        }
+                        else {
+                            Write-Warn "Continuing with MSIX only"
+                        }
+                    }
+                    else {
+                        $exeFile = Join-Path $root "installer\Output\TulasiStores_Setup.exe"
+                        if (Test-Path $exeFile) {
+                            $exeSize = "{0:N1} MB" -f ((Get-Item $exeFile).Length / 1MB)
+                            Write-Ok "EXE installer created ($exeSize)"
+                            Write-DeployLog "WINDOWS EXE | $exeSize"
+                        }
+                        else {
+                            Write-Warn "EXE file not found at expected path"
+                            $exeFile = $null
+                        }
+                    }
+                }
+                else {
+                    if (-not (Test-Path $isccPath)) { Write-Warn "Inno Setup 6 not found at $isccPath" }
+                    if (-not (Test-Path $issPath)) { Write-Warn "Inno Setup script not found at $issPath" }
+                    if (-not $msixFile) { $failed = $true }
+                }
+            }
+
+            # Check at least one installer was created
+            if (-not $msixFile -and -not $exeFile) {
+                Write-Fail "No installer created!"
+                $failed = $true
+            }
+
+            if (-not $failed) {
+                # Generate one-click VBS installer for MSIX
+                if ($msixFile) {
+                    Write-Step "Generating one-click MSIX installer script..."
+                    $releaseDir = Join-Path $root "build\windows\x64\runner\Release"
+                    $vbsInstaller = Join-Path $releaseDir "Install_TulasiStores.vbs"
+                    $vbsContent = @"
+' Tulasi Stores - One-Click Installer v$newVersion
+' Silently installs certificate, then opens MSIX installer GUI
+
+If Not WScript.Arguments.Named.Exists("elevated") Then
+    Set objShell = CreateObject("Shell.Application")
+    objShell.ShellExecute "wscript.exe", """" & WScript.ScriptFullName & """ /elevated", "", "runas", 0
+    WScript.Quit
+End If
+
+scriptDir = Left(WScript.ScriptFullName, InStrRev(WScript.ScriptFullName, "\"))
+msixFile = scriptDir & "TulasiStores_Setup.msix"
+
+Set fso = CreateObject("Scripting.FileSystemObject")
+If Not fso.FileExists(msixFile) Then
+    MsgBox "TulasiStores_Setup.msix not found!" & vbCrLf & vbCrLf & "Please place this script in the same folder as the MSIX file.", vbExclamation, "Tulasi Stores Installer"
+    WScript.Quit 1
+End If
+
+Set objShell = CreateObject("WScript.Shell")
+psCommand = "powershell -WindowStyle Hidden -ExecutionPolicy Bypass -Command """ & _
+    "$msixPath = '" & msixFile & "'; " & _
+    "$cert = (Get-AuthenticodeSignature $msixPath).SignerCertificate; " & _
+    "if ($cert) { " & _
+    "  $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('TrustedPeople', 'LocalMachine'); " & _
+    "  $store.Open('ReadWrite'); " & _
+    "  $store.Add($cert); " & _
+    "  $store.Close(); " & _
+    "}" & """"
+
+objShell.Run psCommand, 0, True
+objShell.Run """" & msixFile & """", 1, False
+WScript.Quit 0
+"@
+                    [System.IO.File]::WriteAllText($vbsInstaller, $vbsContent, [System.Text.UTF8Encoding]::new($false))
+                    Write-Ok "Install_TulasiStores.vbs generated"
+                }
+
+                # Update version.json with EXE download URL
                 $winVersionPath = Join-Path $root "installers\version.json"
-                $msixStorageName = "TulasiStores_Setup_v$newVersion.msix"
-                $downloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2F$msixStorageName`?alt=media"
+                $exeStorageName = "TulasiStores_Setup_v$newVersion.exe"
+                $exeDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2F$exeStorageName`?alt=media"
 
                 $versionJson = @{
-                    version     = $newVersion
-                    buildNumber = [int]$newBuild
-                    downloadUrl = $downloadUrl
-                    changelog   = $changelog
-                    forceUpdate = ($updateType -eq 3)
+                    version        = $newVersion
+                    buildNumber    = [int]$newBuild
+                    exeDownloadUrl = $exeDownloadUrl
+                    storeUrl       = "https://apps.microsoft.com/detail/tulasi-shop-lite"
+                    changelog      = $changelog
+                    forceUpdate    = ($updateType -eq 3)
                 } | ConvertTo-Json -Depth 3
                 [System.IO.File]::WriteAllText($winVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
-                Write-Ok "version.json updated (MSIX download URL)"
+                Write-Ok "version.json updated (EXE download + Store URL)"
 
                 # Auto-update website download page with new version
                 $downloadPage = Join-Path $root "website\src\pages\download.html"
@@ -424,10 +610,10 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
                     Write-Step "Updating website download page..."
                     $pageContent = Get-Content $downloadPage -Raw
 
-                    # Update MSIX download URL (replace old version with new)
-                    $pageContent = $pageContent -replace 'TulasiStores_Setup_v[\d.]+\.msix', "TulasiStores_Setup_v$newVersion.msix"
+                    # Update EXE download URL
+                    $pageContent = $pageContent -replace 'TulasiStores_Setup_v[\d.]+\.exe', "TulasiStores_Setup_v$newVersion.exe"
 
-                    # Update version display (e.g., v1.0.0 -> v1.0.1)
+                    # Update version display
                     $pageContent = $pageContent -replace '(<span>v)\d+\.\d+\.\d+(</span>)', "`${1}$newVersion`${2}"
                     $pageContent = $pageContent -replace '(Latest version: <strong>v)\d+\.\d+\.\d+(</strong>)', "`${1}$newVersion`${2}"
                     $pageContent = $pageContent -replace '(style="[^"]*">)\s*v\d+\.\d+\.\d+(</div>)', "`${1}v$newVersion`${2}"
@@ -437,19 +623,19 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
                     Write-DeployLog "WEBSITE | download.html updated to v$newVersion"
                 }
 
-                # Upload to Firebase Storage
+                # Upload EXE to Firebase Storage (MSIX goes to Microsoft Store separately)
                 $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
                 if ($gsutilExists) {
                     $storagePath = "gs://login-radha.firebasestorage.app/updates/windows/"
 
-                    # Delete old MSIX files first
-                    Write-Step "Cleaning old MSIX files from Storage..."
+                    # Clean old EXE files from Storage
+                    Write-Step "Cleaning old EXE files from Storage..."
                     $ErrorActionPreference = "Continue"
-                    $oldFiles = gsutil ls "${storagePath}*.msix" 2>&1
-                    if ($oldFiles -and $oldFiles -notmatch "CommandException") {
-                        foreach ($oldFile in $oldFiles) {
+                    $oldExeFiles = gsutil ls "${storagePath}*.exe" 2>&1
+                    if ($oldExeFiles -and $oldExeFiles -notmatch "CommandException") {
+                        foreach ($oldFile in $oldExeFiles) {
                             $oldFile = $oldFile.Trim()
-                            if ($oldFile -and $oldFile -notlike "*$msixStorageName*" -and $oldFile -like "*.msix") {
+                            if ($oldFile -and $oldFile -notlike "*$exeStorageName*" -and $oldFile -like "*.exe") {
                                 gsutil rm $oldFile 2>&1 | Out-Null
                                 Write-Info "Deleted old: $($oldFile.Split('/')[-1])"
                             }
@@ -457,25 +643,42 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
                     }
                     Write-Ok "Old files cleaned"
 
-                    # Upload new files
-                    Write-Step "Uploading MSIX + version.json to Firebase Storage..."
+                    # Upload version.json + EXE
+                    Write-Step "Uploading EXE + version.json to Firebase Storage..."
                     gsutil cp $winVersionPath "${storagePath}version.json"
                     gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
 
-                    if ($msixFile -and (Test-Path $msixFile)) {
-                        gsutil cp $msixFile "${storagePath}$msixStorageName"
-                        gsutil setmeta -h "Content-Type:application/msix" "${storagePath}$msixStorageName"
-                        Write-Ok "MSIX uploaded: $msixStorageName"
+                    if ($exeFile -and (Test-Path $exeFile)) {
+                        gsutil cp $exeFile "${storagePath}$exeStorageName"
+                        gsutil setmeta -h "Content-Type:application/octet-stream" "${storagePath}$exeStorageName"
+                        Write-Ok "EXE uploaded: $exeStorageName"
                     }
 
                     $ErrorActionPreference = "Stop"
-                    Write-Ok "All Windows files uploaded"
-                    Write-DeployLog "FIREBASE UPLOAD | Windows MSIX + version.json"
+                    Write-Ok "EXE uploaded to Firebase Storage"
+                    Write-DeployLog "FIREBASE UPLOAD | Windows EXE + version.json"
                 }
                 else {
-                    Write-Warn "gsutil not found - upload manually:"
+                    Write-Warn "gsutil not found - upload EXE manually:"
                     Write-Info "  Firebase Console > Storage > updates/windows/"
-                    Write-Info "  Upload: version.json + $msixStorageName"
+                    Write-Info "  Upload: version.json + $exeStorageName"
+                }
+
+                # Remind to upload MSIX to Microsoft Store
+                if ($msixFile -and (Test-Path $msixFile)) {
+                    Write-Step "MANUAL ACTION: Upload MSIX to Microsoft Store"
+                    Write-Host ""
+                    Write-Host "  +-------------------------------------------------+" -ForegroundColor Cyan
+                    Write-Host "  |  MSIX file ready for Microsoft Store:            |" -ForegroundColor Cyan
+                    Write-Host "  |  $msixFile" -ForegroundColor Yellow
+                    Write-Host "  |                                                  |" -ForegroundColor Cyan
+                    Write-Host "  |  1. Go to: partner.microsoft.com/dashboard       |" -ForegroundColor White
+                    Write-Host "  |  2. Select your app > Packages                   |" -ForegroundColor White
+                    Write-Host "  |  3. Upload the .msix file                        |" -ForegroundColor White
+                    Write-Host "  |  4. Submit for review                            |" -ForegroundColor White
+                    Write-Host "  +-------------------------------------------------+" -ForegroundColor Cyan
+                    Read-Host "  Press Enter after done (or skip)"
+                    Write-DeployLog "MSIX | Ready for Microsoft Store upload"
                 }
             }
         }
@@ -603,28 +806,37 @@ while ($attempt -lt $maxAttempts -and -not $deploySuccess) {
         }
     }
 
-    # --- Check if all passed ---
-    if (-not $failed) {
-        $deploySuccess = $true
-    }
-    elseif ($attempt -lt $maxAttempts) {
-        Write-Host ""
-        Write-Warn "Attempt $attempt failed. Will auto-fix and restart from top..."
-        Write-DeployLog "ATTEMPT $attempt FAILED | Restarting..."
-    }
-    else {
-        Write-Host ""
-        Write-Fail "ALL $maxAttempts ATTEMPTS FAILED. Deploy aborted."
-        Write-DeployLog "DEPLOY ABORTED | All $maxAttempts attempts failed"
-        # Revert version
-        if (-not $skipBuild) {
-            $revertContent = Get-Content $pubspecPath -Raw
-            $revertContent = $revertContent -replace "version: $newVersion\+$newBuild", "version: $($currentVersion.version)+$($currentVersion.build)"
-            [System.IO.File]::WriteAllText($pubspecPath, $revertContent, [System.Text.UTF8Encoding]::new($false))
-            Write-Warn "Reverted pubspec.yaml to $($currentVersion.version)+$($currentVersion.build)"
-        }
-        exit 1
-    }
+    # --- All steps completed ---
+
+}
+catch {
+    # Catch ANY unhandled PowerShell exception
+    Write-Host ""
+    Write-Fail "Unexpected error: $_"
+    Write-DeployLog "ERROR | Unexpected: $_"
+    $failed = $true
+}
+
+if ($failed) {
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Red
+    Write-Host "  Deploy FAILED! Settings saved for resume." -ForegroundColor Red
+    Write-Host "========================================================" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "  Fix the error above, then re-run:" -ForegroundColor Yellow
+    Write-Host "    .\smart-deploy.ps1" -ForegroundColor White
+    Write-Host ""
+    Write-Host "  It will resume with the same settings!" -ForegroundColor Gray
+    Write-Host "  (State saved in deploy-state.json)" -ForegroundColor Gray
+    Write-Host ""
+    Write-DeployLog "DEPLOY FAILED | Settings saved for resume"
+    exit 1
+}
+
+# --- SUCCESS! Clean up state file ---
+if (Test-Path $statePath) {
+    Remove-Item $statePath -Force
+    Write-Info "deploy-state.json cleaned up"
 }
 
 # --- Remote Config (manual Firebase Console action) ---
@@ -725,7 +937,7 @@ if (-not $skipBuild) {
 Write-Host "  Type:    $($typeNames[$updateType])" -ForegroundColor White
 
 if ($deployWeb) { Write-Host "  Web:     Deployed + Health Checked" -ForegroundColor Green }
-if ($deployWindows) { Write-Host "  Windows: Built + Uploaded" -ForegroundColor Green }
+if ($deployWindows) { Write-Host "  Windows: MSIX + EXE Built + Uploaded" -ForegroundColor Green }
 if ($deployAndroid) { Write-Host "  Android: Built + Uploaded" -ForegroundColor Green }
 if ($forceMinVersion) { Write-Host "  Force:   min_app_version = $forceMinVersion" -ForegroundColor Red }
 if ($announcementMsg) { Write-Host "  Announce: $announcementMsg" -ForegroundColor Cyan }

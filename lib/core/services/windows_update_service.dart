@@ -45,7 +45,9 @@ class AppVersionInfo {
     return AppVersionInfo(
       version: json['version'] as String,
       buildNumber: json['buildNumber'] as int,
-      downloadUrl: json['downloadUrl'] as String,
+      downloadUrl:
+          (json['exeDownloadUrl'] as String?) ??
+          (json['downloadUrl'] as String),
       changelog: (json['changelog'] as String?) ?? '',
       forceUpdate: (json['forceUpdate'] as bool?) ?? false,
     );
