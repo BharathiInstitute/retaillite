@@ -1,8 +1,8 @@
 {
     "changelog":  "Bug fixes and improvements",
-    "version":  "1.0.3",
-    "exeDownloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2FTulasiStores_Setup_v1.0.3.exe?alt=media",
+    "version":  "1.0.4",
+    "exeDownloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2FTulasiStores_Setup_v1.0.4.exe?alt=media",
     "storeUrl":  "https://apps.microsoft.com/detail/tulasi-shop-lite",
     "forceUpdate":  false,
-    "buildNumber":  10
+    "buildNumber":  11
 }

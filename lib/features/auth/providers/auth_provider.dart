@@ -665,6 +665,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       // Reset theme to default light immediately
       _ref.read(themeSettingsProvider.notifier).resetToDefault();
       await _auth.signOut();
+      // Clear Firestore offline cache so next user can't see previous user's data
+      // This is critical for shared devices (all platforms: Android, Web, Windows)
+      await FirebaseFirestore.instance.clearPersistence();
       state = const AuthState(isLoading: false);
     } catch (e) {
       debugPrint('🔐 Error signing out: $e');

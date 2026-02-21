@@ -12,6 +12,7 @@ import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
+import 'package:retaillite/shared/widgets/logout_dialog.dart';
 
 /// Settings tab enum
 enum SettingsTab { general, account, hardware, billing }
@@ -641,7 +642,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             padding: const EdgeInsets.all(16),
             child: TextButton.icon(
               onPressed: () {
-                ref.read(authNotifierProvider.notifier).signOut();
+                showLogoutDialog(context, ref);
               },
               icon: const Icon(Icons.logout, size: 20),
               label: const Text('Log Out'),

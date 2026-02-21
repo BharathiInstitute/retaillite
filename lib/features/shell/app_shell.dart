@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/color_utils.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/shared/widgets/logout_dialog.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
 import 'package:retaillite/features/auth/widgets/email_verification_banner.dart';
 import 'package:retaillite/features/shell/web_shell.dart';
@@ -337,7 +338,7 @@ class AppShell extends ConsumerWidget {
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  ref.read(authNotifierProvider.notifier).signOut();
+                  showLogoutDialog(context, ref);
                 },
               ),
 

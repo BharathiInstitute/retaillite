@@ -203,6 +203,9 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
     return AuthLayout(
       title: 'Set Up Your Shop',
       subtitle: 'Enter your shop details to get started',
+      onBack: () {
+        ref.read(authNotifierProvider.notifier).signOut();
+      },
       child: Form(
         key: _formKey,
         child: Column(

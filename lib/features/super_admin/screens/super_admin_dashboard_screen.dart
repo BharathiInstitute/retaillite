@@ -4,7 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/shared/widgets/logout_dialog.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
@@ -235,7 +235,7 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
             child: SizedBox(
               width: double.infinity,
               child: OutlinedButton.icon(
-                onPressed: () => _showLogoutDialog(context, ref),
+                onPressed: () => showLogoutDialog(context, ref),
                 icon: const Icon(Icons.logout, size: 18),
                 label: const Text('Logout'),
                 style: OutlinedButton.styleFrom(
@@ -593,35 +593,6 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
       case SubscriptionPlan.business:
         return Colors.purple;
     }
-  }
-
-  void _showLogoutDialog(BuildContext context, WidgetRef ref) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text(
-          'Are you sure you want to logout from Super Admin?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await ref.read(authNotifierProvider.notifier).signOut();
-              if (context.mounted) {
-                context.go('/login');
-              }
-            },
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Logout'),
-          ),
-        ],
-      ),
-    );
   }
 }
 

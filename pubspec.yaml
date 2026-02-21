@@ -1,7 +1,7 @@
 name: retaillite
 description: "LITE - Retail Management System"
 publish_to: 'none'
-version: 1.0.3+10
+version: 1.0.4+11
 
 environment:
   sdk: ^3.10.4
@@ -144,7 +144,7 @@ msix_config:
   publisher_display_name: Tulasi ERP
   publisher: CN=E031B94D-44BC-474E-A0E4-80CF69D69C2D
   identity_name: 39648TulasiERP.TulasiStores
-  msix_version: 1.0.3.0
+  msix_version: 1.0.4.0
   logo_path: assets\images\app_icon.png
   capabilities: internetClient,internetClientServer
   languages: en-us,hi-in,te-in

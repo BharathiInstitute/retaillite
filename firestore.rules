@@ -199,6 +199,26 @@ service cloud.firestore {
       allow delete: if false;
     }
     
+    // ===================
+    // DESKTOP AUTH SESSIONS (for web-based desktop login flow)
+    // These must be accessible BEFORE authentication (unauthenticated users)
+    // Security: limited fields, small size, sessions are short-lived
+    // ===================
+    match /desktop_auth_sessions/{sessionId} {
+      // Allow anyone to create a pending session (desktop app creates before auth)
+      allow create: if request.resource.data.keys().hasOnly(['status', 'createdAt'])
+        && request.resource.data.status == 'pending'
+        && request.resource.size() < 1000;
+      
+      // Allow reading session to poll for auth token
+      allow read: if true;
+      
+      // Allow updating status to 'ready' with customToken (Cloud Function does this)
+      // Allow deleting expired/completed sessions
+      allow update: if true && request.resource.size() < 5000;
+      allow delete: if true;
+    }
+    
     // Deny all other access by default
     match /{document=**} {
       allow read, write: if false;
