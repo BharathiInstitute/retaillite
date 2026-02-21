@@ -1,7 +1,11 @@
 /// Shop setup screen - one-time setup after registration
 /// Includes phone OTP verification (for both Google & email users)
+/// On Windows desktop, phone OTP is skipped (Firebase Phone Auth unsupported)
 library;
 
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -30,6 +34,9 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   bool _isLoading = false;
   bool _phoneVerified = false;
 
+  /// Desktop platforms don't support Firebase Phone Auth
+  bool get _isDesktop => !kIsWeb && Platform.isWindows;
+
   @override
   void initState() {
     super.initState();
@@ -48,6 +55,11 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       if (userModel.phoneVerified) {
         _phoneVerified = true;
       }
+    }
+    // On Windows desktop, auto-skip phone verification
+    // (Firebase Phone Auth is not supported on desktop)
+    if (_isDesktop) {
+      _phoneVerified = true;
     }
   }
 
@@ -123,9 +135,18 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   Future<void> _handleSetup() async {
     if (!_formKey.currentState!.validate()) return;
 
-    // Phone is required — must be verified
+    // Phone is required — must be verified (except on desktop)
     final phone = _phoneController.text.trim();
-    if (phone.isEmpty || !_phoneVerified) {
+    if (phone.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter your phone number'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+    if (!_phoneVerified && !_isDesktop) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please verify your phone number before continuing'),
@@ -146,7 +167,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
             shopName: _shopNameController.text.trim(),
             ownerName: _ownerNameController.text.trim(),
             phone: '+91$phone',
-            phoneVerified: true,
+            phoneVerified: !_isDesktop,
             address: _addressController.text.trim().isNotEmpty
                 ? _addressController.text.trim()
                 : null,
@@ -353,7 +374,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                     },
                   ),
                 ),
-                if (!_phoneVerified) ...[
+                if (!_phoneVerified && !_isDesktop) ...[
                   const SizedBox(width: 8),
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
@@ -494,21 +515,31 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.green.withValues(alpha: 0.1),
+                  color: (_isDesktop ? Colors.blue : Colors.green).withValues(
+                    alpha: 0.1,
+                  ),
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: Colors.green.withValues(alpha: 0.3),
+                    color: (_isDesktop ? Colors.blue : Colors.green).withValues(
+                      alpha: 0.3,
+                    ),
                   ),
                 ),
-                child: const Row(
+                child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.verified, color: Colors.green, size: 18),
-                    SizedBox(width: 8),
+                    Icon(
+                      _isDesktop ? Icons.info_outline : Icons.verified,
+                      color: _isDesktop ? Colors.blue : Colors.green,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
                     Text(
-                      'Phone number verified & linked to your account',
+                      _isDesktop
+                          ? 'Phone OTP not available on desktop — number will be saved'
+                          : 'Phone number verified & linked to your account',
                       style: TextStyle(
-                        color: Colors.green,
+                        color: _isDesktop ? Colors.blue : Colors.green,
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
                       ),

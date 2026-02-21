@@ -2,12 +2,15 @@
 /// Handles user authentication with Firebase Auth
 library;
 
+import 'dart:math' as math;
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
@@ -166,6 +169,11 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           .doc(firebaseUser.uid)
           .get();
 
+      // Google sign-in users are always email-verified
+      final isGoogleUser = firebaseUser.providerData.any(
+        (p) => p.providerId == 'google.com',
+      );
+
       if (doc.exists) {
         final data = doc.data()!;
         final isShopSetupComplete =
@@ -174,13 +182,17 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         // Load this user's cloud settings into local SharedPreferences
         await OfflineStorageService.loadAllSettingsFromCloud();
 
+        final emailVerified =
+            isGoogleUser ||
+            (data['emailVerified'] as bool?) == true ||
+            firebaseUser.emailVerified;
+
         state = AuthState(
           status: AuthStatus.authenticated,
           firebaseUser: firebaseUser,
           isLoggedIn: true,
           isShopSetupComplete: isShopSetupComplete,
-          isEmailVerified:
-              (data['emailVerified'] as bool?) ?? firebaseUser.emailVerified,
+          isEmailVerified: emailVerified,
           isLoading: false,
           user: UserModel(
             id: firebaseUser.uid,
@@ -195,8 +207,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             photoUrl: data['photoUrl'] as String? ?? firebaseUser.photoURL,
             settings: const UserSettings(),
             phoneVerified: (data['phoneVerified'] as bool?) ?? false,
-            emailVerified:
-                (data['emailVerified'] as bool?) ?? firebaseUser.emailVerified,
+            emailVerified: emailVerified,
             phoneVerifiedAt: (data['phoneVerifiedAt'] as Timestamp?)?.toDate(),
             createdAt:
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
@@ -208,12 +219,12 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           status: AuthStatus.authenticated,
           firebaseUser: firebaseUser,
           isLoggedIn: true,
-          isEmailVerified: false,
+          isEmailVerified: isGoogleUser || firebaseUser.emailVerified,
           isLoading: false,
           user: UserModel(
             id: firebaseUser.uid,
             shopName: '',
-            ownerName: '',
+            ownerName: firebaseUser.displayName ?? '',
             email: firebaseUser.email,
             phone: '',
             settings: const UserSettings(),
@@ -234,10 +245,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Sign in with Google — multi-layer approach for maximum reliability
-  /// Layer 1 (Web): signInWithPopup → fastest, shows Google account picker
-  /// Layer 2 (Web): GoogleSignIn package → GIS inline flow
-  /// Layer 3 (Web): signInWithRedirect → redirects entire page to Google
+  /// Web: signInWithPopup → GoogleSignIn package → signInWithRedirect
   /// Mobile: GoogleSignIn package directly
+  /// Desktop: Use signInDesktop() instead (opens web app in browser)
   Future<bool> signInWithGoogle() async {
     try {
       if (kIsWeb) {
@@ -344,6 +354,104 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
         error:
             'Google sign-in failed. Please check your internet connection and try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Windows Desktop: Web-based auth via browser
+  /// Opens the hosted web app for full auth (Google, email, phone, shop setup)
+  /// then polls Firestore for a custom auth token
+  Future<bool> signInDesktop() async {
+    try {
+      state = state.copyWith(isLoading: true, error: null);
+      debugPrint('🖥️ Desktop: Starting web-based auth flow...');
+
+      // 1. Generate a random 6-character link code
+      final random = math.Random.secure();
+      const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous chars
+      final linkCode = List.generate(
+        6,
+        (_) => chars[random.nextInt(chars.length)],
+      ).join();
+
+      debugPrint('🖥️ Desktop: Link code: $linkCode');
+
+      // 2. Store pending session in Firestore
+      await _firestore.collection('desktop_auth_sessions').doc(linkCode).set({
+        'status': 'pending',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      // 3. Open web app in browser
+      const webAppUrl = 'https://stores.tulasierp.com/desktop-login';
+      final fullUrl = Uri.parse('$webAppUrl?code=$linkCode');
+
+      if (!await launchUrl(fullUrl, mode: LaunchMode.externalApplication)) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Could not open browser. Please try again.',
+        );
+        return false;
+      }
+
+      debugPrint('🖥️ Desktop: Opened browser, polling for auth token...');
+
+      // 4. Poll Firestore for the custom token (max 10 minutes)
+      const pollInterval = Duration(seconds: 3);
+      const maxWait = Duration(minutes: 10);
+      final startTime = DateTime.now();
+
+      while (DateTime.now().difference(startTime) < maxWait) {
+        await Future.delayed(pollInterval);
+
+        final sessionDoc = await _firestore
+            .collection('desktop_auth_sessions')
+            .doc(linkCode)
+            .get();
+
+        if (!sessionDoc.exists) {
+          debugPrint('🖥️ Desktop: Session deleted (expired)');
+          break;
+        }
+
+        final data = sessionDoc.data();
+        if (data?['status'] == 'ready' && data?['customToken'] != null) {
+          final customToken = data!['customToken'] as String;
+
+          debugPrint('🖥️ Desktop: Got custom token, signing in...');
+
+          // 5. Sign in with the custom token
+          await _auth.signInWithCustomToken(customToken);
+
+          // 6. Clean up the session document
+          await _firestore
+              .collection('desktop_auth_sessions')
+              .doc(linkCode)
+              .delete();
+
+          debugPrint('✅ Desktop: Signed in successfully!');
+          return true;
+        }
+      }
+
+      // Timed out
+      debugPrint('🖥️ Desktop: Auth timed out');
+      await _firestore
+          .collection('desktop_auth_sessions')
+          .doc(linkCode)
+          .delete();
+
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Sign-in timed out. Please try again.',
+      );
+      return false;
+    } catch (e) {
+      debugPrint('🖥️ Desktop auth error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Sign-in failed. Please try again.',
       );
       return false;
     }

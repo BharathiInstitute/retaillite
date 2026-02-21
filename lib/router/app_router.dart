@@ -1,10 +1,14 @@
 /// App routing configuration using go_router (local mode)
 library;
 
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/auth/screens/desktop_login_screen.dart';
 import 'package:retaillite/features/auth/screens/login_screen.dart';
 import 'package:retaillite/features/auth/screens/register_screen.dart';
 import 'package:retaillite/features/auth/screens/forgot_password_screen.dart';
@@ -222,7 +226,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Auth routes (outside shell)
       GoRoute(
         path: AppRoutes.login,
-        builder: (context, state) => const LoginScreen(),
+        builder: (context, state) => (!kIsWeb && Platform.isWindows)
+            ? const DesktopLoginScreen()
+            : const LoginScreen(),
       ),
       GoRoute(
         path: AppRoutes.register,

@@ -2,7 +2,7 @@
 ; Creates a professional installer with bundled VC++ Redistributable
 
 #define MyAppName "Tulasi Shop Lite"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.3"
 #define MyAppPublisher "Tulasi Stores"
 #define MyAppExeName "retaillite.exe"
 #define MyAppURL "https://tulasistores.com"

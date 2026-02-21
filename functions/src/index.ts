@@ -452,3 +452,98 @@ export const onUserDeleted = functions
             console.error(`❌ Error cleaning up Firestore for ${uid}:`, error);
         }
     });
+
+// ─── Desktop Auth Token ───
+
+/**
+ * Generate a custom auth token for desktop sign-in.
+ * 
+ * Called by the web auth page after user completes login + shop setup.
+ * The desktop app polls Firestore for the token, then uses
+ * signInWithCustomToken() to authenticate.
+ * 
+ * Flow:
+ * 1. Desktop generates a linkCode, stores {status:"pending"} in Firestore
+ * 2. Desktop opens web app /desktop-login?code=LINK_CODE
+ * 3. User completes auth on web
+ * 4. Web calls this function with the linkCode
+ * 5. Function generates customToken and stores in Firestore
+ * 6. Desktop polls Firestore, finds token, signs in
+ */
+export const generateDesktopToken = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 15, memory: "256MB" })
+    .https.onCall(async (data: { linkCode: string }, context) => {
+        // Must be authenticated (web user just signed in)
+        if (!context.auth) {
+            throw new functions.https.HttpsError(
+                "unauthenticated",
+                "User must be authenticated"
+            );
+        }
+
+        const { linkCode } = data;
+        if (!linkCode || linkCode.length !== 6) {
+            throw new functions.https.HttpsError(
+                "invalid-argument",
+                "Invalid link code"
+            );
+        }
+
+        const uid = context.auth.uid;
+        const db = admin.firestore();
+
+        try {
+            // Verify the session exists and is pending
+            const sessionRef = db.collection("desktop_auth_sessions").doc(linkCode);
+            const session = await sessionRef.get();
+
+            if (!session.exists) {
+                throw new functions.https.HttpsError(
+                    "not-found",
+                    "Session not found. Please try again from the desktop app."
+                );
+            }
+
+            const sessionData = session.data()!;
+            if (sessionData.status !== "pending") {
+                throw new functions.https.HttpsError(
+                    "already-exists",
+                    "This session has already been used."
+                );
+            }
+
+            // Check session age (max 10 minutes)
+            const createdAt = sessionData.createdAt?.toDate();
+            if (createdAt && Date.now() - createdAt.getTime() > 10 * 60 * 1000) {
+                await sessionRef.delete();
+                throw new functions.https.HttpsError(
+                    "deadline-exceeded",
+                    "Session expired. Please try again from the desktop app."
+                );
+            }
+
+            // Generate custom auth token
+            const customToken = await admin.auth().createCustomToken(uid);
+
+            // Store token in Firestore for desktop to pick up
+            await sessionRef.update({
+                status: "ready",
+                customToken: customToken,
+                uid: uid,
+                completedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            console.log(`🖥️ Desktop auth token generated for user ${uid}, code: ${linkCode}`);
+
+            return { success: true };
+        } catch (error) {
+            if (error instanceof functions.https.HttpsError) throw error;
+            console.error("Error generating desktop token:", error);
+            throw new functions.https.HttpsError(
+                "internal",
+                "Failed to generate auth token"
+            );
+        }
+    });
+

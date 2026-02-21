@@ -1,7 +1,7 @@
 name: retaillite
 description: "LITE - Retail Management System"
 publish_to: 'none'
-version: 1.0.1+6
+version: 1.0.3+9
 
 environment:
   sdk: ^3.10.4
@@ -141,12 +141,12 @@ flutter:
 # MSIX Installer Configuration (Microsoft Store)
 msix_config:
   display_name: Tulasi Stores
-  publisher_display_name: tulasierp
-  publisher: CN=80EFBE46-9EBE-44BF-86C8-B6E244805C1D
-  identity_name: tulasierp.TulasiStores
-  msix_version: 1.0.1.0
+  publisher_display_name: Tulasi ERP
+  publisher: CN=E031B94D-44BC-474E-A0E4-80CF69D69C2D
+  identity_name: 39648TulasiERP.TulasiStores
+  msix_version: 1.0.3.0
   logo_path: assets\images\app_icon.png
   capabilities: internetClient,internetClientServer
   languages: en-us,hi-in,te-in
   output_name: TulasiStores_Setup
-  store: false
+  store: true
