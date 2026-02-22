@@ -73,7 +73,7 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
 
                 // Title
                 const Text(
-                  'Tulasi Shop Lite',
+                  'Tulasi Stores',
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -107,8 +107,8 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
                         color: AppColors.primary,
                         size: 28,
                       ),
-                      SizedBox(height: 8),
-                      Text(
+                      const SizedBox(height: 8),
+                      const Text(
                         'Sign in via your browser',
                         style: TextStyle(
                           fontSize: 15,
@@ -116,8 +116,8 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
                           color: AppColors.textPrimary,
                         ),
                       ),
-                      SizedBox(height: 4),
-                      Text(
+                      const SizedBox(height: 4),
+                      const Text(
                         'A browser window will open for you to sign in.\n'
                         'Complete verification and shop setup there,\n'
                         'then this app will sync automatically.',

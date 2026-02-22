@@ -12,7 +12,6 @@ import 'package:retaillite/features/auth/screens/desktop_login_screen.dart';
 import 'package:retaillite/features/auth/screens/login_screen.dart';
 import 'package:retaillite/features/auth/screens/register_screen.dart';
 import 'package:retaillite/features/auth/screens/forgot_password_screen.dart';
-import 'package:retaillite/features/auth/screens/email_verification_screen.dart';
 import 'package:retaillite/features/auth/screens/shop_setup_screen.dart';
 import 'package:retaillite/features/billing/screens/billing_screen.dart';
 import 'package:retaillite/features/billing/screens/bills_history_screen.dart';
@@ -32,8 +31,12 @@ import 'package:retaillite/features/super_admin/screens/analytics_screen.dart';
 import 'package:retaillite/features/super_admin/screens/errors_screen.dart';
 import 'package:retaillite/features/super_admin/screens/performance_screen.dart';
 import 'package:retaillite/features/super_admin/screens/user_costs_screen.dart';
+import 'package:retaillite/features/super_admin/screens/manage_admins_screen.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 import 'package:retaillite/features/super_admin/screens/super_admin_login_screen.dart';
+import 'package:retaillite/features/super_admin/screens/notifications_admin_screen.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/notifications/screens/notifications_screen.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/widgets/splash_screen.dart';
 
@@ -46,7 +49,6 @@ class AppRoutes {
   static const String register = '/register';
   static const String forgotPassword = '/forgot-password';
   static const String shopSetup = '/shop-setup';
-  static const String emailVerification = '/verify-email';
   static const String billing = '/billing';
   static const String khata = '/khata';
   static const String customerDetail = '/customer/:id';
@@ -68,6 +70,9 @@ class AppRoutes {
   static const String superAdminErrors = '/super-admin/errors';
   static const String superAdminPerformance = '/super-admin/performance';
   static const String superAdminUserCosts = '/super-admin/user-costs';
+  static const String superAdminManageAdmins = '/super-admin/manage-admins';
+  static const String superAdminNotifications = '/super-admin/notifications';
+  static const String notifications = '/notifications';
 }
 
 // Super admin emails imported from super_admin_provider.dart (single source of truth)
@@ -120,7 +125,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       final authState = ref.read(authNotifierProvider);
       final isLoggedIn = authState.isLoggedIn;
       final isShopSetupComplete = authState.isShopSetupComplete;
-      final isEmailVerified = authState.isEmailVerified;
       final isLoading = authState.isLoading;
       final userEmail = authState.user?.email?.toLowerCase().trim() ?? '';
       final isSuperAdminUser = superAdminEmails.contains(userEmail);
@@ -141,9 +145,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       // Auth is resolved — leave the loading screen
       if (isLoadingRoute) {
         if (!isLoggedIn) return AppRoutes.login;
-        if (!isEmailVerified && !isSuperAdminUser) {
-          return AppRoutes.emailVerification;
-        }
         if (!isShopSetupComplete && !isSuperAdminUser) {
           return AppRoutes.shopSetup;
         }
@@ -163,8 +164,6 @@ final routerProvider = Provider<GoRouter>((ref) {
           currentPath == AppRoutes.forgotPassword ||
           currentPath == AppRoutes.superAdminLogin;
       final isShopSetupRoute = currentPath == AppRoutes.shopSetup;
-      final isEmailVerificationRoute =
-          currentPath == AppRoutes.emailVerification;
       final isSuperAdminRoute = currentPath.startsWith('/super-admin');
       final isGoingToSuperAdmin = fullUri.startsWith('/super-admin');
 
@@ -178,38 +177,34 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Allow super admin routes only for authorized admin emails
       if (isSuperAdminRoute || isGoingToSuperAdmin) {
-        if (isSuperAdminUser) return null; // Authorized — allow
+        if (isSuperAdminUser) {
+          // Already logged in admin on login page → go to dashboard
+          if (currentPath == AppRoutes.superAdminLogin) {
+            return '/super-admin';
+          }
+          return null; // Authorized — allow
+        }
         return AppRoutes.billing; // Not authorized — send to store
       }
 
-      // Regular user: email not verified
-      if (!isEmailVerified) {
-        if (isEmailVerificationRoute) return null;
-        return AppRoutes.emailVerification;
-      }
-
       // Regular user: Logged in but shop setup not complete
-      if (!isShopSetupComplete) {
+      // Super admins bypass shop setup entirely
+      if (!isShopSetupComplete && !isSuperAdminUser) {
         // Allow shop setup route
         if (isShopSetupRoute) return null;
-        // Redirect email verification to shop setup (already verified)
-        if (isEmailVerificationRoute) return AppRoutes.shopSetup;
         // Redirect to shop setup
         return AppRoutes.shopSetup;
       }
 
-      // Logged in and setup complete
-      if (isAuthRoute || isShopSetupRoute || isEmailVerificationRoute) {
+      // Logged in and setup complete (or super admin)
+      if (isAuthRoute || isShopSetupRoute) {
         // Redirect auth routes to billing
         return AppRoutes.billing;
       }
 
       // ── Persist current route for restoration after web refresh ──
-      // Only save "normal" app routes (not auth, loading, or super-admin)
-      if (isLoggedIn &&
-          isShopSetupComplete &&
-          !isAuthRoute &&
-          !isSuperAdminRoute) {
+      // Save all app routes (including super-admin dashboard, but not auth/login pages)
+      if (isLoggedIn && !isAuthRoute) {
         OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
       }
 
@@ -241,10 +236,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.shopSetup,
         builder: (context, state) => const ShopSetupScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.emailVerification,
-        builder: (context, state) => const EmailVerificationScreen(),
       ),
 
       // Main app shell with tabs
@@ -313,45 +304,75 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const ThemeSettingsScreen(),
       ),
 
-      // Super Admin routes
+      // User notifications inbox (outside main shell)
+      GoRoute(
+        path: AppRoutes.notifications,
+        builder: (context, state) => const NotificationsScreen(),
+      ),
+
+      // Super Admin login (outside shell)
       GoRoute(
         path: AppRoutes.superAdminLogin,
         builder: (context, state) => const SuperAdminLoginScreen(),
       ),
-      GoRoute(
-        path: AppRoutes.superAdmin,
-        builder: (context, state) => const SuperAdminDashboardScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminUsers,
-        builder: (context, state) => const UsersListScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminUserDetail,
-        builder: (context, state) {
-          final userId = state.pathParameters['id']!;
-          return UserDetailScreen(userId: userId);
-        },
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminSubscriptions,
-        builder: (context, state) => const SubscriptionsScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminAnalytics,
-        builder: (context, state) => const AnalyticsScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminErrors,
-        builder: (context, state) => const ErrorsScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminPerformance,
-        builder: (context, state) => const PerformanceScreen(),
-      ),
-      GoRoute(
-        path: AppRoutes.superAdminUserCosts,
-        builder: (context, state) => const UserCostsScreen(),
+
+      // Super Admin pages (inside admin shell with persistent sidebar)
+      ShellRoute(
+        builder: (context, state, child) => AdminShellScreen(child: child),
+        routes: [
+          GoRoute(
+            path: AppRoutes.superAdmin,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SuperAdminDashboardScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminUsers,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: UsersListScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminUserDetail,
+            pageBuilder: (context, state) {
+              final userId = state.pathParameters['id']!;
+              return NoTransitionPage(child: UserDetailScreen(userId: userId));
+            },
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminSubscriptions,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SubscriptionsScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminAnalytics,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: AnalyticsScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminErrors,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ErrorsScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminPerformance,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: PerformanceScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminUserCosts,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: UserCostsScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminManageAdmins,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ManageAdminsScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminNotifications,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: NotificationsAdminScreen()),
+          ),
+        ],
       ),
     ],
     errorBuilder: (context, state) =>

@@ -38,8 +38,7 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // TODO: Replace these with your actual Firebase project values
-  // Run 'flutterfire configure' to generate these automatically
+  // Firebase project values — run 'flutterfire configure' to regenerate
 
   static const FirebaseOptions web = FirebaseOptions(
     apiKey: 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48',

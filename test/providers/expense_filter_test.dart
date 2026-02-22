@@ -2,6 +2,8 @@
 ///
 /// Tests expense category parsing, payment method filtering,
 /// date range filtering, and sorting — the core logic used in billing_provider.dart
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/models/bill_model.dart';
@@ -43,7 +45,7 @@ void main() {
         amount: 5000,
         category: ExpenseCategory.rent,
         paymentMethod: PaymentMethod.upi,
-        createdAt: DateTime(2024, 6, 1),
+        createdAt: DateTime(2024, 6),
         date: '2024-06-01',
       );
 
@@ -93,7 +95,7 @@ void main() {
         category: ExpenseCategory.rent,
         description: 'Shop rent',
         paymentMethod: PaymentMethod.upi,
-        createdAt: DateTime(2024, 6, 1),
+        createdAt: DateTime(2024, 6),
         date: '2024-06-01',
       ),
       ExpenseModel(
@@ -111,7 +113,7 @@ void main() {
         category: ExpenseCategory.utilities,
         description: 'Electricity bill',
         paymentMethod: PaymentMethod.upi,
-        createdAt: DateTime(2024, 7, 1),
+        createdAt: DateTime(2024, 7),
         date: '2024-07-01',
       ),
     ];
@@ -154,7 +156,7 @@ void main() {
 
     test('date range filter', () {
       final range = DateTimeRange(
-        start: DateTime(2024, 6, 1),
+        start: DateTime(2024, 6),
         end: DateTime(2024, 6, 30),
       );
 

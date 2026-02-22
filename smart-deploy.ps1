@@ -35,7 +35,7 @@ function Write-DeployLog {
     Add-Content -Path $logPath -Value "[$timestamp] $Entry" -Encoding UTF8
 }
 
-function Run-WithRetry {
+function Invoke-WithRetry {
     param([string]$StepName, [scriptblock]$Command, [bool]$CleanOnFail = $true)
     $ErrorActionPreference = "Continue"
     & $Command
@@ -69,6 +69,30 @@ function Run-WithRetry {
     return $false
 }
 
+# --- Step-tracking for granular resume ---
+$script:completedSteps = @()
+
+function Is-StepDone {
+    param([string]$StepName)
+    return $script:completedSteps -contains $StepName
+}
+
+function Complete-Step {
+    param([string]$StepName)
+    if ($script:completedSteps -notcontains $StepName) {
+        $script:completedSteps += $StepName
+    }
+    # Persist progress to state file
+    Save-Progress
+}
+
+function Save-Progress {
+    if (-not (Test-Path variable:script:currentState)) { return }
+    $script:currentState.completedSteps = $script:completedSteps
+    $stateJson = $script:currentState | ConvertTo-Json -Depth 3
+    [System.IO.File]::WriteAllText($statePath, $stateJson, [System.Text.UTF8Encoding]::new($false))
+}
+
 # ===========================================================
 #   CHECK FOR RESUME -- skip questions if previous run failed
 # ===========================================================
@@ -85,6 +109,15 @@ if (Test-Path $statePath) {
     Write-Host "  Version:    $($savedState.newVersion)+$($savedState.newBuild)" -ForegroundColor White
     if ($savedState.platforms) { Write-Host "  Platforms:  $($savedState.platforms)" -ForegroundColor White }
     if ($savedState.winChoiceLabel) { Write-Host "  Windows:    $($savedState.winChoiceLabel)" -ForegroundColor White }
+    Write-Host ""
+    # Show completed steps if any
+    if ($savedState.completedSteps) {
+        $doneSteps = @($savedState.completedSteps)
+        if ($doneSteps.Count -gt 0) {
+            Write-Host "  Completed:  $($doneSteps -join ', ')" -ForegroundColor Green
+            Write-Host "  (These steps will be SKIPPED on resume)" -ForegroundColor Gray
+        }
+    }
     Write-Host ""
     $resumeChoice = Read-Host "  Resume with same settings? (Y/n)"
     if ($resumeChoice -ne 'n' -and $resumeChoice -ne 'N') {
@@ -103,9 +136,37 @@ if (Test-Path $statePath) {
         $buildMsix = [bool]$savedState.buildMsix
         $buildExe = [bool]$savedState.buildExe
         $winChoiceLabel = $savedState.winChoiceLabel
+        # Restore completed steps for granular resume
+        if ($savedState.completedSteps) {
+            $script:completedSteps = @($savedState.completedSteps)
+        }
+        # Initialize $script:currentState for Save-Progress
+        $script:currentState = @{
+            updateType       = $updateType
+            typeName         = $savedState.typeName
+            skipBuild        = $skipBuild
+            deployWeb        = $deployWeb
+            deployWindows    = $deployWindows
+            deployAndroid    = $deployAndroid
+            newVersion       = $newVersion
+            newBuild         = $newBuild
+            changelog        = $changelog
+            forceMinVersion  = $forceMinVersion
+            announcementMsg  = $announcementMsg
+            setLatestVersion = $setLatestVersion
+            buildMsix        = $buildMsix
+            buildExe         = $buildExe
+            winChoiceLabel   = $winChoiceLabel
+            completedSteps   = $script:completedSteps
+            platforms        = $savedState.platforms
+            savedAt          = $savedState.savedAt
+        }
         Write-Host ""
         Write-Ok "Resuming deploy with saved settings!"
-        Write-DeployLog "RESUME | Restarting with saved settings"
+        if ($script:completedSteps.Count -gt 0) {
+            Write-Ok "Will skip: $($script:completedSteps -join ', ')"
+        }
+        Write-DeployLog "RESUME | Restarting with saved settings (skipping: $($script:completedSteps -join ', '))"
     }
     else {
         # User wants fresh start -- delete old state
@@ -310,7 +371,7 @@ if (-not $resumed) {
     # Save state for resume on failure
     $pubspecPath = Join-Path $root "pubspec.yaml"
     $typeNames = @("", "Normal", "Patch", "Critical", "Maintenance", "Config Only")
-    $stateData = @{
+    $script:currentState = @{
         updateType       = $updateType
         typeName         = $typeNames[$updateType]
         skipBuild        = $skipBuild
@@ -326,9 +387,11 @@ if (-not $resumed) {
         buildMsix        = $buildMsix
         buildExe         = $buildExe
         winChoiceLabel   = $winChoiceLabel
+        completedSteps   = @()
         platforms        = (@($(if ($deployWeb) { 'Web' }), $(if ($deployWindows) { 'Windows' }), $(if ($deployAndroid) { 'Android' })) | Where-Object { $_ }) -join ', '
         savedAt          = (Get-Date -Format "yyyy-MM-dd HH:mm:ss")
-    } | ConvertTo-Json -Depth 3
+    }
+    $stateData = $script:currentState | ConvertTo-Json -Depth 3
     [System.IO.File]::WriteAllText($statePath, $stateData, [System.Text.UTF8Encoding]::new($false))
     Write-Info "Settings saved for resume"
 
@@ -340,6 +403,8 @@ if (-not $resumed) {
 #   It will resume with same settings automatically.
 # ===========================================================
 $failed = $false
+$typeNames = @("", "Normal", "Patch", "Critical", "Maintenance", "Config Only")
+$pubspecPath = Join-Path $root "pubspec.yaml"
 
 Write-Host ""
 Write-Host "========================================================" -ForegroundColor Green
@@ -357,16 +422,20 @@ try {
     # <- Catch ALL errors -- nothing can stop us!
 
     # --- Update pubspec.yaml ---
-    if (-not $skipBuild) {
+    if (-not $skipBuild -and -not (Is-StepDone "version_bump")) {
         Write-Step "Updating version to $newVersion+$newBuild"
         $pubspecContent = Get-Content $pubspecPath -Raw
         $pubspecContent = $pubspecContent -replace 'version:\s*\d+\.\d+\.\d+\+\d+', "version: $newVersion+$newBuild"
         [System.IO.File]::WriteAllText($pubspecPath, $pubspecContent, [System.Text.UTF8Encoding]::new($false))
         Write-Ok "pubspec.yaml updated"
+        Complete-Step "version_bump"
+    }
+    elseif (Is-StepDone "version_bump") {
+        Write-Info "SKIP: Version already bumped"
     }
 
     # --- Run Tests ---
-    if (-not $skipBuild -and -not $failed) {
+    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "tests")) {
         Write-Step "Running tests..."
         $ErrorActionPreference = "Continue"
         flutter test --reporter compact
@@ -381,9 +450,12 @@ try {
             Write-DeployLog "TESTS PASSED"
         }
     }
+    elseif (Is-StepDone "tests") {
+        Write-Info "SKIP: Tests already passed"
+    }
 
     # --- Run Analyzer ---
-    if (-not $skipBuild -and -not $failed) {
+    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "analyzer")) {
         Write-Step "Running analyzer..."
         $ErrorActionPreference = "Continue"
         flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
@@ -396,7 +468,12 @@ try {
         else {
             Write-Ok "Analysis passed"
             Write-DeployLog "ANALYSIS PASSED"
+            Complete-Step "tests"  # Mark tests+analyzer as done together
+            Complete-Step "analyzer"
         }
+    }
+    elseif (Is-StepDone "analyzer") {
+        Write-Info "SKIP: Analyzer already passed"
     }
 
     # --- Backup ---
@@ -416,7 +493,7 @@ try {
     }
 
     if (-not $failed -and $deployWindows) {
-        $winVersionPath = Join-Path $root "installers\version.json"
+        $winVersionPath = Join-Path $root "installer\version.json"
         if (Test-Path $winVersionPath) {
             New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
             Copy-Item $winVersionPath (Join-Path $backupDir "version_win_$backupTimestamp.json")
@@ -424,7 +501,7 @@ try {
     }
 
     if (-not $failed -and $deployAndroid) {
-        $androidVersionPath = Join-Path $root "installers\android-version.json"
+        $androidVersionPath = Join-Path $root "installer\android-version.json"
         if (Test-Path $androidVersionPath) {
             New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
             Copy-Item $androidVersionPath (Join-Path $backupDir "version_android_$backupTimestamp.json")
@@ -432,7 +509,7 @@ try {
     }
 
     # --- Build and Deploy: Windows (MSIX + Inno Setup EXE) --- [RUNS FIRST to update download.html before web deploy]
-    if (-not $failed -and $deployWindows) {
+    if (-not $failed -and $deployWindows -and -not (Is-StepDone "windows")) {
         Write-Step "Building Windows -- $winChoiceLabel..."
 
         # Update MSIX version in pubspec.yaml (MSIX needs x.x.x.0 format)
@@ -589,7 +666,7 @@ WScript.Quit 0
                 }
 
                 # Update version.json with EXE download URL
-                $winVersionPath = Join-Path $root "installers\version.json"
+                $winVersionPath = Join-Path $root "installer\version.json"
                 $exeStorageName = "TulasiStores_Setup_v$newVersion.exe"
                 $exeDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2F$exeStorageName`?alt=media"
 
@@ -597,7 +674,7 @@ WScript.Quit 0
                     version        = $newVersion
                     buildNumber    = [int]$newBuild
                     exeDownloadUrl = $exeDownloadUrl
-                    storeUrl       = "https://apps.microsoft.com/detail/tulasi-shop-lite"
+                    storeUrl       = "https://apps.microsoft.com/detail/tulasi-stores"
                     changelog      = $changelog
                     forceUpdate    = ($updateType -eq 3)
                 } | ConvertTo-Json -Depth 3
@@ -681,11 +758,114 @@ WScript.Quit 0
                     Write-DeployLog "MSIX | Ready for Microsoft Store upload"
                 }
             }
+            Complete-Step "windows"
         }
     }
+    elseif (Is-StepDone "windows") {
+        Write-Info "SKIP: Windows already built + uploaded"
+    }
 
-    # --- Build and Deploy: Web --- [RUNS AFTER Windows so download.html is already updated]
-    if (-not $failed -and $deployWeb) {
+    # --- Build and Deploy: Android --- [RUNS BEFORE Web so download.html has APK link before web deploy]
+    if (-not $failed -and $deployAndroid -and -not (Is-StepDone "android")) {
+        Write-Step "Building Android APK..."
+        $ErrorActionPreference = "Continue"
+        flutter build apk --release
+        $apkExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($apkExit -ne 0) {
+            Write-Fail "Android build failed!"
+            $failed = $true
+        }
+        else {
+            $apkPath = Join-Path $root "build\app\outputs\flutter-apk\app-release.apk"
+            $apkSize = if (Test-Path $apkPath) { "{0:N1} MB" -f ((Get-Item $apkPath).Length / 1MB) } else { "unknown" }
+            Write-Ok "APK built ($apkSize)"
+            Write-DeployLog "ANDROID BUILT | $apkSize"
+
+            # Update android-version.json
+            $androidVersionPath = Join-Path $root "installer\android-version.json"
+            $apkStorageName = "TulasiStores_v$newVersion.apk"
+            $apkDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fandroid%2F$apkStorageName`?alt=media"
+
+            $versionJson = @{
+                version     = $newVersion
+                buildNumber = [int]$newBuild
+                downloadUrl = $apkDownloadUrl
+                changelog   = $changelog
+                forceUpdate = ($updateType -eq 3)
+            } | ConvertTo-Json -Depth 3
+            [System.IO.File]::WriteAllText($androidVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
+            Write-Ok "android-version.json updated to v$newVersion"
+
+            # Auto-update website download page with new APK version
+            $downloadPage = Join-Path $root "website\src\pages\download.html"
+            if (Test-Path $downloadPage) {
+                Write-Step "Updating website download page (Android)..."
+                $pageContent = Get-Content $downloadPage -Raw
+
+                # Update APK download URL
+                $pageContent = $pageContent -replace 'TulasiStores_v[\d.]+\.apk', "TulasiStores_v$newVersion.apk"
+
+                # Update APK file size display
+                if (Test-Path $apkPath) {
+                    $apkSizeMB = [math]::Round((Get-Item $apkPath).Length / 1MB)
+                    $pageContent = $pageContent -replace '(<span>~)\d+ MB(</span>\s*\n\s*<span>v[\d.]+</span>\s*\n\s*</div>\s*\n\s*<a href="https://firebasestorage[^"]*android)', "`${1}$apkSizeMB MB`${2}"
+                }
+
+                [System.IO.File]::WriteAllText($downloadPage, $pageContent, [System.Text.UTF8Encoding]::new($false))
+                Write-Ok "download.html updated with Android v$newVersion"
+                Write-DeployLog "WEBSITE | download.html Android updated to v$newVersion"
+            }
+
+            # Upload APK to Firebase Storage
+            $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
+            if ($gsutilExists) {
+                $storagePath = "gs://login-radha.firebasestorage.app/updates/android/"
+
+                # Clean old APK files from Storage
+                Write-Step "Cleaning old APK files from Storage..."
+                $ErrorActionPreference = "Continue"
+                $oldApkFiles = gsutil ls "${storagePath}*.apk" 2>&1
+                if ($oldApkFiles -and $oldApkFiles -notmatch "CommandException") {
+                    foreach ($oldFile in $oldApkFiles) {
+                        $oldFile = $oldFile.Trim()
+                        if ($oldFile -and $oldFile -notlike "*$apkStorageName*" -and $oldFile -like "*.apk") {
+                            gsutil rm $oldFile 2>&1 | Out-Null
+                            Write-Info "Deleted old: $($oldFile.Split('/')[-1])"
+                        }
+                    }
+                }
+                Write-Ok "Old APK files cleaned"
+
+                # Upload version.json + APK
+                Write-Step "Uploading APK + version.json to Firebase Storage..."
+                gsutil cp $androidVersionPath "${storagePath}version.json"
+                gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
+
+                if (Test-Path $apkPath) {
+                    gsutil cp $apkPath "${storagePath}$apkStorageName"
+                    gsutil setmeta -h "Content-Type:application/vnd.android.package-archive" "${storagePath}$apkStorageName"
+                    Write-Ok "APK uploaded: $apkStorageName"
+                }
+
+                $ErrorActionPreference = "Stop"
+                Write-Ok "Android uploaded to Firebase Storage"
+                Write-DeployLog "FIREBASE UPLOAD | Android APK + version.json"
+            }
+            else {
+                Write-Warn "gsutil not found - upload APK manually:"
+                Write-Info "  Firebase Console > Storage > updates/android/"
+                Write-Info "  Upload: version.json + $apkStorageName"
+            }
+            Complete-Step "android"
+        }
+    }
+    elseif (Is-StepDone "android") {
+        Write-Info "SKIP: Android already built + uploaded"
+    }
+
+    # --- Build and Deploy: Web --- [RUNS LAST so download.html has ALL updated links (Windows + Android)]
+    if (-not $failed -and $deployWeb -and -not (Is-StepDone "web")) {
         Write-Step "Building Web..."
         $distDir = Join-Path $root "dist"
         $websiteDir = Join-Path $root "website"
@@ -747,63 +927,11 @@ WScript.Quit 0
                 Write-Fail "Firebase deploy failed!"
                 $failed = $true
             }
+            Complete-Step "web"
         }
     }
-
-    # --- Build and Deploy: Android ---
-    if (-not $failed -and $deployAndroid) {
-        Write-Step "Building Android APK..."
-        $ErrorActionPreference = "Continue"
-        flutter build apk --release
-        $apkExit = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        if ($apkExit -ne 0) {
-            Write-Fail "Android build failed!"
-            $failed = $true
-        }
-        else {
-            $apkPath = Join-Path $root "build\app\outputs\flutter-apk\app-release.apk"
-            $apkSize = if (Test-Path $apkPath) { "{0:N1} MB" -f ((Get-Item $apkPath).Length / 1MB) } else { "unknown" }
-            Write-Ok "APK built ($apkSize)"
-            Write-DeployLog "ANDROID BUILT | $apkSize"
-
-            $androidVersionPath = Join-Path $root "installers\android-version.json"
-            $downloadUrl = ""
-            if (Test-Path $androidVersionPath) {
-                $existingJson = Get-Content $androidVersionPath -Raw | ConvertFrom-Json
-                $downloadUrl = $existingJson.downloadUrl
-            }
-            else {
-                $downloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fandroid%2FTulasiStores_v$newVersion.apk?alt=media"
-            }
-            $versionJson = @{
-                version     = $newVersion
-                buildNumber = $newBuild
-                downloadUrl = $downloadUrl
-                changelog   = $changelog
-                forceUpdate = ($updateType -eq 3)
-            } | ConvertTo-Json -Depth 3
-            [System.IO.File]::WriteAllText($androidVersionPath, $versionJson, [System.Text.UTF8Encoding]::new($false))
-            Write-Ok "android-version.json updated to v$newVersion"
-
-            $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
-            if ($gsutilExists) {
-                Write-Step "Uploading Android files..."
-                $storagePath = "gs://login-radha.firebasestorage.app/updates/android/"
-                $ErrorActionPreference = "Continue"
-                gsutil cp $androidVersionPath "${storagePath}version.json"
-                gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
-                if (Test-Path $apkPath) {
-                    gsutil cp $apkPath "${storagePath}TulasiStores_v$newVersion.apk"
-                    Write-Ok "APK uploaded"
-                }
-                $ErrorActionPreference = "Stop"
-                Write-DeployLog "FIREBASE UPLOAD | Android"
-            }
-            else {
-                Write-Warn "gsutil not found - upload manually"
-            }
-        }
+    elseif (Is-StepDone "web") {
+        Write-Info "SKIP: Web already built + deployed"
     }
 
     # --- All steps completed ---

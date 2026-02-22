@@ -29,7 +29,7 @@ class UpdateDialog extends StatefulWidget {
     if (result.status != UpdateStatus.updateAvailable) return;
     if (!context.mounted) return;
 
-    showDialog(
+    await showDialog(
       context: context,
       barrierDismissible: !result.versionInfo!.forceUpdate,
       builder: (_) => UpdateDialog(versionInfo: result.versionInfo!),
@@ -100,7 +100,7 @@ class _UpdateDialogState extends State<UpdateDialog> {
             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
-          Text(
+          const Text(
             'The automatic update could not complete. Please update manually.',
             style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
           ),

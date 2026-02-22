@@ -345,7 +345,10 @@ class PerformanceScreen extends ConsumerWidget {
   }
 
   Widget _buildScreenPerformanceCard(Map<String, dynamic> data) {
-    final screens = data['screens'] as Map<String, int>? ?? {};
+    final rawScreens = data['screens'] as Map? ?? {};
+    final screens = rawScreens.map(
+      (k, v) => MapEntry(k.toString(), (v as num).toInt()),
+    );
     final totalMeasurements = data['totalMeasurements'] ?? 0;
 
     if (screens.isEmpty) {
@@ -490,8 +493,10 @@ class PerformanceScreen extends ConsumerWidget {
   }
 
   Widget _buildNetworkHealthCard(Map<String, dynamic> data) {
-    final operations =
-        data['operations'] as Map<String, Map<String, dynamic>>? ?? {};
+    final rawOps = data['operations'] as Map? ?? {};
+    final operations = rawOps.map(
+      (k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
+    );
     final totalRequests = data['totalRequests'] ?? 0;
 
     if (operations.isEmpty) {

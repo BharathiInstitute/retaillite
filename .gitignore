@@ -68,4 +68,16 @@ build/debug-info/
 deploy-backups/
 deploy-state.json
 deploy-history.log
+deploy_debug.log
 dist/
+
+# AI/IDE temp files
+tmpclaude-*
+
+# Root node_modules (functions/ has its own)
+/node_modules/
+/package.json
+/package-lock.json
+
+# Installer output
+installer/Output/

@@ -364,4 +364,120 @@ class AdminFirestoreService {
       return {};
     }
   }
+
+  // =====================
+  // ADMIN MANAGEMENT
+  // =====================
+
+  /// The primary owner email that can never be removed
+  static const String primaryOwnerEmail = 'kehsaram001@gmail.com';
+
+  /// Firestore path for admin config
+  static const String _adminConfigPath = 'app_config';
+  static const String _superAdminsDoc = 'super_admins';
+
+  /// Get admin emails from Firestore
+  static Future<List<String>> getAdminEmails() async {
+    try {
+      final doc = await _firestore
+          .collection(_adminConfigPath)
+          .doc(_superAdminsDoc)
+          .get();
+
+      if (!doc.exists) {
+        // Initialize with primary owner if doc doesn't exist
+        await _initAdminDoc();
+        return [primaryOwnerEmail];
+      }
+
+      final data = doc.data();
+      final emails =
+          (data?['emails'] as List<dynamic>?)
+              ?.map((e) => e.toString().toLowerCase().trim())
+              .toList() ??
+          [primaryOwnerEmail];
+
+      // Ensure primary owner is always included
+      if (!emails.contains(primaryOwnerEmail)) {
+        emails.insert(0, primaryOwnerEmail);
+      }
+
+      return emails;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to get admin emails: $e');
+      return [primaryOwnerEmail];
+    }
+  }
+
+  /// Initialize admin config document with primary owner
+  static Future<void> _initAdminDoc() async {
+    try {
+      await _firestore.collection(_adminConfigPath).doc(_superAdminsDoc).set({
+        'emails': [primaryOwnerEmail],
+        'primaryOwner': primaryOwnerEmail,
+        'createdAt': FieldValue.serverTimestamp(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to init admin doc: $e');
+    }
+  }
+
+  /// Add an admin email
+  static Future<bool> addAdminEmail(String email) async {
+    final normalizedEmail = email.toLowerCase().trim();
+    if (normalizedEmail.isEmpty || !normalizedEmail.contains('@')) {
+      return false;
+    }
+
+    try {
+      final currentEmails = await getAdminEmails();
+      if (currentEmails.contains(normalizedEmail)) {
+        return false; // Already an admin
+      }
+
+      currentEmails.add(normalizedEmail);
+
+      await _firestore.collection(_adminConfigPath).doc(_superAdminsDoc).set({
+        'emails': currentEmails,
+        'primaryOwner': primaryOwnerEmail,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to add admin: $e');
+      return false;
+    }
+  }
+
+  /// Remove an admin email (cannot remove primary owner)
+  static Future<bool> removeAdminEmail(String email) async {
+    final normalizedEmail = email.toLowerCase().trim();
+
+    // Never allow removing the primary owner
+    if (normalizedEmail == primaryOwnerEmail) {
+      return false;
+    }
+
+    try {
+      final currentEmails = await getAdminEmails();
+      if (!currentEmails.contains(normalizedEmail)) {
+        return false; // Not an admin
+      }
+
+      currentEmails.remove(normalizedEmail);
+
+      await _firestore.collection(_adminConfigPath).doc(_superAdminsDoc).set({
+        'emails': currentEmails,
+        'primaryOwner': primaryOwnerEmail,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to remove admin: $e');
+      return false;
+    }
+  }
 }

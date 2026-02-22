@@ -76,7 +76,7 @@ class BillsHistoryScreen extends ConsumerWidget {
                   // Print Report Button
                   OutlinedButton.icon(
                     onPressed: () {
-                      // TODO: Implement print report
+                      // Print report (not yet implemented)
                     },
                     icon: const Icon(Icons.print, size: 18),
                     label: const Text('Print Report'),
@@ -1222,7 +1222,7 @@ class _ExpenseRow extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     onPressed: () {
-                      // TODO: Implement edit expense
+                      // Edit expense (not yet implemented)
                     },
                   ),
                 ),
@@ -1238,7 +1238,7 @@ class _ExpenseRow extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
                     onPressed: () {
-                      // TODO: Implement delete expense
+                      // Delete expense (not yet implemented)
                     },
                   ),
                 ),

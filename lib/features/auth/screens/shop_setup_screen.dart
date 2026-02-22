@@ -97,7 +97,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       return;
     }
 
-    ref.read(phoneAuthProvider.notifier).sendOtp(phone);
+    await ref.read(phoneAuthProvider.notifier).sendOtp(phone);
   }
 
   Future<void> _verifyOtp() async {
@@ -123,6 +123,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
           .read(authNotifierProvider.notifier)
           .updatePhoneVerified(phone: '+91$phone');
 
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Phone verified & linked to your account!'),

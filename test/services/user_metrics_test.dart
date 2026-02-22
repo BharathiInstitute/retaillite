@@ -1,13 +1,15 @@
 /// Tests for UserMetricsService — subscription plans, limits, and activity
 ///
 /// Tests pure logic only (no Firebase). Avoids Timestamp-dependent API calls.
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 
 void main() {
   group('UserSubscription', () {
     test('free plan should have correct limits', () {
-      final sub = UserSubscription(plan: SubscriptionPlan.free);
+      final sub = UserSubscription();
 
       expect(sub.billsLimit, 50);
       expect(sub.productsLimit, 100);
@@ -29,10 +31,7 @@ void main() {
     });
 
     test('active subscription should be active', () {
-      final sub = UserSubscription(
-        plan: SubscriptionPlan.pro,
-        status: SubscriptionStatus.active,
-      );
+      final sub = UserSubscription(plan: SubscriptionPlan.pro);
       expect(sub.isActive, true);
     });
 
@@ -118,27 +117,27 @@ void main() {
     });
 
     test('canCreateBill false when at limit', () {
-      final limits = UserLimits(billsThisMonth: 50, billsLimit: 50);
+      final limits = UserLimits(billsThisMonth: 50);
       expect(limits.canCreateBill, false);
     });
 
     test('canCreateBill false when over limit', () {
-      final limits = UserLimits(billsThisMonth: 51, billsLimit: 50);
+      final limits = UserLimits(billsThisMonth: 51);
       expect(limits.canCreateBill, false);
     });
 
     test('canAddProduct false when at limit', () {
-      final limits = UserLimits(productsCount: 100, productsLimit: 100);
+      final limits = UserLimits(productsCount: 100);
       expect(limits.canAddProduct, false);
     });
 
     test('billsRemaining returns correct count', () {
-      final limits = UserLimits(billsThisMonth: 30, billsLimit: 50);
+      final limits = UserLimits(billsThisMonth: 30);
       expect(limits.billsRemaining, 20);
     });
 
     test('billsRemaining returns 0 when at limit', () {
-      final limits = UserLimits(billsThisMonth: 50, billsLimit: 50);
+      final limits = UserLimits(billsThisMonth: 50);
       expect(limits.billsRemaining, 0);
     });
 
@@ -168,11 +167,7 @@ void main() {
     });
 
     test('pro plan limits', () {
-      final limits = UserLimits(
-        billsThisMonth: 0,
-        billsLimit: 500,
-        productsLimit: 999999,
-      );
+      final limits = UserLimits(billsLimit: 500, productsLimit: 999999);
 
       expect(limits.canCreateBill, true);
       expect(limits.billsRemaining, 500);

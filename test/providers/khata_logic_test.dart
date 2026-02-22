@@ -2,6 +2,8 @@
 ///
 /// Tests pure model logic: customer balance tracking, overdue detection,
 /// transaction signed amounts, and credit/payment flow simulation.
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
@@ -37,7 +39,6 @@ void main() {
         id: 'c1',
         name: 'Test',
         phone: '9876543210',
-        balance: 0,
         createdAt: DateTime(2024),
       );
       expect(zeroBalance.hasDue, false);
@@ -209,7 +210,7 @@ void main() {
           customerId: 'c1',
           type: TransactionType.purchase,
           amount: 1000,
-          createdAt: DateTime(2024, 1, 1),
+          createdAt: DateTime(2024),
         ),
         TransactionModel(
           id: '2',
@@ -251,14 +252,14 @@ void main() {
           customerId: 'c1',
           type: TransactionType.purchase,
           amount: 100,
-          createdAt: DateTime(2024, 1, 1),
+          createdAt: DateTime(2024),
         ),
         TransactionModel(
           id: '2',
           customerId: 'c1',
           type: TransactionType.payment,
           amount: 50,
-          createdAt: DateTime(2024, 2, 1),
+          createdAt: DateTime(2024, 2),
         ),
       ];
 

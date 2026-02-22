@@ -8,6 +8,7 @@ import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_layout.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
 
 class SuperAdminLoginScreen extends ConsumerStatefulWidget {
   const SuperAdminLoginScreen({super.key});
@@ -38,24 +39,43 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
     );
   }
 
+  /// Check Firestore admin list (async, with fallback to hardcoded)
+  Future<bool> _isAuthorizedEmailAsync(String email) async {
+    final normalizedEmail = email.toLowerCase().trim();
+
+    // Quick sync check with hardcoded list first
+    if (_isAuthorizedEmail(email)) return true;
+
+    // Then check Firestore list
+    try {
+      final firestoreEmails = await AdminFirestoreService.getAdminEmails();
+      return firestoreEmails.contains(normalizedEmail);
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
     final email = _emailController.text.trim();
 
-    // Check if email is in authorized list
-    if (!_isAuthorizedEmail(email)) {
+    setState(() {
+      _isLoading = true;
+      _accessError = null;
+    });
+
+    // Check if email is in authorized list (Firestore + fallback)
+    final isAuthorized = await _isAuthorizedEmailAsync(email);
+    if (!isAuthorized) {
       setState(() {
+        _isLoading = false;
         _accessError =
             'Access denied. This email is not authorized for super admin access.';
       });
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-      _accessError = null;
-    });
     ref.read(authNotifierProvider.notifier).clearError();
 
     try {
@@ -203,6 +223,22 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
               },
             ),
 
+            // Forgot password link
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: () => context.go('/forgot-password'),
+                style: TextButton.styleFrom(
+                  foregroundColor: const Color(0xFF7C3AED),
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                ),
+                child: const Text(
+                  'Forgot Password?',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ),
+
             // Access error message
             if (_accessError != null) ...[
               const SizedBox(height: 16),
@@ -222,7 +258,10 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
                     Expanded(
                       child: Text(
                         _accessError!,
-                        style: const TextStyle(color: AppColors.error, fontSize: 14),
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ],
@@ -244,12 +283,19 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.error_outline, color: AppColors.error, size: 20),
+                    const Icon(
+                      Icons.error_outline,
+                      color: AppColors.error,
+                      size: 20,
+                    ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         error,
-                        style: const TextStyle(color: AppColors.error, fontSize: 14),
+                        style: const TextStyle(
+                          color: AppColors.error,
+                          fontSize: 14,
+                        ),
                       ),
                     ),
                   ],

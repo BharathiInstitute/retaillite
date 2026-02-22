@@ -3,8 +3,11 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/core/design/app_colors.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/core/services/image_service.dart';
 import 'dart:io';
@@ -21,12 +24,13 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
   late TextEditingController _invoiceTitleController;
   late TextEditingController _taxRateController;
   late TextEditingController _termsController;
+  late TextEditingController _upiIdController;
 
   bool _taxEnabled = true;
   bool _taxInclusive = false;
   String? _invoiceLogoPath;
   String? _upiQrPath;
-  bool _hasShownComingSoon = false;
+  String? _upiValidationError;
 
   @override
   void initState() {
@@ -36,42 +40,23 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     _termsController = TextEditingController(
       text: 'Thank you for your business!',
     );
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && !_hasShownComingSoon) {
-        _hasShownComingSoon = true;
-        _showComingSoonDialog();
-      }
-    });
+    _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
+    _upiIdController.addListener(_validateUpiId);
   }
 
-  void _showComingSoonDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          icon: const Icon(
-            Icons.construction,
-            size: 48,
-            color: AppColors.warning,
-          ),
-          title: const Text('Coming Soon'),
-          content: const Text(
-            'Billing settings are under development. These features will be available in a future update.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pop(context);
-              },
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
+  void _validateUpiId() {
+    final id = _upiIdController.text.trim();
+    setState(() {
+      if (id.isEmpty) {
+        _upiValidationError = null;
+      } else if (!id.contains('@')) {
+        _upiValidationError = 'UPI ID must contain @ (e.g. shop@ybl)';
+      } else if (!PaymentLinkService.isValidUpiId(id)) {
+        _upiValidationError = 'Invalid format. Use: name@provider';
+      } else {
+        _upiValidationError = null;
+      }
+    });
   }
 
   @override
@@ -79,6 +64,7 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     _invoiceTitleController.dispose();
     _taxRateController.dispose();
     _termsController.dispose();
+    _upiIdController.dispose();
     super.dispose();
   }
 
@@ -96,10 +82,108 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     }
   }
 
+  void _showBusinessUpiGuide() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.account_balance_wallet, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Get Business UPI')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Business UPI gives you unlimited free transactions per day.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '🥇 PhonePe Business (Recommended)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store / App Store'),
+              const Text('• Enter PAN + link bank account'),
+              const Text('• Setup time: ~5 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 12),
+              const Text(
+                '🥈 Google Pay for Business',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store'),
+              const Text('• Links to existing Google account'),
+              const Text('• Setup time: ~10 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 12),
+              const Text(
+                '🥉 BharatPe',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store'),
+              const Text('• Free QR stand delivered to shop'),
+              const Text('• Setup time: ~15 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 16),
+              Text(
+                'After setup, copy your Business UPI ID and paste it above.',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _sendTestPayment() async {
+    final upiId = _upiIdController.text.trim();
+    if (!PaymentLinkService.isValidUpiId(upiId)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Enter a valid UPI ID first'),
+          backgroundColor: AppColors.error,
+        ),
+      );
+      return;
+    }
+
+    final user = ref.read(currentUserProvider);
+    final launched = await PaymentLinkService.launchTestPayment(
+      upiId: upiId,
+      shopName: user?.shopName,
+    );
+
+    if (!launched && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No UPI app found. Install GPay or PhonePe.'),
+          backgroundColor: AppColors.warning,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = ref.watch(currentUserProvider);
+    final upiId = _upiIdController.text.trim();
+    final isValidUpi = PaymentLinkService.isValidUpiId(upiId);
 
     return Scaffold(
       appBar: AppBar(
@@ -119,7 +203,6 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Invoice Logo
                   Row(
                     children: [
                       GestureDetector(
@@ -184,8 +267,6 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                     ],
                   ),
                   const SizedBox(height: 20),
-
-                  // Invoice Title
                   TextField(
                     controller: _invoiceTitleController,
                     decoration: const InputDecoration(
@@ -266,21 +347,180 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
           ),
           const SizedBox(height: 24),
 
-          // Payment Setup Section
-          _buildSectionHeader(theme, 'Payment Setup'),
+          // ═══════════════════════════════════════════════
+          // UPI Payment Setup Section — all 4 improvements
+          // ═══════════════════════════════════════════════
+          _buildSectionHeader(theme, 'UPI Payment Setup'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('UPI QR Code', style: theme.textTheme.titleSmall),
+                  // ── 1. UPI ID Input with validation ──
+                  TextField(
+                    controller: _upiIdController,
+                    decoration: InputDecoration(
+                      labelText: 'Business UPI ID',
+                      hintText: 'e.g. myshop@ybl',
+                      prefixIcon: const Icon(Icons.account_balance_wallet),
+                      errorText: _upiValidationError,
+                      suffixIcon: isValidUpi
+                          ? const Icon(
+                              Icons.check_circle,
+                              color: AppColors.success,
+                            )
+                          : null,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(
+                        RegExp(r'[a-zA-Z0-9._@-]'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+
+                  // ── 3. Setup guide link ──
+                  InkWell(
+                    onTap: _showBusinessUpiGuide,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.help_outline,
+                            size: 16,
+                            color: theme.colorScheme.primary,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'How to get a Business UPI ID (free)',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── 2. Auto-generated QR Code ──
+                  if (isValidUpi) ...[
+                    Text(
+                      'Auto-Generated QR Code',
+                      style: theme.textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Customers scan this to pay via any UPI app',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: theme.colorScheme.outline,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Center(
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(12),
+                          boxShadow: AppShadows.small,
+                        ),
+                        child: QrImageView(
+                          data: PaymentLinkService.generateUpiQrData(
+                            upiId: upiId,
+                            payeeName: user?.shopName,
+                          ),
+                          size: 180,
+                          backgroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+
+                    // ── 4. Test Payment Button ──
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _sendTestPayment,
+                        icon: const Icon(Icons.send, size: 18),
+                        label: const Text('Send ₹1 Test Payment'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.primary,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Center(
+                      child: Text(
+                        'Verify your UPI ID by sending ₹1 to yourself',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: theme.colorScheme.outline,
+                        ),
+                      ),
+                    ),
+                  ],
+
+                  // Empty state
+                  if (!isValidUpi && upiId.isEmpty) ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: AppColors.info.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            color: AppColors.info,
+                            size: 20,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Enter your Business UPI ID to auto-generate a QR code for invoices and enable payment links.',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 12),
+
+                  // Optional: Manual QR Upload
+                  Text(
+                    'Custom QR Code (Optional)',
+                    style: theme.textTheme.titleSmall,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Upload your own QR image to override the auto-generated one',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
                   const SizedBox(height: 8),
                   GestureDetector(
                     onTap: _pickUpiQr,
                     child: Container(
-                      width: 120,
-                      height: 120,
+                      width: 100,
+                      height: 100,
                       decoration: BoxDecoration(
                         color: Theme.of(context).scaffoldBackgroundColor,
                         borderRadius: BorderRadius.circular(8),
@@ -300,27 +540,19 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                               children: [
                                 Icon(
                                   Icons.qr_code,
-                                  size: 40,
+                                  size: 32,
                                   color: Colors.grey.shade500,
                                 ),
-                                const SizedBox(height: 8),
+                                const SizedBox(height: 4),
                                 Text(
-                                  'Upload QR',
+                                  'Upload',
                                   style: TextStyle(
-                                    fontSize: 12,
+                                    fontSize: 11,
                                     color: Colors.grey.shade500,
                                   ),
                                 ),
                               ],
                             ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'This QR code will be printed on invoices for UPI payments',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: theme.colorScheme.outline,
                     ),
                   ),
                 ],
@@ -345,13 +577,29 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     );
   }
 
-  void _saveSettings() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text('Billing settings saved'),
-        backgroundColor: AppColors.primary,
-      ),
-    );
-    Navigator.pop(context);
+  void _saveSettings() async {
+    // Save UPI ID if valid
+    final upiId = _upiIdController.text.trim();
+    if (upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId)) {
+      PaymentLinkService.setUpiId(upiId);
+      // Persist to Firestore so it survives app restarts
+      try {
+        await ref
+            .read(authNotifierProvider.notifier)
+            .updateShopInfo(upiId: upiId);
+      } catch (_) {
+        // Non-fatal: UPI ID is saved locally even if cloud sync fails
+      }
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Billing settings saved'),
+          backgroundColor: AppColors.primary,
+        ),
+      );
+      Navigator.pop(context);
+    }
   }
 }

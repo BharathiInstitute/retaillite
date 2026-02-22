@@ -1,6 +1,8 @@
 /// Tests for BillsFilter model and filtering logic
 ///
 /// These test pure business logic — no Firebase dependency.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
@@ -31,7 +33,7 @@ void main() {
     test('copyWith clearDateRange should set dateRange to null', () {
       final original = BillsFilter(
         dateRange: DateTimeRange(
-          start: DateTime(2024, 1, 1),
+          start: DateTime(2024),
           end: DateTime(2024, 1, 31),
         ),
       );
@@ -58,7 +60,7 @@ void main() {
     });
 
     test('pagination should work correctly', () {
-      const filter = BillsFilter(page: 1, perPage: 10);
+      const filter = BillsFilter();
 
       final nextPage = filter.copyWith(page: 2);
       expect(nextPage.page, 2);
@@ -120,7 +122,7 @@ void main() {
         items: const [],
         total: 200.0,
         paymentMethod: PaymentMethod.cash,
-        createdAt: DateTime(2024, 7, 1),
+        createdAt: DateTime(2024, 7),
         date: '2024-07-01',
       ),
     ];
@@ -173,7 +175,7 @@ void main() {
 
     test('date range filter', () {
       final range = DateTimeRange(
-        start: DateTime(2024, 6, 1),
+        start: DateTime(2024, 6),
         end: DateTime(2024, 6, 30),
       );
 

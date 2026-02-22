@@ -261,7 +261,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     return AuthLayout(
       title: 'Create Account',
-      subtitle: 'Get started with RetailLite',
+      subtitle: 'Get started with Tulasi Stores',
       icon: Icons.person_add_outlined,
       onBack: () => context.pop(),
       child: Column(

@@ -7,6 +7,10 @@
  * - sendRegistrationOTP: Sends email OTP for registration verification
  * - verifyRegistrationOTP: Verifies email OTP during registration
  * - onUserDeleted: Cleans up Firestore user document when Auth user is deleted
+ * - generateDesktopToken: Custom auth token for Windows desktop sign-in
+ * - onNewUserSignup: Welcome notification + admin alert on shop setup
+ * - sendPushNotification: FCM push when notification doc is created
+ * - cleanupOldNotifications: Scheduled daily cleanup of old read notifications
  */
 
 import * as functions from "firebase-functions";
@@ -547,3 +551,422 @@ export const generateDesktopToken = functions
         }
     });
 
+// ─── Notification Cloud Functions ───
+
+/**
+ * Welcome notification when a new user completes shop setup.
+ * Triggers on Firestore write when isShopSetupComplete changes to true.
+ */
+export const onNewUserSignup = functions
+    .region("asia-south1")
+    .firestore.document("users/{userId}")
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+        const userId = context.params.userId;
+
+        // Only trigger when shop setup transitions from false → true
+        if (before.isShopSetupComplete || !after.isShopSetupComplete) {
+            return;
+        }
+
+        const db = admin.firestore();
+        const shopName = after.shopName || "your shop";
+        const ownerName = after.ownerName || "there";
+
+        console.log(`🎉 New user completed setup: ${ownerName} (${shopName})`);
+
+        // 1. Send welcome notification to the new user
+        await db
+            .collection("users")
+            .doc(userId)
+            .collection("notifications")
+            .add({
+                title: "Welcome to Tulasi Shop Lite! 🎉",
+                body: `Hi ${ownerName}, your shop "${shopName}" is all set up. Start adding products and making sales!`,
+                type: "system",
+                targetType: "user",
+                targetUserId: userId,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                sentBy: "system",
+                read: false,
+            });
+
+        // 2. Notify all admins about the new signup
+        const adminsSnapshot = await db
+            .collection("admins")
+            .get();
+
+        const batch = db.batch();
+        for (const adminDoc of adminsSnapshot.docs) {
+            const adminNotifRef = db
+                .collection("users")
+                .doc(adminDoc.id)
+                .collection("notifications")
+                .doc();
+
+            batch.set(adminNotifRef, {
+                title: "New User Signup 🆕",
+                body: `${ownerName} just created shop "${shopName}"`,
+                type: "alert",
+                targetType: "user",
+                targetUserId: adminDoc.id,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                sentBy: "system",
+                read: false,
+            });
+        }
+        await batch.commit();
+
+        // 3. Also log to global notifications collection
+        await db.collection("notifications").add({
+            title: "New User Signup",
+            body: `${ownerName} created shop "${shopName}"`,
+            type: "alert",
+            targetType: "all",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            sentBy: "system",
+        });
+
+        console.log(`✅ Welcome + admin notifications sent for ${userId}`);
+    });
+
+/**
+ * Send FCM push notification when a notification document is created.
+ * Listens on the user's notifications subcollection.
+ */
+export const sendPushNotification = functions
+    .region("asia-south1")
+    .firestore.document("users/{userId}/notifications/{notificationId}")
+    .onCreate(async (snapshot, context) => {
+        const userId = context.params.userId;
+        const data = snapshot.data();
+
+        if (!data) return;
+
+        const title = data.title || "New Notification";
+        const body = data.body || "";
+
+        // Get user's FCM tokens
+        const userDoc = await admin.firestore()
+            .collection("users")
+            .doc(userId)
+            .get();
+
+        const fcmTokens = userDoc.data()?.fcmTokens as string[] | undefined;
+
+        if (!fcmTokens || fcmTokens.length === 0) {
+            console.log(`📱 No FCM tokens for user ${userId}, skipping push`);
+            return;
+        }
+
+        console.log(`📱 Sending push to ${fcmTokens.length} device(s) for user ${userId}`);
+
+        // Send to all user's devices
+        const message: admin.messaging.MulticastMessage = {
+            tokens: fcmTokens,
+            notification: {
+                title: title,
+                body: body,
+            },
+            data: {
+                type: data.type || "system",
+                notificationId: context.params.notificationId,
+            },
+            webpush: {
+                fcmOptions: {
+                    link: "/notifications",
+                },
+            },
+        };
+
+        try {
+            const response = await admin.messaging().sendEachForMulticast(message);
+            console.log(`📱 Push sent: ${response.successCount} success, ${response.failureCount} failures`);
+
+            // Remove invalid tokens
+            if (response.failureCount > 0) {
+                const tokensToRemove: string[] = [];
+                response.responses.forEach((resp, idx) => {
+                    if (!resp.success && resp.error?.code === "messaging/registration-token-not-registered") {
+                        tokensToRemove.push(fcmTokens[idx]);
+                    }
+                });
+
+                if (tokensToRemove.length > 0) {
+                    await admin.firestore().collection("users").doc(userId).update({
+                        fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokensToRemove),
+                    });
+                    console.log(`🗑️ Removed ${tokensToRemove.length} stale FCM token(s)`);
+                }
+            }
+        } catch (error) {
+            console.error("❌ FCM send error:", error);
+        }
+    });
+
+/**
+ * Scheduled cleanup: delete read notifications older than 30 days.
+ * Runs daily at midnight IST (18:30 UTC).
+ */
+export const cleanupOldNotifications = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 300, memory: "512MB" })
+    .pubsub.schedule("30 18 * * *") // 18:30 UTC = midnight IST
+    .timeZone("Asia/Kolkata")
+    .onRun(async () => {
+        const db = admin.firestore();
+        const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+
+        console.log("🧹 Cleaning up old notifications...");
+
+        // Get all users
+        const usersSnapshot = await db.collection("users").get();
+        let totalDeleted = 0;
+
+        for (const userDoc of usersSnapshot.docs) {
+            const oldNotifs = await db
+                .collection("users")
+                .doc(userDoc.id)
+                .collection("notifications")
+                .where("read", "==", true)
+                .where("createdAt", "<", thirtyDaysAgo)
+                .limit(100)
+                .get();
+
+            if (!oldNotifs.empty) {
+                const batch = db.batch();
+                oldNotifs.docs.forEach((doc) => batch.delete(doc.ref));
+                await batch.commit();
+                totalDeleted += oldNotifs.size;
+            }
+        }
+
+        console.log(`🧹 Cleaned up ${totalDeleted} old notifications`);
+    });
+
+// ─── Automated Notification Triggers ───
+
+/**
+ * Low Stock Alert — triggers when a product's stock is updated.
+ * Sends notification if stock falls at or below lowStockAlert threshold.
+ * Respects user's settings.lowStockAlerts preference.
+ */
+export const checkLowStock = functions
+    .region("asia-south1")
+    .firestore.document("users/{userId}/products/{productId}")
+    .onUpdate(async (change, context) => {
+        const before = change.before.data();
+        const after = change.after.data();
+        const userId = context.params.userId;
+
+        const newStock = after.stock as number;
+        const oldStock = before.stock as number;
+        const threshold = (after.lowStockAlert as number | null) ?? 5;
+        const productName = after.name || "Product";
+
+        // Only trigger if stock dropped and is now at/below threshold
+        if (newStock >= oldStock || newStock > threshold) {
+            return;
+        }
+
+        // Check user preference
+        const userDoc = await admin.firestore().collection("users").doc(userId).get();
+        const settings = userDoc.data()?.settings || {};
+        if (settings.lowStockAlerts === false) {
+            console.log(`🔕 Low stock alerts disabled for user ${userId}`);
+            return;
+        }
+
+        const isOutOfStock = newStock <= 0;
+        const title = isOutOfStock
+            ? `Out of Stock! ❌`
+            : `Low Stock Alert ⚠️`;
+        const body = isOutOfStock
+            ? `${productName} is now out of stock. Reorder immediately!`
+            : `${productName} has only ${newStock} left (threshold: ${threshold}). Consider reordering.`;
+
+        console.log(`📦 ${title}: ${productName} (${newStock} remaining) for user ${userId}`);
+
+        await admin.firestore()
+            .collection("users")
+            .doc(userId)
+            .collection("notifications")
+            .add({
+                title,
+                body,
+                type: "alert",
+                targetType: "user",
+                targetUserId: userId,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                sentBy: "system",
+                read: false,
+                data: {
+                    trigger: "low_stock",
+                    productId: context.params.productId,
+                    productName,
+                    stock: newStock,
+                    threshold,
+                },
+            });
+    });
+
+/**
+ * Subscription Expiry Reminder — runs daily at 10 AM IST (4:30 UTC).
+ * Sends reminder to users whose subscription expires within 7 days.
+ * Respects user's settings.subscriptionAlerts preference.
+ */
+export const checkSubscriptionExpiry = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 300, memory: "256MB" })
+    .pubsub.schedule("30 4 * * *") // 4:30 UTC = 10 AM IST
+    .timeZone("Asia/Kolkata")
+    .onRun(async () => {
+        const db = admin.firestore();
+        const now = new Date();
+
+        console.log("📋 Checking subscription expiry...");
+
+        // Get users with active subscriptions expiring in next 7 days
+        const usersSnapshot = await db
+            .collection("users")
+            .where("subscription.status", "==", "active")
+            .get();
+
+        let sentCount = 0;
+
+        for (const userDoc of usersSnapshot.docs) {
+            const data = userDoc.data();
+            const settings = data.settings || {};
+
+            // Check user preference
+            if (settings.subscriptionAlerts === false) continue;
+
+            const expiresAt = data.subscription?.expiresAt?.toDate();
+            if (!expiresAt) continue;
+
+            // Check if expiring within 7 days
+            const daysUntilExpiry = Math.ceil((expiresAt.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+            if (daysUntilExpiry > 7 || daysUntilExpiry < 0) continue;
+
+            const planName = data.subscription?.plan || "Free";
+
+            const title = daysUntilExpiry <= 1
+                ? "Subscription Expires Today! ⏰"
+                : `Subscription Expiring in ${daysUntilExpiry} Days ⚠️`;
+            const body = daysUntilExpiry <= 1
+                ? `Your ${planName} plan expires today. Renew now to keep your premium features!`
+                : `Your ${planName} plan expires in ${daysUntilExpiry} days. Renew to avoid losing access.`;
+
+            // Avoid duplicate alerts — check if already sent today
+            const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+            const existing = await db
+                .collection("users")
+                .doc(userDoc.id)
+                .collection("notifications")
+                .where("data.trigger", "==", "subscription_expiry")
+                .where("createdAt", ">=", todayStart)
+                .limit(1)
+                .get();
+
+            if (!existing.empty) continue;
+
+            await db
+                .collection("users")
+                .doc(userDoc.id)
+                .collection("notifications")
+                .add({
+                    title,
+                    body,
+                    type: "reminder",
+                    targetType: "user",
+                    targetUserId: userDoc.id,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    sentBy: "system",
+                    read: false,
+                    data: {
+                        trigger: "subscription_expiry",
+                        daysUntilExpiry,
+                        plan: planName,
+                    },
+                });
+
+            sentCount++;
+        }
+
+        console.log(`📋 Sent ${sentCount} subscription expiry reminder(s)`);
+    });
+
+/**
+ * Daily Sales Summary — runs daily at 9 PM IST (15:30 UTC).
+ * Sends summary of today's sales to each user.
+ * Respects user's settings.dailySummary preference.
+ */
+export const sendDailySalesSummary = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 300, memory: "512MB" })
+    .pubsub.schedule("30 15 * * *") // 15:30 UTC = 9 PM IST
+    .timeZone("Asia/Kolkata")
+    .onRun(async () => {
+        const db = admin.firestore();
+        const now = new Date();
+        const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
+
+        console.log("📊 Generating daily sales summaries...");
+
+        const usersSnapshot = await db.collection("users").get();
+        let sentCount = 0;
+
+        for (const userDoc of usersSnapshot.docs) {
+            const settings = userDoc.data().settings || {};
+
+            // Check user preference
+            if (settings.dailySummary === false) continue;
+
+            // Get today's bills for this user
+            const billsSnapshot = await db
+                .collection("users")
+                .doc(userDoc.id)
+                .collection("bills")
+                .where("createdAt", ">=", todayStart)
+                .where("createdAt", "<", todayEnd)
+                .get();
+
+            const totalBills = billsSnapshot.size;
+            if (totalBills === 0) continue; // Skip if no sales today
+
+            let totalRevenue = 0;
+            for (const bill of billsSnapshot.docs) {
+                totalRevenue += (bill.data().total as number) || 0;
+            }
+
+            const title = "Daily Sales Summary 📊";
+            const body = `Today: ${totalBills} bill(s) totaling ₹${totalRevenue.toFixed(2)}. Keep up the great work!`;
+
+            await db
+                .collection("users")
+                .doc(userDoc.id)
+                .collection("notifications")
+                .add({
+                    title,
+                    body,
+                    type: "system",
+                    targetType: "user",
+                    targetUserId: userDoc.id,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                    sentBy: "system",
+                    read: false,
+                    data: {
+                        trigger: "daily_summary",
+                        totalBills,
+                        totalRevenue,
+                        date: todayStart.toISOString().split("T")[0],
+                    },
+                });
+
+            sentCount++;
+        }
+
+        console.log(`📊 Sent ${sentCount} daily sales summary(ies)`);
+    });

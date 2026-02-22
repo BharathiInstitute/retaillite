@@ -258,9 +258,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             ],
           ),
 
+          // Try Demo Store
+          const SizedBox(height: AppSizes.sm),
+          TextButton.icon(
+            onPressed: _isLoading || _isGoogleLoading
+                ? null
+                : () {
+                    ref.read(authNotifierProvider.notifier).startDemoMode();
+                  },
+            icon: const Icon(
+              Icons.science_outlined,
+              size: 18,
+              color: AppColors.textSecondary,
+            ),
+            label: const Text(
+              'Try Demo Store',
+              style: TextStyle(color: AppColors.textSecondary, fontSize: 13),
+            ),
+          ),
+
           // Visit Website link (web only)
           if (kIsWeb) ...[
-            const SizedBox(height: AppSizes.lg),
+            const SizedBox(height: AppSizes.sm),
             const Divider(color: AppColors.border),
             const SizedBox(height: AppSizes.sm),
             TextButton.icon(
@@ -281,6 +300,19 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ),
             ),
           ],
+
+          // Super Admin link (subtle)
+          const SizedBox(height: AppSizes.xs),
+          GestureDetector(
+            onTap: () => context.go('/super-admin/login'),
+            child: Text(
+              'Super Admin',
+              style: TextStyle(
+                fontSize: 11,
+                color: AppColors.textSecondary.withValues(alpha: 0.4),
+              ),
+            ),
+          ),
         ],
       ),
     );

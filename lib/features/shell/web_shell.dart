@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:retaillite/features/notifications/widgets/notification_bell.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/website_url.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
-import 'package:retaillite/features/auth/widgets/email_verification_banner.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -37,9 +37,6 @@ class WebShell extends ConsumerWidget {
         children: [
           // Demo mode banner at the very top if active
           const DemoModeBanner(),
-
-          // Email verification banner
-          const EmailVerificationBanner(),
 
           Expanded(
             child: Row(
@@ -105,7 +102,7 @@ class _WebSidebar extends ConsumerWidget {
         radius: radius,
         backgroundImage: NetworkImage(logoPath),
         backgroundColor: isSelected ? AppColors.primary : Colors.grey,
-        onBackgroundImageError: (_, __) {},
+        onBackgroundImageError: (_, _) {},
       );
     }
 
@@ -239,21 +236,20 @@ class _WebSidebar extends ConsumerWidget {
 
                 const Divider(height: 32),
 
-                // Notification bell
-                _SidebarItem(
-                  icon: Icons.notifications_outlined,
-                  label: 'Notifications',
-                  isSelected: false,
-                  isCollapsed: isCollapsed,
-                  onTap: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('No new notifications'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
+                // Notification bell — real-time unread badge
+                if (isCollapsed)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 4),
+                    child: NotificationBell(),
+                  )
+                else
+                  _SidebarItem(
+                    icon: Icons.notifications_outlined,
+                    label: 'Notifications',
+                    isSelected: false,
+                    isCollapsed: isCollapsed,
+                    onTap: () => GoRouter.of(context).push('/notifications'),
+                  ),
 
                 // "Visit Website" — web only, hidden on Android/Windows
                 if (showWebsiteLink)
@@ -562,21 +558,8 @@ class _WebHeader extends StatelessWidget {
             ),
           ),
 
-          // Header Actions (optional)
-          IconButton(
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('No new notifications'),
-                  duration: Duration(seconds: 2),
-                ),
-              );
-            },
-            icon: Icon(
-              Icons.notifications_outlined,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
+          // Header Actions — real notification bell
+          const NotificationBell(),
         ],
       ),
     );

@@ -1,4 +1,6 @@
 import 'dart:io';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +12,8 @@ import 'package:retaillite/models/theme_settings_model.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
@@ -33,6 +37,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _contactNumberController;
   late TextEditingController _shopAddressController;
   late TextEditingController _emailController;
+  late TextEditingController _upiIdController;
 
   @override
   void initState() {
@@ -43,6 +48,14 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _contactNumberController = TextEditingController(text: user?.phone ?? '');
     _shopAddressController = TextEditingController(text: user?.address ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
+    _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
+    _upiIdController.addListener(_onUpiIdChanged);
+  }
+
+  void _onUpiIdChanged() {
+    final id = _upiIdController.text.trim();
+    PaymentLinkService.setUpiId(id);
+    setState(() {});
   }
 
   @override
@@ -52,6 +65,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _contactNumberController.dispose();
     _shopAddressController.dispose();
     _emailController.dispose();
+    _upiIdController.dispose();
     super.dispose();
   }
 
@@ -69,7 +83,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   void _navigateToTab(SettingsTab tab) {
-    if (tab == SettingsTab.hardware || tab == SettingsTab.billing) {
+    if (tab == SettingsTab.hardware) {
       _showComingSoonDialog(tab.name);
     }
     context.go('/settings/${tab.name}');
@@ -189,15 +203,34 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   Future<void> _saveSettings() async {
-    final success = await ref
-        .read(authNotifierProvider.notifier)
-        .updateShopInfo(
-          shopName: _shopNameController.text.trim(),
-          ownerName: _ownerNameController.text.trim(),
-          phone: _contactNumberController.text.trim(),
-          address: _shopAddressController.text.trim(),
-          email: _emailController.text.trim(),
-        );
+    // Save UPI ID locally (always works)
+    final upiId = _upiIdController.text.trim();
+    if (upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId)) {
+      PaymentLinkService.setUpiId(upiId);
+    }
+
+    // Try to save shop info to Firebase
+    bool success = false;
+    String? errorDetail;
+    try {
+      success = await ref
+          .read(authNotifierProvider.notifier)
+          .updateShopInfo(
+            shopName: _shopNameController.text.trim(),
+            ownerName: _ownerNameController.text.trim(),
+            phone: _contactNumberController.text.trim(),
+            address: _shopAddressController.text.trim(),
+            email: _emailController.text.trim(),
+            upiId: upiId.isNotEmpty ? upiId : null,
+          );
+      if (!success) {
+        errorDetail = 'updateShopInfo returned false';
+      }
+    } catch (e) {
+      debugPrint('❌ _saveSettings error: $e');
+      errorDetail = e.toString();
+      success = false;
+    }
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -205,9 +238,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           content: Text(
             success
                 ? 'Settings saved successfully!'
-                : 'Failed to save settings',
+                : 'Saved locally. Cloud sync failed: ${errorDetail ?? "unknown"}',
           ),
-          backgroundColor: success ? AppColors.primary : AppColors.error,
+          backgroundColor: success ? AppColors.primary : AppColors.warning,
+          duration: Duration(seconds: success ? 3 : 6),
         ),
       );
     }
@@ -276,46 +310,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     return const Icon(Icons.store, size: 28, color: Colors.grey);
   }
 
-  /// Build profile avatar that handles URLs and shows loading state
-  Widget _buildProfileAvatar(String? logoPath, double radius) {
-    if (_isUploadingLogo) {
-      return CircleAvatar(
-        radius: radius,
-        child: SizedBox(
-          width: radius,
-          height: radius,
-          child: const CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-
-    final hasImage = logoPath != null && logoPath.isNotEmpty;
-
-    if (!hasImage) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundColor: Theme.of(context).dividerColor,
-        child: Icon(Icons.person, size: radius, color: Colors.grey),
-      );
-    }
-
-    if (logoPath.startsWith('http')) {
-      return CircleAvatar(
-        radius: radius,
-        backgroundImage: NetworkImage(logoPath),
-        backgroundColor: Theme.of(context).dividerColor,
-        onBackgroundImageError: (_, __) {},
-      );
-    }
-
-    // Fallback
-    return CircleAvatar(
-      radius: radius,
-      backgroundColor: Theme.of(context).dividerColor,
-      child: Icon(Icons.person, size: radius, color: Colors.grey),
-    );
-  }
-
   /// Build user profile avatar (separate from shop logo)
   Widget _buildUserProfileAvatar(String? imagePath, double radius) {
     if (_isUploadingProfileImage) {
@@ -344,7 +338,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         radius: radius,
         backgroundImage: NetworkImage(imagePath),
         backgroundColor: Theme.of(context).dividerColor,
-        onBackgroundImageError: (_, __) {},
+        onBackgroundImageError: (_, _) {},
       );
     }
 
@@ -807,9 +801,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         });
         return _buildHardwareTab();
       case SettingsTab.billing:
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showComingSoonDialog('billing');
-        });
         return _buildBillingTab();
     }
   }
@@ -1145,7 +1136,53 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Quick Actions & Support
+        // Notification Preferences
+        _SectionCard(
+          icon: Icons.notifications_active,
+          iconColor: Colors.deepPurple,
+          title: 'Notification Preferences',
+          child: Column(
+            children: [
+              _buildNotifToggleRow(
+                icon: Icons.inventory_2_outlined,
+                iconColor: Colors.orange,
+                title: 'Low Stock Alerts',
+                subtitle:
+                    'Get notified when product stock falls below threshold',
+                value:
+                    ref.watch(currentUserProvider)?.settings.lowStockAlerts ??
+                    true,
+                onChanged: (v) => _toggleNotifPref('lowStockAlerts', v),
+              ),
+              const Divider(height: 24),
+              _buildNotifToggleRow(
+                icon: Icons.credit_card,
+                iconColor: Colors.blue,
+                title: 'Subscription Alerts',
+                subtitle: 'Reminders before your subscription expires',
+                value:
+                    ref
+                        .watch(currentUserProvider)
+                        ?.settings
+                        .subscriptionAlerts ??
+                    true,
+                onChanged: (v) => _toggleNotifPref('subscriptionAlerts', v),
+              ),
+              const Divider(height: 24),
+              _buildNotifToggleRow(
+                icon: Icons.bar_chart,
+                iconColor: Colors.green,
+                title: 'Daily Sales Summary',
+                subtitle: 'Receive a summary of your daily sales at 9 PM',
+                value:
+                    ref.watch(currentUserProvider)?.settings.dailySummary ??
+                    true,
+                onChanged: (v) => _toggleNotifPref('dailySummary', v),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
         _SectionCard(
           icon: Icons.flash_on,
           iconColor: const Color(0xFFF97316),
@@ -1854,7 +1891,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                                 ),
                               ),
                               Text(
-                                "If your hardware isn't connecting, try restarting the RetailLite app or re-pairing your Bluetooth device.",
+                                "If your hardware isn't connecting, try restarting the Tulasi Stores app or re-pairing your Bluetooth device.",
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textSecondary,
@@ -1993,7 +2030,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     Switch(
                       value: user?.settings.gstEnabled ?? true,
                       onChanged: (v) {
-                        // TODO: Save to user settings
+                        // Save to user settings (not yet implemented)
                       },
                       activeThumbColor: AppColors.primary,
                     ),
@@ -2075,97 +2112,190 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Digital Payment Setup
+        // UPI Payment Setup
         _SectionCard(
-          icon: Icons.payment,
+          icon: Icons.account_balance_wallet,
           iconColor: AppColors.success,
-          title: 'Digital Payment Setup',
+          title: 'UPI Payment Setup',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   const Text(
-                    'UPI QR Code',
+                    'Business UPI ID',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDCFCE7),
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: const Text(
-                      'ACTIVE',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.success,
-                        fontWeight: FontWeight.bold,
+                  if (PaymentLinkService.isValidUpiId(
+                    _upiIdController.text.trim(),
+                  ))
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'ACTIVE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.success,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: AppShadows.small,
-                    ),
-                    child: const Icon(Icons.qr_code_2, size: 40),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTextField(value: 'retailstore@upi'),
-                        const SizedBox(height: 4),
-                        TextButton(
-                          onPressed: () {},
-                          child: const Text(
-                            'Generate New QR',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Razorpay Integration',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Switch(value: false, onChanged: (v) {}),
                 ],
               ),
               const SizedBox(height: 12),
               _buildTextField(
-                value: '',
-                hint: 'Key ID (rzp_live_...)',
-                enabled: false,
+                controller: _upiIdController,
+                hint: 'e.g. myshop@ybl',
               ),
               const SizedBox(height: 8),
-              _buildTextField(value: '', hint: 'Key Secret', enabled: false),
-              const SizedBox(height: 8),
-              const Text(
-                'Enable to send payment links via SMS/Email.',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+
+              // Validation feedback
+              if (_upiIdController.text.trim().isNotEmpty &&
+                  !PaymentLinkService.isValidUpiId(
+                    _upiIdController.text.trim(),
+                  ))
+                const Row(
+                  children: [
+                    Icon(Icons.error_outline, size: 14, color: AppColors.error),
+                    SizedBox(width: 4),
+                    Text(
+                      'Invalid format. Use: name@provider',
+                      style: TextStyle(fontSize: 11, color: AppColors.error),
+                    ),
+                  ],
+                ),
+
+              // Setup guide
+              InkWell(
+                onTap: () => _showUpiGuideDialog(context),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.help_outline,
+                        size: 16,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'How to get a Business UPI ID (free)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
+              const SizedBox(height: 16),
+
+              // Auto-generated QR Code
+              if (PaymentLinkService.isValidUpiId(
+                _upiIdController.text.trim(),
+              )) ...[
+                const Text(
+                  'Auto-Generated QR Code',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  'Print this or show on screen for customers to scan',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: AppShadows.small,
+                      ),
+                      child: QrImageView(
+                        data: PaymentLinkService.generateUpiQrData(
+                          upiId: _upiIdController.text.trim(),
+                          payeeName: user?.shopName,
+                        ),
+                        size: 120,
+                        backgroundColor: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _upiIdController.text.trim(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            user?.shopName ?? 'Your Shop',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '₹0 per transaction — forever free',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: AppColors.success,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+              if (!PaymentLinkService.isValidUpiId(
+                _upiIdController.text.trim(),
+              )) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppColors.info.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(Icons.info_outline, color: AppColors.info, size: 20),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Enter your Business UPI ID above to auto-generate a QR code for invoices.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.textSecondary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -2174,6 +2304,74 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   // ============ HELPER WIDGETS ============
+
+  void _showUpiGuideDialog(BuildContext ctx) {
+    showDialog(
+      context: ctx,
+      builder: (dialogCtx) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(Icons.account_balance_wallet, color: AppColors.primary),
+            const SizedBox(width: 8),
+            const Expanded(child: Text('Get Business UPI')),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Business UPI gives you unlimited free transactions per day.',
+                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+              ),
+              const SizedBox(height: 16),
+              const Text(
+                '🥇 PhonePe Business (Recommended)',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store / App Store'),
+              const Text('• Enter PAN + link bank account'),
+              const Text('• Setup time: ~5 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 12),
+              const Text(
+                '🥈 Google Pay for Business',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store'),
+              const Text('• Links to existing Google account'),
+              const Text('• Setup time: ~10 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 12),
+              const Text(
+                '🥉 BharatPe',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const Text('• Download from Play Store'),
+              const Text('• Free QR stand delivered to shop'),
+              const Text('• Setup time: ~15 minutes'),
+              const Text('• Cost: ₹0 forever'),
+              const SizedBox(height: 16),
+              Text(
+                'After setup, copy your Business UPI ID and paste it in settings.',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogCtx),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
 
   /// Get font size label from scale value
   String _getFontSizeLabel(double scale) {
@@ -2437,31 +2635,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildFeatureRow(String feature, bool included) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Icon(
-            included ? Icons.check_circle : Icons.cancel,
-            size: 18,
-            color: included ? AppColors.success : Colors.grey,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            feature,
-            style: TextStyle(
-              decoration: included ? null : TextDecoration.lineThrough,
-              color: included
-                  ? Theme.of(context).colorScheme.onSurface
-                  : Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildToggleChip(String label, bool isSelected) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -2545,6 +2718,76 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
       ],
     );
+  }
+
+  Widget _buildNotifToggleRow({
+    required IconData icon,
+    required Color iconColor,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return Row(
+      children: [
+        Icon(icon, color: iconColor, size: 22),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: AppColors.primary,
+        ),
+      ],
+    );
+  }
+
+  Future<void> _toggleNotifPref(String key, bool value) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'settings.$key': value,
+      });
+
+      // Update local state
+      final authNotifier = ref.read(authNotifierProvider.notifier);
+      final currentUser = ref.read(currentUserProvider);
+      if (currentUser != null) {
+        final newSettings = switch (key) {
+          'lowStockAlerts' => currentUser.settings.copyWith(
+            lowStockAlerts: value,
+          ),
+          'subscriptionAlerts' => currentUser.settings.copyWith(
+            subscriptionAlerts: value,
+          ),
+          'dailySummary' => currentUser.settings.copyWith(dailySummary: value),
+          _ => currentUser.settings,
+        };
+        authNotifier.updateLocalUserSettings(newSettings);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
+      }
+    }
   }
 }
 

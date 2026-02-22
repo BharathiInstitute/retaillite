@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -464,7 +465,7 @@ class CustomerDetailScreen extends ConsumerWidget {
                     Expanded(
                       child: _ActionButton(
                         onPressed: () =>
-                            _sendWhatsAppReminder(context, customer),
+                            _sendWhatsAppReminder(context, ref, customer),
                         icon: Icons.message,
                         label: 'Remind',
                         isOutlined: true,
@@ -559,24 +560,53 @@ class CustomerDetailScreen extends ConsumerWidget {
 
   void _sendWhatsAppReminder(
     BuildContext context,
+    WidgetRef ref,
     CustomerModel customer,
   ) async {
-    final message = Uri.encodeComponent(
-      'नमस्ते ${customer.name},\n\n'
-      'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n'
-      'कृपया जल्द भुगतान करें।\n\n'
-      'धन्यवाद 🙏',
-    );
+    // Build reminder message with UPI link if configured
+    final upiId = PaymentLinkService.upiId;
+    final hasUpi = upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId);
+    final user = ref.read(currentUserProvider);
+    final shopName = user?.shopName ?? 'Store';
+
+    String messageText;
+    if (hasUpi) {
+      messageText =
+          'नमस्ते ${customer.name},\n\n'
+          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
+          '💳 *UPI से भुगतान करें:*\n'
+          '━━━━━━━━━━━━━━\n'
+          '📱 UPI ID: *$upiId*\n'
+          '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
+          '━━━━━━━━━━━━━━\n\n'
+          '👉 GPay / PhonePe / Paytm खोलें → Send Money → UPI ID डालें\n\n'
+          'धन्यवाद 🙏\n'
+          '— $shopName';
+    } else {
+      messageText =
+          'नमस्ते ${customer.name},\n\n'
+          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n'
+          'कृपया जल्द भुगतान करें।\n\n'
+          'धन्यवाद 🙏';
+    }
+
     final phone = '91${customer.phone}';
-    final url = Uri.parse('whatsapp://send?phone=$phone&text=$message');
 
     try {
-      if (await canLaunchUrl(url)) {
-        await launchUrl(url);
-      } else {
-        // Try web WhatsApp
-        final webUrl = Uri.parse('https://wa.me/$phone?text=$message');
+      // On web, always use wa.me URL (whatsapp:// scheme doesn't work in browsers)
+      // On mobile, try native scheme first, fallback to wa.me
+      if (kIsWeb) {
+        final webUrl = Uri.https('wa.me', '/$phone', {'text': messageText});
         await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+      } else {
+        final message = Uri.encodeComponent(messageText);
+        final url = Uri.parse('whatsapp://send?phone=$phone&text=$message');
+        if (await canLaunchUrl(url)) {
+          await launchUrl(url);
+        } else {
+          final webUrl = Uri.https('wa.me', '/$phone', {'text': messageText});
+          await launchUrl(webUrl, mode: LaunchMode.externalApplication);
+        }
       }
     } catch (e) {
       if (context.mounted) {

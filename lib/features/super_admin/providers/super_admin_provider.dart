@@ -6,7 +6,7 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
 
-/// Super admin email whitelist (single source of truth)
+/// Hardcoded super admin email fallback (used when Firestore is unavailable)
 const List<String> superAdminEmails = [
   'kehsaram001@gmail.com',
   'admin@retaillite.com',
@@ -17,7 +17,13 @@ const List<String> superAdminEmails = [
   'kehsihba@gmail.com',
 ];
 
+/// Admin emails from Firestore (live list)
+final adminEmailsProvider = FutureProvider<List<String>>((ref) async {
+  return AdminFirestoreService.getAdminEmails();
+});
+
 /// Check if current user is a super admin
+/// Uses hardcoded list for quick sync check (used by router)
 final isSuperAdminProvider = Provider<bool>((ref) {
   final authState = ref.watch(authNotifierProvider);
   final user = authState.user;
@@ -25,6 +31,15 @@ final isSuperAdminProvider = Provider<bool>((ref) {
   if (user == null || user.email == null) return false;
 
   return superAdminEmails.contains(user.email!.toLowerCase().trim());
+});
+
+/// Check if current user is the primary owner (kehsaram001@gmail.com)
+final isPrimaryOwnerProvider = Provider<bool>((ref) {
+  final authState = ref.watch(authNotifierProvider);
+  final user = authState.user;
+  if (user == null || user.email == null) return false;
+  return user.email!.toLowerCase().trim() ==
+      AdminFirestoreService.primaryOwnerEmail;
 });
 
 /// Dashboard statistics provider

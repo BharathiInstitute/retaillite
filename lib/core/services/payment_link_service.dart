@@ -54,9 +54,74 @@ class PaymentLinkService {
   /// Get the current UPI ID (empty if not configured)
   static String get upiId => _upiId;
 
-  /// Create a payment link via Cloud Function (Razorpay)
+  /// Validate UPI ID format (e.g. shopname@ybl, store@oksbi)
+  static bool isValidUpiId(String id) {
+    if (id.isEmpty) return false;
+    // UPI ID format: handle@provider
+    final regex = RegExp(r'^[a-zA-Z0-9._-]+@[a-zA-Z0-9]+$');
+    return regex.hasMatch(id);
+  }
+
+  /// Generate a free UPI deep link for payment
   ///
-  /// Returns a short URL that can be shared with customers
+  /// This creates a `upi://pay?...` URL that opens the customer's UPI app
+  /// directly with amount pre-filled. Zero cost — no Razorpay needed.
+  static String generateUpiDeepLink({
+    required String upiId,
+    required double amount,
+    String? payeeName,
+    String? transactionNote,
+  }) {
+    final params = <String, String>{'pa': upiId, 'cu': 'INR'};
+    if (amount > 0) params['am'] = amount.toStringAsFixed(2);
+    if (payeeName != null && payeeName.isNotEmpty) params['pn'] = payeeName;
+    if (transactionNote != null && transactionNote.isNotEmpty) {
+      params['tn'] = transactionNote;
+    }
+
+    final queryString = params.entries
+        .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
+        .join('&');
+
+    return 'upi://pay?$queryString';
+  }
+
+  /// Generate the UPI QR code data string (same as deep link, for QR rendering)
+  static String generateUpiQrData({required String upiId, String? payeeName}) {
+    return generateUpiDeepLink(
+      upiId: upiId,
+      amount: 0, // No fixed amount — customer enters at scan time
+      payeeName: payeeName,
+    );
+  }
+
+  /// Launch a ₹1 test payment to verify UPI ID is working
+  static Future<bool> launchTestPayment({
+    required String upiId,
+    String? shopName,
+  }) async {
+    try {
+      final deepLink = generateUpiDeepLink(
+        upiId: upiId,
+        amount: 1,
+        payeeName: shopName ?? 'Test Payment',
+        transactionNote: 'UPI ID verification - Rs 1 test',
+      );
+
+      final uri = Uri.parse(deepLink);
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Error launching test payment: $e');
+      return false;
+    }
+  }
+
+  /// Create a payment link — uses free UPI deep link when configured,
+  /// falls back to Razorpay Cloud Function otherwise.
   static Future<PaymentLinkResult> createPaymentLink({
     required double amount,
     required String customerName,
@@ -69,10 +134,23 @@ class PaymentLinkService {
     debugPrint('========================================');
     debugPrint('PaymentLinkService.createPaymentLink()');
     debugPrint('Amount: $amount, Customer: $customerName');
+    debugPrint('UPI ID: $_upiId');
     debugPrint('========================================');
 
+    // If UPI ID is configured, generate a free UPI deep link directly
+    if (_upiId.isNotEmpty && isValidUpiId(_upiId)) {
+      final deepLink = generateUpiDeepLink(
+        upiId: _upiId,
+        amount: amount,
+        payeeName: shopName,
+        transactionNote: description ?? 'Payment to ${shopName ?? "store"}',
+      );
+      debugPrint('>>> ✅ UPI deep link generated: $deepLink');
+      return PaymentLinkResult.success(paymentLink: deepLink);
+    }
+
+    // No UPI ID — try Razorpay Cloud Function
     try {
-      // Call the Cloud Function to create Razorpay payment link
       debugPrint('>>> Calling Cloud Function: createPaymentLink');
       final callable = _functions.httpsCallable(
         'createPaymentLink',
@@ -91,56 +169,34 @@ class PaymentLinkService {
       debugPrint('>>> Params: $params');
 
       final result = await callable.call<Map<String, dynamic>>(params);
-
-      debugPrint('>>> Cloud Function response received');
-      debugPrint('>>> Response data: ${result.data}');
-
       final data = result.data;
       if (data['success'] == true && data['paymentLink'] != null) {
-        debugPrint('>>> ✅ SUCCESS! Payment link: ${data['paymentLink']}');
+        debugPrint('>>> ✅ Razorpay link: ${data['paymentLink']}');
         return PaymentLinkResult.success(
           paymentLink: data['paymentLink'] as String,
           paymentLinkId: data['paymentLinkId'] as String?,
         );
       } else {
-        debugPrint('>>> ❌ FAILED: ${data['error']}');
-        // Return failure - don't fallback silently
         return PaymentLinkResult.failure(
           data['error'] as String? ?? 'Failed to create payment link',
         );
       }
     } on FirebaseFunctionsException catch (e) {
-      debugPrint('>>> ❌ FirebaseFunctionsException!');
-      debugPrint('>>> Code: ${e.code}');
-      debugPrint('>>> Message: ${e.message}');
-      debugPrint('>>> Details: ${e.details}');
-
-      // For unauthenticated error, return failure
+      debugPrint('>>> ❌ Firebase error: ${e.code} - ${e.message}');
       if (e.code == 'unauthenticated') {
         return PaymentLinkResult.failure(
           'Please login to create payment links',
         );
       }
-
-      // For other Firebase errors, fallback to manual UPI
-      return _createManualUpiResult(amount, shopName);
-    } catch (e, stackTrace) {
-      debugPrint('>>> ❌ Unexpected Error: $e');
-      debugPrint('>>> Stack: $stackTrace');
-      // Fallback to manual UPI for network errors etc
-      return _createManualUpiResult(amount, shopName);
+      return PaymentLinkResult.failure(
+        'UPI ID not configured. Go to Settings → Billing to set up.',
+      );
+    } catch (e) {
+      debugPrint('>>> ❌ Error: $e');
+      return PaymentLinkResult.failure(
+        'UPI ID not configured. Go to Settings → Billing to set up.',
+      );
     }
-  }
-
-  /// Create a manual UPI result as fallback
-  static PaymentLinkResult _createManualUpiResult(
-    double amount,
-    String? shopName,
-  ) {
-    // Generate a message-based payment link (not a real URL)
-    return PaymentLinkResult.success(
-      paymentLink: 'MANUAL', // Signal to use manual UPI message
-    );
   }
 
   /// Share payment link via WhatsApp
@@ -165,9 +221,8 @@ class PaymentLinkService {
         phone = '91$phone';
       }
 
-      final whatsappUrl = Uri.parse(
-        'https://wa.me/$phone?text=${Uri.encodeComponent(message)}',
-      );
+      // Use Uri.https for proper encoding on all platforms
+      final whatsappUrl = Uri.https('wa.me', '/$phone', {'text': message});
 
       if (await canLaunchUrl(whatsappUrl)) {
         await launchUrl(whatsappUrl, mode: LaunchMode.externalApplication);
@@ -238,7 +293,7 @@ class PaymentLinkService {
     final amountStr = '₹${amount.toStringAsFixed(0)}';
     final shop = shopName ?? 'Store';
 
-    // Check if this is a real Razorpay link
+    // Check if this is a Razorpay link
     final isRazorpayLink =
         paymentLink.startsWith('https://rzp.io') ||
         paymentLink.startsWith('https://pages.razorpay.com');
@@ -247,7 +302,7 @@ class PaymentLinkService {
       if (isRazorpayLink) {
         return 'Pay $amountStr to $shop: $paymentLink';
       }
-      return 'Pay $amountStr to $shop. UPI: $_upiId';
+      return 'Pay $amountStr to $shop. UPI ID: $_upiId';
     }
 
     final greeting = customerName != null ? 'Dear $customerName,\n\n' : '';
@@ -263,7 +318,7 @@ Supports: UPI, Cards, Net Banking
 Thank you! 🙏''';
     }
 
-    // Fallback to manual UPI
+    // UPI payment message (works for both upi:// links and fallback)
     return '''${greeting}Please pay $amountStr for your purchase at $shop.
 
 💳 *UPI Payment Details:*
@@ -272,7 +327,7 @@ Thank you! 🙏''';
 💰 Amount: *$amountStr*
 ━━━━━━━━━━━━━━━━━
 
-Open GPay/PhonePe/Paytm → Send Money → Enter UPI ID above
+👉 Open GPay/PhonePe/Paytm → Send Money → Enter UPI ID above
 
 Thank you! 🙏''';
   }

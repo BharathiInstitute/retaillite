@@ -16,6 +16,8 @@ import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -839,7 +841,7 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
           ),
           // WhatsApp button
           IconButton(
-            onPressed: () => _openWhatsApp(customer.phone),
+            onPressed: () => _openWhatsApp(customer),
             icon: const Icon(Icons.chat, color: Color(0xFF25D366)),
             tooltip: 'WhatsApp',
           ),
@@ -1087,10 +1089,43 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
     );
   }
 
-  void _openWhatsApp(String phone) async {
-    final url = Uri.parse('https://wa.me/91$phone');
-    if (await canLaunchUrl(url)) {
+  void _openWhatsApp(CustomerModel customer) async {
+    final phone = '91${customer.phone}';
+    final upiId = PaymentLinkService.upiId;
+    final hasUpi = upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId);
+    final user = ref.read(currentUserProvider);
+    final shopName = user?.shopName ?? 'Store';
+
+    String messageText;
+    if (customer.balance > 0 && hasUpi) {
+      messageText =
+          'नमस्ते ${customer.name},\n\n'
+          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
+          '💳 *UPI से भुगतान करें:*\n'
+          '━━━━━━━━━━━━━━\n'
+          '📱 UPI ID: *$upiId*\n'
+          '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
+          '━━━━━━━━━━━━━━\n\n'
+          '👉 GPay / PhonePe / Paytm खोलें → Send Money → UPI ID डालें\n\n'
+          'धन्यवाद 🙏\n'
+          '— $shopName';
+    } else if (customer.balance > 0) {
+      messageText =
+          'नमस्ते ${customer.name},\n\n'
+          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n'
+          'कृपया जल्द भुगतान करें।\n\n'
+          'धन्यवाद 🙏';
+    } else {
+      messageText = ''; // No due, just open chat
+    }
+
+    try {
+      final url = messageText.isNotEmpty
+          ? Uri.https('wa.me', '/$phone', {'text': messageText})
+          : Uri.https('wa.me', '/$phone');
       await launchUrl(url, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      debugPrint('Error opening WhatsApp: $e');
     }
   }
 

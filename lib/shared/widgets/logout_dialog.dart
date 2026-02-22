@@ -163,6 +163,6 @@ Future<void> showLogoutDialog(BuildContext context, WidgetRef ref) async {
   );
 
   if (confirmed == true && context.mounted) {
-    ref.read(authNotifierProvider.notifier).signOut();
+    await ref.read(authNotifierProvider.notifier).signOut();
   }
 }

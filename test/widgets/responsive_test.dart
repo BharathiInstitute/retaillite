@@ -3,6 +3,8 @@
 /// Tests the pure logic of the responsive system — no Firebase dependency.
 /// Covers: breakpoints, device type detection, scaling engine, grid columns,
 /// padding values, and responsive value selection.
+library;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
@@ -334,7 +336,7 @@ void main() {
         addTearDown(tester.view.resetDevicePixelRatio);
 
         await tester.pumpWidget(
-          MaterialApp(
+          const MaterialApp(
             home: Scaffold(
               body: SingleChildScrollView(
                 child: Column(
@@ -348,26 +350,26 @@ void main() {
                             overflow: TextOverflow.ellipsis,
                           ),
                         ),
-                        const Text('₹999.00'),
+                        Text('₹999.00'),
                       ],
                     ),
                     // Simulate a table-like row
                     Row(
                       children: [
-                        const Expanded(flex: 2, child: Text('#INV-10001')),
-                        const Expanded(flex: 3, child: Text('Customer Name')),
-                        const Expanded(flex: 2, child: Text('Cash')),
+                        Expanded(flex: 2, child: Text('#INV-10001')),
+                        Expanded(flex: 3, child: Text('Customer Name')),
+                        Expanded(flex: 2, child: Text('Cash')),
                         Expanded(flex: 2, child: Text('₹1,234.56')),
                       ],
                     ),
                     // Simulate cards
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.all(16),
+                        padding: EdgeInsets.all(16),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text('Dashboard Card'),
+                            Text('Dashboard Card'),
                             Text('Revenue: ₹45,678'),
                             Text('Bills: 234'),
                           ],
@@ -422,7 +424,6 @@ void main() {
           home: Scaffold(
             body: ResponsiveVisibility(
               visibleOnMobile: false,
-              visibleOnDesktop: true,
               child: Text('Desktop Only'),
             ),
           ),

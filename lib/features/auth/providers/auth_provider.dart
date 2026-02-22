@@ -13,7 +13,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
+import 'package:retaillite/features/notifications/services/fcm_token_service.dart';
+import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
 import 'package:retaillite/models/user_model.dart';
 
 /// Auth state
@@ -205,6 +208,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             shopLogoPath: data['shopLogoPath'] as String?,
             profileImagePath: data['profileImagePath'] as String?,
             photoUrl: data['photoUrl'] as String? ?? firebaseUser.photoURL,
+            upiId: data['upiId'] as String?,
             settings: const UserSettings(),
             phoneVerified: (data['phoneVerified'] as bool?) ?? false,
             emailVerified: emailVerified,
@@ -213,6 +217,17 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
         );
+
+        // Save FCM token for push notifications (non-blocking)
+        // ignore: unawaited_futures
+        FCMTokenService.initAndSaveToken(firebaseUser.uid);
+        // Start Windows desktop notification listener
+        WindowsNotificationService.startListening(firebaseUser.uid);
+        // Load UPI ID from user document into PaymentLinkService
+        final userUpiId = data['upiId'] as String? ?? '';
+        if (userUpiId.isNotEmpty) {
+          PaymentLinkService.setUpiId(userUpiId);
+        }
       } else {
         // User exists in Auth but not in Firestore - new user needs shop setup
         state = AuthState(
@@ -364,7 +379,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// then polls Firestore for a custom auth token
   Future<bool> signInDesktop() async {
     try {
-      state = state.copyWith(isLoading: true, error: null);
+      state = state.copyWith(isLoading: true);
       debugPrint('🖥️ Desktop: Starting web-based auth flow...');
 
       // 1. Generate a random 6-character link code
@@ -660,6 +675,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Sign out
   Future<void> signOut() async {
     try {
+      // Remove FCM token before clearing everything
+      final userId = state.firebaseUser?.uid;
+      if (userId != null) {
+        await FCMTokenService.removeToken(userId);
+      }
+      // Stop Windows notification listener
+      WindowsNotificationService.stopListening();
       // Clear local user-specific settings so they don't leak to next user
       await OfflineStorageService.clearUserLocalSettings();
       // Reset theme to default light immediately
@@ -753,6 +775,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     String? address,
     String? gstNumber,
     String? email,
+    String? upiId,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -765,10 +788,14 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       if (address != null) updates['address'] = address;
       if (gstNumber != null) updates['gstNumber'] = gstNumber;
       if (email != null) updates['email'] = email;
+      if (upiId != null) updates['upiId'] = upiId;
 
       if (updates.isEmpty) return true;
 
-      await _firestore.collection('users').doc(user.uid).update(updates);
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .set(updates, SetOptions(merge: true));
 
       // Update local state
       if (state.user != null) {
@@ -780,6 +807,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             address: address ?? state.user!.address,
             gstNumber: gstNumber ?? state.user!.gstNumber,
             email: email ?? state.user!.email,
+            upiId: upiId ?? state.user!.upiId,
           ),
         );
       }
@@ -788,6 +816,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     } catch (e) {
       debugPrint('🔐 Error updating shop info: $e');
       return false;
+    }
+  }
+
+  /// Update local user settings state (for notification preferences toggle)
+  void updateLocalUserSettings(UserSettings newSettings) {
+    if (state.user != null) {
+      state = state.copyWith(user: state.user!.copyWith(settings: newSettings));
     }
   }
 
@@ -1117,6 +1152,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       status: AuthStatus.authenticated,
       isLoggedIn: true,
       isShopSetupComplete: true,
+      isEmailVerified: true,
       isDemoMode: true,
       isLoading: false,
       user: UserModel(

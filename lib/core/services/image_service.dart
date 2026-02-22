@@ -301,8 +301,8 @@ class ImageService {
 
     try {
       final File file = File(imagePath);
-      if (await file.exists()) {
-        await file.delete();
+      if (file.existsSync()) {
+        file.deleteSync();
       }
     } catch (e) {
       debugPrint('Error deleting image: $e');
@@ -312,6 +312,6 @@ class ImageService {
   /// Check if image file exists
   static Future<bool> imageExists(String? imagePath) async {
     if (imagePath == null || imagePath.isEmpty) return false;
-    return File(imagePath).exists();
+    return File(imagePath).existsSync();
   }
 }

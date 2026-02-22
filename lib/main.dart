@@ -4,6 +4,7 @@ import 'dart:io' show Platform;
 import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -22,6 +23,8 @@ import 'package:retaillite/core/utils/error_handler.dart';
 import 'package:retaillite/core/widgets/force_update_screen.dart';
 import 'package:retaillite/core/widgets/maintenance_screen.dart';
 import 'package:retaillite/core/widgets/splash_screen.dart';
+import 'package:retaillite/features/notifications/services/notification_service.dart';
+import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
 import 'package:retaillite/firebase_options.dart';
 
 /// App version info
@@ -51,6 +54,12 @@ Future<void> _initializeApp() async {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
     );
+
+    // Register FCM background handler (must be top-level function)
+    if (!isWindows) {
+      FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
+      await NotificationService.setForegroundOptions();
+    }
 
     // Initialize Firebase App Check — protects all Firebase services
     // Skip on web (if no reCAPTCHA key) and Windows (not supported)
@@ -167,6 +176,7 @@ Future<void> _initializeApp() async {
       SyncSettingsService.initialize(),
       ConnectivityService.initialize(),
       AppHealthService.initialize(),
+      WindowsNotificationService.init(),
     ]);
 
     // Launch the main app

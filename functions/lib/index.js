@@ -43,7 +43,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.generateDesktopToken = exports.onUserDeleted = exports.verifyRegistrationOTP = exports.sendRegistrationOTP = exports.razorpayWebhook = exports.createPaymentLink = void 0;
+exports.cleanupOldNotifications = exports.sendPushNotification = exports.onNewUserSignup = exports.generateDesktopToken = exports.onUserDeleted = exports.verifyRegistrationOTP = exports.sendRegistrationOTP = exports.razorpayWebhook = exports.createPaymentLink = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
@@ -476,5 +476,175 @@ exports.generateDesktopToken = functions
         console.error("Error generating desktop token:", error);
         throw new functions.https.HttpsError("internal", "Failed to generate auth token");
     }
+});
+// ─── Notification Cloud Functions ───
+/**
+ * Welcome notification when a new user completes shop setup.
+ * Triggers on Firestore write when isShopSetupComplete changes to true.
+ */
+exports.onNewUserSignup = functions
+    .region("asia-south1")
+    .firestore.document("users/{userId}")
+    .onUpdate(async (change, context) => {
+    const before = change.before.data();
+    const after = change.after.data();
+    const userId = context.params.userId;
+    // Only trigger when shop setup transitions from false → true
+    if (before.isShopSetupComplete || !after.isShopSetupComplete) {
+        return;
+    }
+    const db = admin.firestore();
+    const shopName = after.shopName || "your shop";
+    const ownerName = after.ownerName || "there";
+    console.log(`🎉 New user completed setup: ${ownerName} (${shopName})`);
+    // 1. Send welcome notification to the new user
+    await db
+        .collection("users")
+        .doc(userId)
+        .collection("notifications")
+        .add({
+        title: "Welcome to Tulasi Shop Lite! 🎉",
+        body: `Hi ${ownerName}, your shop "${shopName}" is all set up. Start adding products and making sales!`,
+        type: "system",
+        targetType: "user",
+        targetUserId: userId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentBy: "system",
+        read: false,
+    });
+    // 2. Notify all admins about the new signup
+    const adminsSnapshot = await db
+        .collection("admins")
+        .get();
+    const batch = db.batch();
+    for (const adminDoc of adminsSnapshot.docs) {
+        const adminNotifRef = db
+            .collection("users")
+            .doc(adminDoc.id)
+            .collection("notifications")
+            .doc();
+        batch.set(adminNotifRef, {
+            title: "New User Signup 🆕",
+            body: `${ownerName} just created shop "${shopName}"`,
+            type: "alert",
+            targetType: "user",
+            targetUserId: adminDoc.id,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            sentBy: "system",
+            read: false,
+        });
+    }
+    await batch.commit();
+    // 3. Also log to global notifications collection
+    await db.collection("notifications").add({
+        title: "New User Signup",
+        body: `${ownerName} created shop "${shopName}"`,
+        type: "alert",
+        targetType: "all",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        sentBy: "system",
+    });
+    console.log(`✅ Welcome + admin notifications sent for ${userId}`);
+});
+/**
+ * Send FCM push notification when a notification document is created.
+ * Listens on the user's notifications subcollection.
+ */
+exports.sendPushNotification = functions
+    .region("asia-south1")
+    .firestore.document("users/{userId}/notifications/{notificationId}")
+    .onCreate(async (snapshot, context) => {
+    var _a;
+    const userId = context.params.userId;
+    const data = snapshot.data();
+    if (!data)
+        return;
+    const title = data.title || "New Notification";
+    const body = data.body || "";
+    // Get user's FCM tokens
+    const userDoc = await admin.firestore()
+        .collection("users")
+        .doc(userId)
+        .get();
+    const fcmTokens = (_a = userDoc.data()) === null || _a === void 0 ? void 0 : _a.fcmTokens;
+    if (!fcmTokens || fcmTokens.length === 0) {
+        console.log(`📱 No FCM tokens for user ${userId}, skipping push`);
+        return;
+    }
+    console.log(`📱 Sending push to ${fcmTokens.length} device(s) for user ${userId}`);
+    // Send to all user's devices
+    const message = {
+        tokens: fcmTokens,
+        notification: {
+            title: title,
+            body: body,
+        },
+        data: {
+            type: data.type || "system",
+            notificationId: context.params.notificationId,
+        },
+        webpush: {
+            fcmOptions: {
+                link: "/notifications",
+            },
+        },
+    };
+    try {
+        const response = await admin.messaging().sendEachForMulticast(message);
+        console.log(`📱 Push sent: ${response.successCount} success, ${response.failureCount} failures`);
+        // Remove invalid tokens
+        if (response.failureCount > 0) {
+            const tokensToRemove = [];
+            response.responses.forEach((resp, idx) => {
+                var _a;
+                if (!resp.success && ((_a = resp.error) === null || _a === void 0 ? void 0 : _a.code) === "messaging/registration-token-not-registered") {
+                    tokensToRemove.push(fcmTokens[idx]);
+                }
+            });
+            if (tokensToRemove.length > 0) {
+                await admin.firestore().collection("users").doc(userId).update({
+                    fcmTokens: admin.firestore.FieldValue.arrayRemove(...tokensToRemove),
+                });
+                console.log(`🗑️ Removed ${tokensToRemove.length} stale FCM token(s)`);
+            }
+        }
+    }
+    catch (error) {
+        console.error("❌ FCM send error:", error);
+    }
+});
+/**
+ * Scheduled cleanup: delete read notifications older than 30 days.
+ * Runs daily at midnight IST (18:30 UTC).
+ */
+exports.cleanupOldNotifications = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 300, memory: "512MB" })
+    .pubsub.schedule("30 18 * * *") // 18:30 UTC = midnight IST
+    .timeZone("Asia/Kolkata")
+    .onRun(async () => {
+    const db = admin.firestore();
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    console.log("🧹 Cleaning up old notifications...");
+    // Get all users
+    const usersSnapshot = await db.collection("users").get();
+    let totalDeleted = 0;
+    for (const userDoc of usersSnapshot.docs) {
+        const oldNotifs = await db
+            .collection("users")
+            .doc(userDoc.id)
+            .collection("notifications")
+            .where("read", "==", true)
+            .where("createdAt", "<", thirtyDaysAgo)
+            .limit(100)
+            .get();
+        if (!oldNotifs.empty) {
+            const batch = db.batch();
+            oldNotifs.docs.forEach((doc) => batch.delete(doc.ref));
+            await batch.commit();
+            totalDeleted += oldNotifs.size;
+        }
+    }
+    console.log(`🧹 Cleaned up ${totalDeleted} old notifications`);
 });
 //# sourceMappingURL=index.js.map

@@ -167,6 +167,14 @@ service cloud.firestore {
     }
     
     // ===================
+    // APP CONFIG (super admin management)
+    // ===================
+    match /app_config/{configId} {
+      allow read: if isAdmin();
+      allow write: if isAdmin();
+    }
+    
+    // ===================
     // APP HEALTH & PERFORMANCE
     // Rate-limit: only allow creating docs, not spamming
     // ===================

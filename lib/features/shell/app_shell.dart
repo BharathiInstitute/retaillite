@@ -9,7 +9,6 @@ import 'package:retaillite/core/utils/color_utils.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
-import 'package:retaillite/features/auth/widgets/email_verification_banner.dart';
 import 'package:retaillite/features/shell/web_shell.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/user_model.dart';
@@ -123,9 +122,6 @@ class AppShell extends ConsumerWidget {
           // Demo mode banner
           const DemoModeBanner(),
 
-          // Email verification banner
-          const EmailVerificationBanner(),
-
           // Main content with navigation
           Expanded(
             child: Row(
@@ -170,7 +166,7 @@ class AppShell extends ConsumerWidget {
         radius: radius,
         backgroundImage: NetworkImage(logoPath),
         backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-        onBackgroundImageError: (_, __) {},
+        onBackgroundImageError: (_, _) {},
       );
     }
 

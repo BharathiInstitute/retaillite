@@ -1,4 +1,4 @@
-/// Forgot Password screen — reset via phone OTP
+/// Forgot Password screen — reset via email link
 library;
 
 import 'package:flutter/material.dart';
@@ -6,9 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
-import 'package:retaillite/features/auth/providers/phone_auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_layout.dart';
-import 'package:firebase_auth/firebase_auth.dart' as fb;
 
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -19,35 +17,21 @@ class ForgotPasswordScreen extends ConsumerStatefulWidget {
 }
 
 class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
-  final _emailFormKey = GlobalKey<FormState>();
-  final _passwordFormKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
   final _emailController = TextEditingController();
-  final _otpController = TextEditingController();
-  final _newPasswordController = TextEditingController();
-  final _confirmPasswordController = TextEditingController();
 
   bool _isLoading = false;
-  final bool _obscurePassword = true;
-  final bool _obscureConfirmPassword = true;
-
-  // Flow steps: 0 = enter email, 1 = enter OTP, 2 = set new password, 3 = success, 4 = email-only fallback
-  int _step = 0;
-  String? _phoneNumber; // User's registered phone from Firestore
-  String? _userEmail;
-  bool _otpVerified = false;
+  bool _emailSent = false;
 
   @override
   void dispose() {
     _emailController.dispose();
-    _otpController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
     super.dispose();
   }
 
-  /// Step 0: Look up user's phone number from Firestore by email
-  Future<void> _handleLookupPhone() async {
-    if (!_emailFormKey.currentState!.validate()) return;
+  /// Send password reset email
+  Future<void> _handleSendResetEmail() async {
+    if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
     ref.read(authNotifierProvider.notifier).clearError();
@@ -55,115 +39,13 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     try {
       final email = _emailController.text.trim();
 
-      // Check sign-in methods first
-      final methods = await ref
-          .read(authNotifierProvider.notifier)
-          .getSignInMethodsForEmail(email);
-
-      if (methods != null &&
-          methods.isNotEmpty &&
-          !methods.contains('password')) {
-        // Google-only account — no password to reset
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ref
-              .read(authNotifierProvider.notifier)
-              .setError(
-                'This account uses Google Sign-In. No password to reset — just use the Google button on the login screen.',
-              );
-        }
-        return;
-      }
-
-      // Look up phone number from Firestore
-      final phone = await ref
-          .read(authNotifierProvider.notifier)
-          .getPhoneForEmail(email);
-
-      if (phone == null || phone.isEmpty) {
-        // No verified phone — offer direct email reset as fallback
-        if (mounted) {
-          setState(() {
-            _userEmail = email;
-            _step = 4; // New step: email-only fallback
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-
-      // Send OTP to the registered phone
-      _phoneNumber = phone;
-      _userEmail = email;
-      await ref
-          .read(phoneAuthProvider.notifier)
-          .sendOtp(phone.replaceFirst('+91', ''));
-
-      if (mounted) {
-        setState(() {
-          _step = 1;
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ref
-            .read(authNotifierProvider.notifier)
-            .setError('Failed to look up account. Please try again.');
-      }
-    }
-  }
-
-  /// Step 1: Verify OTP
-  Future<void> _handleVerifyOtp() async {
-    final otp = _otpController.text.trim();
-    if (otp.length != 6) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Enter 6-digit OTP')));
-      return;
-    }
-
-    setState(() => _isLoading = true);
-
-    try {
-      final success = await ref.read(phoneAuthProvider.notifier).verifyOtp(otp);
-      if (success && mounted) {
-        // Sign out the phone-auth session immediately
-        await fb.FirebaseAuth.instance.signOut();
-        setState(() {
-          _otpVerified = true;
-          _step = 2;
-          _isLoading = false;
-        });
-      } else {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  /// Step 2: Set new password via admin reset
-  Future<void> _handleSetNewPassword() async {
-    if (!_passwordFormKey.currentState!.validate()) return;
-    if (!_otpVerified || _userEmail == null) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      // Sign in with email using a temporary password reset flow
-      // Since phone is verified, we use Firebase Admin SDK approach
-      // For client-side, we'll send the password reset email as fallback
-      // but from a verified context
       final success = await ref
           .read(authNotifierProvider.notifier)
-          .sendPasswordResetEmail(_userEmail!);
+          .sendPasswordResetEmail(email);
 
       if (success && mounted) {
         setState(() {
-          _step = 3;
+          _emailSent = true;
           _isLoading = false;
         });
       } else {
@@ -174,7 +56,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         setState(() => _isLoading = false);
         ref
             .read(authNotifierProvider.notifier)
-            .setError('Failed to reset password. Please try again.');
+            .setError('Failed to send reset email. Please try again.');
       }
     }
   }
@@ -182,63 +64,29 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
   @override
   Widget build(BuildContext context) {
     final error = ref.watch(authErrorProvider);
-    final phoneState = ref.watch(phoneAuthProvider);
 
     return AuthLayout(
-      title: _step == 3 ? 'Password Reset' : 'Reset Password',
-      subtitle: _stepSubtitle,
+      title: _emailSent ? 'Check Your Email' : 'Reset Password',
+      subtitle: _emailSent
+          ? 'Reset link sent successfully'
+          : 'Enter your email to reset your password',
       icon: Icons.lock_reset,
       onBack: () {
-        if (_step > 0 && _step < 3) {
-          setState(() => _step = 0);
+        if (_emailSent) {
+          setState(() => _emailSent = false);
           ref.read(authNotifierProvider.notifier).clearError();
-          ref.read(phoneAuthProvider.notifier).reset();
         } else {
           context.pop();
         }
       },
-      child: _buildStepContent(error, phoneState),
+      child: _emailSent ? _buildSuccessView() : _buildEmailStep(error),
     );
   }
 
-  String get _stepSubtitle {
-    switch (_step) {
-      case 0:
-        return 'Enter your email to get started';
-      case 1:
-        return 'Verify your phone number';
-      case 2:
-        return 'Almost done! Check your email';
-      case 3:
-        return 'Reset link sent successfully';
-      case 4:
-        return 'Reset via email';
-      default:
-        return '';
-    }
-  }
-
-  Widget _buildStepContent(String? error, PhoneAuthState phoneState) {
-    switch (_step) {
-      case 0:
-        return _buildEmailStep(error);
-      case 1:
-        return _buildOtpStep(error, phoneState);
-      case 2:
-        return _buildNewPasswordStep(error);
-      case 3:
-        return _buildSuccessView();
-      case 4:
-        return _buildEmailFallbackStep(error);
-      default:
-        return const SizedBox.shrink();
-    }
-  }
-
-  /// Step 0: Enter email
+  /// Enter email step
   Widget _buildEmailStep(String? error) {
     return Form(
-      key: _emailFormKey,
+      key: _formKey,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -258,7 +106,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                 const SizedBox(width: 12),
                 const Expanded(
                   child: Text(
-                    'Enter your registered email. We\'ll send an OTP to your verified phone number to confirm your identity.',
+                    'Enter your registered email. We\'ll send a password reset link to your email.',
                     style: TextStyle(
                       fontSize: 13,
                       color: AppColors.textSecondary,
@@ -282,7 +130,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
             keyboardType: TextInputType.emailAddress,
             textInputAction: TextInputAction.done,
             autofocus: true,
-            onFieldSubmitted: (_) => _handleLookupPhone(),
+            onFieldSubmitted: (_) => _handleSendResetEmail(),
             decoration: const InputDecoration(
               labelText: 'Email',
               hintText: 'Enter your registered email',
@@ -300,11 +148,11 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           ),
           const SizedBox(height: AppSizes.xl),
 
-          // Continue button
+          // Send reset link button
           SizedBox(
             height: AppSizes.buttonHeight(context),
             child: ElevatedButton.icon(
-              onPressed: _isLoading ? null : _handleLookupPhone,
+              onPressed: _isLoading ? null : _handleSendResetEmail,
               icon: _isLoading
                   ? const SizedBox(
                       height: 22,
@@ -314,9 +162,9 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.phone_android, size: 22),
+                  : const Icon(Icons.send, size: 22),
               label: Text(
-                _isLoading ? 'Looking up...' : 'Send OTP to Phone',
+                _isLoading ? 'Sending...' : 'Send Reset Link',
                 style: AppTypography.button,
               ),
             ),
@@ -345,179 +193,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
     );
   }
 
-  /// Step 1: Enter OTP sent to phone
-  Widget _buildOtpStep(String? error, PhoneAuthState phoneState) {
-    // Mask phone number for display
-    final maskedPhone = _phoneNumber != null && _phoneNumber!.length >= 4
-        ? '${_phoneNumber!.substring(0, 3)}****${_phoneNumber!.substring(_phoneNumber!.length - 4)}'
-        : _phoneNumber ?? '';
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Info
-        Container(
-          padding: const EdgeInsets.all(AppSizes.cardPadding),
-          decoration: BoxDecoration(
-            color: AppColors.primary.withValues(alpha: 0.05),
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(
-              color: AppColors.primary.withValues(alpha: 0.15),
-            ),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.sms_outlined, color: Colors.green, size: 20),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'OTP sent to $maskedPhone',
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSizes.xl),
-
-        if (error != null) ...[
-          _buildErrorBox(error),
-          const SizedBox(height: AppSizes.md),
-        ],
-        if (phoneState.error != null) ...[
-          _buildErrorBox(phoneState.error!),
-          const SizedBox(height: AppSizes.md),
-        ],
-
-        // OTP field
-        TextFormField(
-          controller: _otpController,
-          keyboardType: TextInputType.number,
-          maxLength: 6,
-          autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'OTP Code',
-            hintText: 'Enter 6-digit OTP',
-            prefixIcon: Icon(Icons.pin_outlined),
-            counterText: '',
-          ),
-        ),
-        const SizedBox(height: AppSizes.xl),
-
-        // Verify button
-        SizedBox(
-          height: AppSizes.buttonHeight(context),
-          child: ElevatedButton.icon(
-            onPressed:
-                (_isLoading || phoneState.status == PhoneAuthStatus.verifying)
-                ? null
-                : _handleVerifyOtp,
-            icon: (_isLoading || phoneState.status == PhoneAuthStatus.verifying)
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.verified_outlined, size: 22),
-            label: Text(
-              (_isLoading || phoneState.status == PhoneAuthStatus.verifying)
-                  ? 'Verifying...'
-                  : 'Verify OTP',
-              style: AppTypography.button,
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSizes.md),
-
-        // Resend OTP
-        Center(
-          child: TextButton(
-            onPressed: phoneState.canResend
-                ? () => ref.read(phoneAuthProvider.notifier).resendOtp()
-                : null,
-            child: Text(
-              phoneState.canResend
-                  ? 'Resend OTP'
-                  : 'Resend in ${phoneState.resendCountdown}s',
-              style: const TextStyle(fontSize: 13),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Step 2: After phone verified — send reset email (from verified context)
-  Widget _buildNewPasswordStep(String? error) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Verified badge
-        Container(
-          padding: const EdgeInsets.all(AppSizes.cardPadding),
-          decoration: BoxDecoration(
-            color: Colors.green.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: Colors.green.withValues(alpha: 0.3)),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.verified, color: Colors.green, size: 20),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'Phone verified! Now we\'ll send a password reset link to your email.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: Colors.green,
-                    fontWeight: FontWeight.w500,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSizes.xl),
-
-        if (error != null) ...[
-          _buildErrorBox(error),
-          const SizedBox(height: AppSizes.md),
-        ],
-
-        // Send reset email button
-        SizedBox(
-          height: AppSizes.buttonHeight(context),
-          child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _handleSetNewPassword,
-            icon: _isLoading
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.send, size: 22),
-            label: Text(
-              _isLoading ? 'Sending...' : 'Send Reset Link to Email',
-              style: AppTypography.button,
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Step 3: Success
+  /// Success view after email sent
   Widget _buildSuccessView() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -547,7 +223,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
               ),
               const SizedBox(height: AppSizes.sm),
               Text(
-                'Identity verified via phone. A password reset link has been sent to\n${_userEmail ?? ''}',
+                'A password reset link has been sent to\n${_emailController.text.trim()}',
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   fontSize: 14,
@@ -609,145 +285,6 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
         ),
       ],
     );
-  }
-
-  /// Step 4: Email-only fallback (no verified phone found)
-  Widget _buildEmailFallbackStep(String? error) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        // Info card
-        Container(
-          padding: const EdgeInsets.all(AppSizes.cardPadding),
-          decoration: BoxDecoration(
-            color: Colors.orange.withValues(alpha: 0.08),
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: Colors.orange.withValues(alpha: 0.2)),
-          ),
-          child: const Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.info_outline, color: Colors.orange, size: 20),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  'No verified phone number found for this account. '
-                  'We\'ll send a password reset link directly to your email instead.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textSecondary,
-                    height: 1.4,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSizes.xl),
-
-        if (error != null) ...[
-          _buildErrorBox(error),
-          const SizedBox(height: AppSizes.md),
-        ],
-
-        // Email display
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppSizes.radiusMd),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.email_outlined,
-                color: AppColors.textSecondary,
-                size: 20,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  _userEmail ?? '',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: AppSizes.xl),
-
-        // Send reset email button
-        SizedBox(
-          height: AppSizes.buttonHeight(context),
-          child: ElevatedButton.icon(
-            onPressed: _isLoading ? null : _handleEmailFallbackReset,
-            icon: _isLoading
-                ? const SizedBox(
-                    height: 22,
-                    width: 22,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.5,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.send, size: 22),
-            label: Text(
-              _isLoading ? 'Sending...' : 'Send Reset Link to Email',
-              style: AppTypography.button,
-            ),
-          ),
-        ),
-        const SizedBox(height: AppSizes.md),
-
-        // Back button
-        Center(
-          child: TextButton(
-            onPressed: () {
-              setState(() => _step = 0);
-              ref.read(authNotifierProvider.notifier).clearError();
-            },
-            child: const Text(
-              'Use a different email',
-              style: TextStyle(fontSize: 13),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  /// Handle email-only password reset (no phone verification)
-  Future<void> _handleEmailFallbackReset() async {
-    if (_userEmail == null) return;
-
-    setState(() => _isLoading = true);
-
-    try {
-      final success = await ref
-          .read(authNotifierProvider.notifier)
-          .sendPasswordResetEmail(_userEmail!);
-
-      if (success && mounted) {
-        setState(() {
-          _step = 3;
-          _isLoading = false;
-        });
-      } else {
-        if (mounted) setState(() => _isLoading = false);
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _isLoading = false);
-        ref
-            .read(authNotifierProvider.notifier)
-            .setError('Failed to send reset email. Please try again.');
-      }
-    }
   }
 
   Widget _buildErrorBox(String error) {

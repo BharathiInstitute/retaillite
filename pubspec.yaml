@@ -1,7 +1,7 @@
 name: retaillite
 description: "LITE - Retail Management System"
 publish_to: 'none'
-version: 1.0.4+11
+version: 2.1.0+13
 
 environment:
   sdk: ^3.10.4
@@ -26,6 +26,8 @@ dependencies:
   firebase_performance: ^0.11.1+4
   firebase_app_check: ^0.4.1+4
   firebase_remote_config: ^6.1.4
+  firebase_messaging: ^16.1.1
+  flutter_local_notifications: ^19.0.0
   
   # Google Sign-In
   google_sign_in: ^6.2.2
@@ -45,6 +47,7 @@ dependencies:
   flutter_svg: ^2.0.9
   cached_network_image: ^3.3.0
   shimmer: ^3.0.0
+  qr_flutter: ^4.1.0
   
   # Utilities
   intl: any
@@ -144,7 +147,7 @@ msix_config:
   publisher_display_name: Tulasi ERP
   publisher: CN=E031B94D-44BC-474E-A0E4-80CF69D69C2D
   identity_name: 39648TulasiERP.TulasiStores
-  msix_version: 1.0.4.0
+  msix_version: 2.1.0.0
   logo_path: assets\images\app_icon.png
   capabilities: internetClient,internetClientServer
   languages: en-us,hi-in,te-in

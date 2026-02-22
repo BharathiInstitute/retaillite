@@ -88,6 +88,19 @@ class WindowsUpdateService {
   /// Max silent attempts before escalating to dialog (Layer 4)
   static const int _maxSilentAttempts = 3;
 
+  /// Detect if running as MSIX (Microsoft Store install).
+  /// MSIX apps run from the WindowsApps directory.
+  /// When true, skip all Inno Setup update logic — Store handles updates.
+  static bool get isMsixInstall {
+    if (kIsWeb) return false;
+    try {
+      final exePath = Platform.resolvedExecutable;
+      return exePath.contains('WindowsApps');
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ─── Directory & marker helpers ──────────────────────────────
 
   /// Persistent update directory: %LOCALAPPDATA%/LiteRetail/updates/
@@ -167,6 +180,7 @@ class WindowsUpdateService {
   /// Get current update layer — UI uses this to decide what to show
   static Future<UpdateLayer> getUpdateLayer() async {
     if (kIsWeb || !Platform.isWindows) return UpdateLayer.upToDate;
+    if (isMsixInstall) return UpdateLayer.upToDate; // Store handles updates
 
     final data = await _readMarker();
     if (data == null) return UpdateLayer.upToDate;
@@ -215,6 +229,7 @@ class WindowsUpdateService {
   static Future<void> runBackgroundUpdateCheck() async {
     if (kIsWeb) return;
     if (!Platform.isWindows) return;
+    if (isMsixInstall) return; // Store handles updates
 
     try {
       // ── Layer 2: Check if a previous download is pending ──
@@ -255,7 +270,7 @@ class WindowsUpdateService {
 
   /// Check if an update is available
   static Future<UpdateCheckResult> checkForUpdate() async {
-    if (!Platform.isWindows) {
+    if (!Platform.isWindows || isMsixInstall) {
       return const UpdateCheckResult(status: UpdateStatus.upToDate);
     }
 
@@ -309,7 +324,7 @@ class WindowsUpdateService {
     void Function(double progress)? onProgress,
   }) async {
     try {
-      await _downloadAndStage(info, onProgress: onProgress, silentAttempts: 0);
+      await _downloadAndStage(info, onProgress: onProgress);
       return true;
     } catch (e) {
       debugPrint('❌ Download and install failed: $e');

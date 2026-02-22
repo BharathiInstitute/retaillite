@@ -4,10 +4,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:retaillite/shared/widgets/logout_dialog.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
+import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
 
 class SuperAdminDashboardScreen extends ConsumerWidget {
   const SuperAdminDashboardScreen({super.key});
@@ -69,287 +69,62 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           ),
         ],
       ),
-      drawer: isWide ? null : _buildDrawer(context),
-      body: Row(
-        children: [
-          // Sidebar for desktop
-          if (isWide) _buildSidebar(context, ref),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(adminStatsProvider);
+          ref.invalidate(recentUsersProvider);
+        },
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Stats Cards
+              statsAsync.when(
+                data: (stats) => _buildStatsGrid(stats, isWide),
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('Error: $e'),
+              ),
 
-          // Main content
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: () async {
-                ref.invalidate(adminStatsProvider);
-                ref.invalidate(recentUsersProvider);
-              },
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
+              const SizedBox(height: 24),
+
+              // Two column layout for desktop
+              if (isWide)
+                Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Stats Cards
-                    statsAsync.when(
-                      data: (stats) => _buildStatsGrid(stats, isWide),
-                      loading: () =>
-                          const Center(child: CircularProgressIndicator()),
-                      error: (e, _) => Text('Error: $e'),
+                    Expanded(
+                      flex: 2,
+                      child: _buildRecentUsersCard(recentUsersAsync, context),
                     ),
-
-                    const SizedBox(height: 24),
-
-                    // Two column layout for desktop
-                    if (isWide)
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: _buildRecentUsersCard(
-                              recentUsersAsync,
-                              context,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: statsAsync.when(
-                              data: (stats) =>
-                                  _buildSubscriptionBreakdown(stats),
-                              loading: () => const Card(
-                                child: Center(
-                                  child: CircularProgressIndicator(),
-                                ),
-                              ),
-                              error: (e, _) => Card(child: Text('Error: $e')),
-                            ),
-                          ),
-                        ],
-                      )
-                    else ...[
-                      _buildRecentUsersCard(recentUsersAsync, context),
-                      const SizedBox(height: 16),
-                      statsAsync.when(
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: statsAsync.when(
                         data: (stats) => _buildSubscriptionBreakdown(stats),
                         loading: () => const Card(
                           child: Center(child: CircularProgressIndicator()),
                         ),
                         error: (e, _) => Card(child: Text('Error: $e')),
                       ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSidebar(BuildContext context, WidgetRef ref) {
-    return Container(
-      width: 220,
-      color: Colors.grey.shade100,
-      child: Column(
-        children: [
-          const SizedBox(height: 16),
-          _buildNavItem(
-            context,
-            Icons.dashboard,
-            'Overview',
-            '/super-admin',
-            true,
-          ),
-          _buildNavItem(
-            context,
-            Icons.people,
-            'Users',
-            '/super-admin/users',
-            false,
-          ),
-          _buildNavItem(
-            context,
-            Icons.credit_card,
-            'Subscriptions',
-            '/super-admin/subscriptions',
-            false,
-          ),
-          _buildNavItem(
-            context,
-            Icons.analytics,
-            'Analytics',
-            '/super-admin/analytics',
-            false,
-          ),
-          _buildNavItem(
-            context,
-            Icons.bug_report,
-            'Errors',
-            '/super-admin/errors',
-            false,
-          ),
-          _buildNavItem(
-            context,
-            Icons.speed,
-            'Performance',
-            '/super-admin/performance',
-            false,
-          ),
-          _buildNavItem(
-            context,
-            Icons.monetization_on,
-            'User Costs',
-            '/super-admin/user-costs',
-            false,
-          ),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Colors.deepPurple, Colors.purple],
-                ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Column(
-                children: [
-                  Text(
-                    'Super Admin',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
                     ),
+                  ],
+                )
+              else ...[
+                _buildRecentUsersCard(recentUsersAsync, context),
+                const SizedBox(height: 16),
+                statsAsync.when(
+                  data: (stats) => _buildSubscriptionBreakdown(stats),
+                  loading: () => const Card(
+                    child: Center(child: CircularProgressIndicator()),
                   ),
-                  Text(
-                    'Full Access',
-                    style: TextStyle(color: Colors.white70, fontSize: 12),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Logout button
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => showLogoutDialog(context, ref),
-                icon: const Icon(Icons.logout, size: 18),
-                label: const Text('Logout'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: Colors.red,
-                  side: const BorderSide(color: Colors.red),
+                  error: (e, _) => Card(child: Text('Error: $e')),
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNavItem(
-    BuildContext context,
-    IconData icon,
-    String label,
-    String route,
-    bool isActive,
-  ) {
-    return ListTile(
-      leading: Icon(icon, color: isActive ? Colors.deepPurple : Colors.grey),
-      title: Text(
-        label,
-        style: TextStyle(
-          color: isActive ? Colors.deepPurple : Colors.grey.shade700,
-          fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-      selected: isActive,
-      selectedTileColor: Colors.deepPurple.withValues(alpha: 0.1),
-      onTap: () => context.go(route),
-    );
-  }
-
-  Widget _buildDrawer(BuildContext context) {
-    return Drawer(
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          DrawerHeader(
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Colors.deepPurple, Colors.purple],
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                const Icon(
-                  Icons.admin_panel_settings,
-                  size: 48,
-                  color: Colors.white,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Super Admin',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                Text(
-                  'Full Access',
-                  style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
-                ),
+                const SizedBox(height: 16),
+                _buildNotificationsCard(context),
               ],
-            ),
+            ],
           ),
-          ListTile(
-            leading: const Icon(Icons.dashboard),
-            title: const Text('Overview'),
-            onTap: () => context.go('/super-admin'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.people),
-            title: const Text('Users'),
-            onTap: () => context.go('/super-admin/users'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.credit_card),
-            title: const Text('Subscriptions'),
-            onTap: () => context.go('/super-admin/subscriptions'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.analytics),
-            title: const Text('Analytics'),
-            onTap: () => context.go('/super-admin/analytics'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.bug_report),
-            title: const Text('Errors'),
-            onTap: () => context.go('/super-admin/errors'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.speed),
-            title: const Text('Performance'),
-            onTap: () => context.go('/super-admin/performance'),
-          ),
-          ListTile(
-            leading: const Icon(Icons.monetization_on),
-            title: const Text('User Costs'),
-            onTap: () => context.go('/super-admin/user-costs'),
-          ),
-          const Divider(),
-          ListTile(
-            leading: const Icon(Icons.home),
-            title: const Text('Back to App'),
-            onTap: () => context.go('/billing'),
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -593,6 +368,117 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
       case SubscriptionPlan.business:
         return Colors.purple;
     }
+  }
+
+  Widget _buildNotificationsCard(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.notifications, color: Colors.deepPurple),
+                const SizedBox(width: 8),
+                const Text(
+                  'Recent Notifications',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => context.go('/super-admin/notifications'),
+                  icon: const Icon(Icons.arrow_forward, size: 16),
+                  label: const Text('View All'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FutureBuilder<List<Map<String, dynamic>>>(
+              future: NotificationFirestoreService.getNotificationHistory(
+                limit: 3,
+              ),
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final history = snapshot.data ?? [];
+                if (history.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          Icon(
+                            Icons.notifications_none,
+                            size: 40,
+                            color: Colors.grey.shade400,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'No notifications sent yet',
+                            style: TextStyle(color: Colors.grey.shade600),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+                return Column(
+                  children: history.map((notif) {
+                    final title = (notif['title'] as String?) ?? 'Untitled';
+                    final type = (notif['type'] as String?) ?? 'system';
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        _typeIcon(type),
+                        color: _typeColor(type),
+                        size: 20,
+                      ),
+                      title: Text(
+                        title,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      subtitle: Text(
+                        type.toUpperCase(),
+                        style: TextStyle(fontSize: 10, color: _typeColor(type)),
+                      ),
+                    );
+                  }).toList(),
+                );
+              },
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () => context.go('/super-admin/notifications'),
+                icon: const Icon(Icons.send, size: 16),
+                label: const Text('Send New Notification'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData _typeIcon(String type) {
+    return switch (type) {
+      'announcement' => Icons.campaign,
+      'alert' => Icons.warning_amber,
+      'reminder' => Icons.alarm,
+      _ => Icons.info_outline,
+    };
+  }
+
+  Color _typeColor(String type) {
+    return switch (type) {
+      'announcement' => Colors.blue,
+      'alert' => Colors.orange,
+      'reminder' => Colors.green,
+      _ => Colors.grey,
+    };
   }
 }
 

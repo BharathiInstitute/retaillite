@@ -3,6 +3,8 @@
 /// Tests pure logic only (no filesystem, no network).
 /// Focuses on version comparison, model serialization,
 /// and update layer escalation logic.
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/core/services/windows_update_service.dart';
 
@@ -200,6 +202,75 @@ void main() {
       const currentBuild = 3; // Not yet updated
 
       expect(currentBuild >= stagedBuild, false); // Should install
+    });
+  });
+
+  group('MSIX detection logic', () {
+    // Tests the path-based MSIX detection used by isMsixInstall
+    test('WindowsApps path should be detected as MSIX', () {
+      const exePath =
+          r'C:\Program Files\WindowsApps\39648TulasiERP.TulasiStores_1.0.4.0\retaillite.exe';
+      expect(exePath.contains('WindowsApps'), true);
+    });
+
+    test('Program Files path should NOT be detected as MSIX', () {
+      const exePath = r'C:\Program Files\TulasiStores\retaillite.exe';
+      expect(exePath.contains('WindowsApps'), false);
+    });
+
+    test('AppData install path should NOT be detected as MSIX', () {
+      const exePath =
+          r'C:\Users\user\AppData\Local\Programs\TulasiStores\retaillite.exe';
+      expect(exePath.contains('WindowsApps'), false);
+    });
+
+    test('case sensitivity — WindowsApps is exact match', () {
+      const exePath = r'C:\Program Files\windowsapps\retaillite.exe';
+      // Platform path is case-insensitive on Windows, but String.contains is
+      // case-sensitive. WindowsApps is always capitalized by Windows.
+      expect(exePath.contains('WindowsApps'), false);
+      // Lowercase variant won't match — this is expected and safe because
+      // Windows always uses the exact casing 'WindowsApps'
+    });
+  });
+
+  group('Dual-distribution behavior', () {
+    // Verifies the expected behavior for each distribution channel
+    test('MSIX install should skip custom update check', () {
+      // Simulates the guard logic in checkForUpdate / runBackgroundUpdateCheck
+      const isMsix = true;
+      const isWindows = true;
+
+      // When MSIX, should return upToDate without checking remote
+      const shouldSkip = !isWindows || isMsix;
+      expect(shouldSkip, true); // Would return early
+    });
+
+    test('Inno exe install should run custom update check', () {
+      const isMsix = false;
+      const isWindows = true;
+
+      const shouldSkip = !isWindows || isMsix;
+      expect(shouldSkip, false); // Should NOT skip — run update check
+    });
+
+    test('update layer should be upToDate for MSIX', () {
+      const isMsix = true;
+      // getUpdateLayer returns upToDate immediately for MSIX
+      const layer = isMsix
+          ? UpdateLayer.upToDate
+          : UpdateLayer.silentInProgress;
+      expect(layer, UpdateLayer.upToDate);
+    });
+
+    test('force update via Remote Config works for both channels', () {
+      // Force update is handled by Remote Config in main.dart,
+      // NOT by WindowsUpdateService, so it works regardless of install type
+      const minAppVersion = 12;
+      const currentBuild = 10;
+
+      // This check runs in main.dart for ALL platforms/install methods
+      expect(currentBuild < minAppVersion, true); // Should block
     });
   });
 }

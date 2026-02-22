@@ -290,7 +290,7 @@ class DataExportService {
     if (Platform.isAndroid) {
       // Use external storage on Android
       directory = Directory('/storage/emulated/0/Download');
-      if (!await directory.exists()) {
+      if (!directory.existsSync()) {
         directory = await getApplicationDocumentsDirectory();
       }
     } else if (Platform.isIOS) {
@@ -300,10 +300,10 @@ class DataExportService {
       directory = await getApplicationDocumentsDirectory();
     }
 
-    // Create RetailLite subfolder
-    final exportDir = Directory('${directory.path}/RetailLite_Exports');
-    if (!await exportDir.exists()) {
-      await exportDir.create(recursive: true);
+    // Create Tulasi Stores subfolder
+    final exportDir = Directory('${directory.path}/TulasiStores_Exports');
+    if (!exportDir.existsSync()) {
+      exportDir.createSync(recursive: true);
     }
 
     final file = File('${exportDir.path}/$name.$ext');

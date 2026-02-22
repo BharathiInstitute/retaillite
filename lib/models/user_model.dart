@@ -14,6 +14,7 @@ class UserModel {
   final String? shopLogoPath;
   final String? profileImagePath;
   final String? photoUrl;
+  final String? upiId;
   final UserSettings settings;
   final bool isPaid;
   final bool phoneVerified;
@@ -33,6 +34,7 @@ class UserModel {
     this.shopLogoPath,
     this.profileImagePath,
     this.photoUrl,
+    this.upiId,
     required this.settings,
     this.isPaid = false,
     this.phoneVerified = false,
@@ -55,6 +57,7 @@ class UserModel {
       shopLogoPath: data['shopLogoPath'] as String?,
       profileImagePath: data['profileImagePath'] as String?,
       photoUrl: data['photoUrl'] as String?,
+      upiId: data['upiId'] as String?,
       settings: UserSettings.fromMap(
         (data['settings'] as Map<String, dynamic>?) ?? {},
       ),
@@ -78,6 +81,7 @@ class UserModel {
       'shopLogoPath': shopLogoPath,
       'profileImagePath': profileImagePath,
       'photoUrl': photoUrl,
+      'upiId': upiId,
       'settings': settings.toMap(),
       'isPaid': isPaid,
       'phoneVerified': phoneVerified,
@@ -100,6 +104,7 @@ class UserModel {
     String? shopLogoPath,
     String? profileImagePath,
     String? photoUrl,
+    String? upiId,
     UserSettings? settings,
     bool? isPaid,
     bool? phoneVerified,
@@ -117,6 +122,7 @@ class UserModel {
       shopLogoPath: shopLogoPath ?? this.shopLogoPath,
       profileImagePath: profileImagePath ?? this.profileImagePath,
       photoUrl: photoUrl ?? this.photoUrl,
+      upiId: upiId ?? this.upiId,
       settings: settings ?? this.settings,
       isPaid: isPaid ?? this.isPaid,
       phoneVerified: phoneVerified ?? this.phoneVerified,
@@ -135,6 +141,9 @@ class UserSettings {
   final bool printPreview;
   final bool soundEnabled;
   final bool notificationsEnabled;
+  final bool lowStockAlerts;
+  final bool subscriptionAlerts;
+  final bool dailySummary;
   final String? printerAddress;
   final String billSize;
   final bool gstEnabled;
@@ -148,6 +157,9 @@ class UserSettings {
     this.printPreview = true,
     this.soundEnabled = true,
     this.notificationsEnabled = true,
+    this.lowStockAlerts = true,
+    this.subscriptionAlerts = true,
+    this.dailySummary = true,
     this.printerAddress,
     this.billSize = '58mm',
     this.gstEnabled = true,
@@ -163,6 +175,9 @@ class UserSettings {
       printPreview: (map['printPreview'] as bool?) ?? true,
       soundEnabled: (map['soundEnabled'] as bool?) ?? true,
       notificationsEnabled: (map['notificationsEnabled'] as bool?) ?? true,
+      lowStockAlerts: (map['lowStockAlerts'] as bool?) ?? true,
+      subscriptionAlerts: (map['subscriptionAlerts'] as bool?) ?? true,
+      dailySummary: (map['dailySummary'] as bool?) ?? true,
       printerAddress: map['printerAddress'] as String?,
       billSize: (map['billSize'] as String?) ?? '58mm',
       gstEnabled: (map['gstEnabled'] as bool?) ?? true,
@@ -180,6 +195,9 @@ class UserSettings {
       'printPreview': printPreview,
       'soundEnabled': soundEnabled,
       'notificationsEnabled': notificationsEnabled,
+      'lowStockAlerts': lowStockAlerts,
+      'subscriptionAlerts': subscriptionAlerts,
+      'dailySummary': dailySummary,
       'printerAddress': printerAddress,
       'billSize': billSize,
       'gstEnabled': gstEnabled,
@@ -195,6 +213,9 @@ class UserSettings {
     bool? printPreview,
     bool? soundEnabled,
     bool? notificationsEnabled,
+    bool? lowStockAlerts,
+    bool? subscriptionAlerts,
+    bool? dailySummary,
     String? printerAddress,
     String? billSize,
     bool? gstEnabled,
@@ -208,6 +229,9 @@ class UserSettings {
       printPreview: printPreview ?? this.printPreview,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       notificationsEnabled: notificationsEnabled ?? this.notificationsEnabled,
+      lowStockAlerts: lowStockAlerts ?? this.lowStockAlerts,
+      subscriptionAlerts: subscriptionAlerts ?? this.subscriptionAlerts,
+      dailySummary: dailySummary ?? this.dailySummary,
       printerAddress: printerAddress ?? this.printerAddress,
       billSize: billSize ?? this.billSize,
       gstEnabled: gstEnabled ?? this.gstEnabled,
