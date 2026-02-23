@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pay via UPI</title>
+    <!-- INSTANT MOBILE REDIRECT: runs before CSS/page loads, so user never sees the web page -->
+    <script>
+        (function () {
+            var isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry/i.test(navigator.userAgent);
+            if (!isMobile) return; // Desktop: skip, let page render with QR
+            var p = new URLSearchParams(window.location.search);
+            var pa = p.get('pa');
+            if (!pa) return;
+            var am = p.get('am') || '0';
+            var pn = p.get('pn') || 'Store';
+            var tn = p.get('tn') || 'Payment';
+            var upi = 'upi://pay?pa=' + encodeURIComponent(pa)
+                + '&am=' + encodeURIComponent(am)
+                + '&cu=INR'
+                + '&pn=' + encodeURIComponent(pn)
+                + '&tn=' + encodeURIComponent(tn);
+            window.location.href = upi; // Opens UPI app chooser INSTANTLY
+        })();
+    </script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0d9488 0%, #065f46 100%);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+
+        .card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 32px 28px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            text-align: center;
+        }
+
+        .icon {
+            width: 64px;
+            height: 64px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 16px;
+            font-size: 28px;
+        }
+
+        h1 {
+            font-size: 22px;
+            color: #1f2937;
+            margin-bottom: 4px;
+        }
+
+        .shop-name {
+            font-size: 14px;
+            color: #6b7280;
+            margin-bottom: 20px;
+        }
+
+        .amount-box {
+            background: #f0fdf4;
+            border: 2px solid #10b981;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 20px;
+        }
+
+        .amount-label {
+            font-size: 12px;
+            color: #6b7280;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .amount {
+            font-size: 36px;
+            font-weight: 800;
+            color: #059669;
+            margin-top: 4px;
+        }
+
+        /* UPI ID row */
+        .upi-row {
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 12px 16px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .upi-row .lbl {
+            font-size: 11px;
+            color: #9ca3af;
+            text-align: left;
+        }
+
+        .upi-row .val {
+            font-size: 15px;
+            font-weight: 600;
+            color: #1f2937;
+            text-align: left;
+        }
+
+        .copy-btn {
+            background: #e5e7eb;
+            border: none;
+            border-radius: 6px;
+            padding: 6px 14px;
+            font-size: 12px;
+            cursor: pointer;
+            color: #374151;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .copy-btn:active {
+            background: #d1d5db;
+        }
+
+        .copied {
+            background: #d1fae5 !important;
+            color: #059669 !important;
+        }
+
+        /* QR code section (desktop) */
+        .qr-section {
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .qr-section h2 {
+            font-size: 15px;
+            color: #374151;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .qr-wrapper {
+            display: inline-block;
+            padding: 16px;
+            background: #fff;
+            border: 3px solid #10b981;
+            border-radius: 16px;
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.15);
+        }
+
+        .qr-hint {
+            font-size: 12px;
+            color: #6b7280;
+            margin-top: 10px;
+        }
+
+        /* Pay button (mobile) */
+        .pay-btn {
+            display: none;
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #10b981, #059669);
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 17px;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            margin-bottom: 12px;
+            transition: transform 0.1s;
+            text-align: center;
+        }
+
+        .pay-btn:active {
+            transform: scale(0.97);
+        }
+
+        /* App buttons (mobile) */
+        .apps-section {
+            display: none;
+        }
+
+        .or-divider {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 14px 0;
+            color: #9ca3af;
+            font-size: 12px;
+        }
+
+        .or-divider::before,
+        .or-divider::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: #e5e7eb;
+        }
+
+        .apps {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 16px;
+        }
+
+        .app-btn {
+            flex: 1;
+            padding: 10px 6px;
+            border: 2px solid #e5e7eb;
+            border-radius: 10px;
+            background: #fff;
+            cursor: pointer;
+            text-decoration: none;
+            color: #374151;
+            font-size: 12px;
+            font-weight: 600;
+            transition: border-color 0.2s;
+        }
+
+        .app-btn:hover {
+            border-color: #10b981;
+        }
+
+        .app-btn .emoji {
+            font-size: 22px;
+            display: block;
+            margin-bottom: 2px;
+        }
+
+        /* Manual steps */
+        .manual {
+            text-align: left;
+            background: #f9fafb;
+            border-radius: 10px;
+            padding: 14px;
+            font-size: 12px;
+            color: #6b7280;
+            line-height: 1.8;
+        }
+
+        .manual strong {
+            color: #374151;
+        }
+
+        /* Status and footer */
+        #status {
+            margin-top: 12px;
+            padding: 10px;
+            background: #d1fae5;
+            border-radius: 8px;
+            font-size: 13px;
+            color: #059669;
+            font-weight: 600;
+            display: none;
+        }
+
+        .footer {
+            margin-top: 16px;
+            font-size: 11px;
+            color: #9ca3af;
+        }
+
+        .powered {
+            font-size: 10px;
+            color: #d1d5db;
+            margin-top: 6px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="icon">💳</div>
+        <h1>Payment Request</h1>
+        <p class="shop-name" id="shopName">Loading...</p>
+
+        <div class="amount-box">
+            <div class="amount-label">Amount Due</div>
+            <div class="amount" id="amount">₹0</div>
+        </div>
+
+        <div class="upi-row">
+            <div>
+                <div class="lbl">UPI ID</div>
+                <div class="val" id="upiId">—</div>
+            </div>
+            <button class="copy-btn" id="copyBtn" onclick="copyUPI()">📋 Copy</button>
+        </div>
+
+        <!-- DESKTOP: QR Code -->
+        <div class="qr-section" id="qrSection">
+            <h2>📷 Scan to Pay</h2>
+            <div class="qr-wrapper">
+                <div id="qrCode"></div>
+            </div>
+            <p class="qr-hint">Open GPay / PhonePe / Paytm → Scan QR Code</p>
+        </div>
+
+        <!-- MOBILE: Pay button -->
+        <a id="payBtn" class="pay-btn" href="#">
+            ⚡ Pay ₹<span id="payAmount">0</span> Now
+        </a>
+
+        <!-- MOBILE: App-specific buttons -->
+        <div class="apps-section" id="appsSection">
+            <div class="or-divider">or open specific app</div>
+            <div class="apps">
+                <a id="gpayBtn" class="app-btn" href="#">
+                    <span class="emoji">💚</span> GPay
+                </a>
+                <a id="phonepeBtn" class="app-btn" href="#">
+                    <span class="emoji">💜</span> PhonePe
+                </a>
+                <a id="paytmBtn" class="app-btn" href="#">
+                    <span class="emoji">💙</span> Paytm
+                </a>
+            </div>
+        </div>
+
+        <!-- MANUAL STEPS (always visible) -->
+        <div class="manual">
+            <strong>Manual payment:</strong><br>
+            1. Open any UPI app<br>
+            2. Tap <strong>Send Money</strong><br>
+            3. Enter UPI ID: <strong id="upiIdManual">—</strong><br>
+            4. Enter amount: <strong id="amountManual">₹0</strong><br>
+            5. Complete payment ✅
+        </div>
+
+        <p id="status">✅ UPI app opened! Complete payment there.</p>
+        <p class="footer">🔒 Secure UPI Payment</p>
+        <p class="powered">Powered by Tulasi Shop Lite</p>
+    </div>
+
+    <script>
+        // --- Read URL params ---
+        var params = new URLSearchParams(window.location.search);
+        var pa = params.get('pa') || '';
+        var am = params.get('am') || '0';
+        var pn = params.get('pn') || 'Store';
+        var tn = params.get('tn') || 'Payment';
+        var amInt = parseFloat(am).toFixed(0);
+
+        // --- Populate page ---
+        document.getElementById('shopName').textContent = pn;
+        document.getElementById('amount').textContent = '\u20B9' + amInt;
+        document.getElementById('payAmount').textContent = amInt;
+        document.getElementById('upiId').textContent = pa;
+        document.getElementById('upiIdManual').textContent = pa;
+        document.getElementById('amountManual').textContent = '\u20B9' + amInt;
+        document.title = 'Pay \u20B9' + amInt + ' to ' + pn;
+
+        // --- Build UPI deep link ---
+        var upiLink = 'upi://pay?pa=' + encodeURIComponent(pa)
+            + '&am=' + encodeURIComponent(am)
+            + '&cu=INR'
+            + '&pn=' + encodeURIComponent(pn)
+            + '&tn=' + encodeURIComponent(tn);
+
+        // --- Detect mobile ---
+        var isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry/i.test(navigator.userAgent);
+
+        if (isMobile) {
+            // === MOBILE VIEW ===
+            // Show pay button + app buttons
+            document.getElementById('payBtn').style.display = 'block';
+            document.getElementById('payBtn').href = upiLink;
+            document.getElementById('appsSection').style.display = 'block';
+
+            // App-specific deep links
+            document.getElementById('gpayBtn').href = 'tez://upi/pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+            document.getElementById('phonepeBtn').href = 'phonepe://pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+            document.getElementById('paytmBtn').href = 'paytmmp://pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+
+            // Show status on button click (fallback if user manually taps Pay)
+            document.getElementById('payBtn').addEventListener('click', function () {
+                setTimeout(function () {
+                    document.getElementById('status').style.display = 'block';
+                }, 1500);
+            });
+        } else {
+            // === DESKTOP VIEW ===
+            // Show QR code
+            document.getElementById('qrSection').style.display = 'block';
+
+            // Generate QR with upi://pay data
+            if (pa) {
+                new QRCode(document.getElementById('qrCode'), {
+                    text: upiLink,
+                    width: 220,
+                    height: 220,
+                    colorDark: '#1f2937',
+                    colorLight: '#ffffff',
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+        }
+
+        // --- Copy UPI ID ---
+        function copyUPI() {
+            var btn = document.getElementById('copyBtn');
+            if (navigator.clipboard) {
+                navigator.clipboard.writeText(pa).then(function () {
+                    btn.textContent = '✅ Copied!';
+                    btn.classList.add('copied');
+                    setTimeout(function () {
+                        btn.textContent = '📋 Copy';
+                        btn.classList.remove('copied');
+                    }, 2000);
+                });
+            } else {
+                // Fallback for older browsers
+                var ta = document.createElement('textarea');
+                ta.value = pa;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+                btn.textContent = '✅ Copied!';
+                btn.classList.add('copied');
+                setTimeout(function () {
+                    btn.textContent = '📋 Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+
+</html>
