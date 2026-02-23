@@ -96,13 +96,16 @@ class PaymentLinkService {
     String? payeeName,
     String? transactionNote,
   }) {
-    final params = <String, String>{'pa': upiId};
-    if (amount > 0) params['am'] = amount.toStringAsFixed(2);
-    if (payeeName != null && payeeName.isNotEmpty) params['pn'] = payeeName;
-    if (transactionNote != null && transactionNote.isNotEmpty) {
-      params['tn'] = transactionNote;
+    // Build URL manually to keep @ unencoded (Uri.https encodes it as %40)
+    final parts = <String>['pa=$upiId'];
+    if (amount > 0) parts.add('am=${amount.toStringAsFixed(0)}');
+    if (payeeName != null && payeeName.isNotEmpty) {
+      parts.add('pn=${Uri.encodeComponent(payeeName)}');
     }
-    return Uri.https('stores.tulasierp.com', '/pay', params).toString();
+    if (transactionNote != null && transactionNote.isNotEmpty) {
+      parts.add('tn=${Uri.encodeComponent(transactionNote)}');
+    }
+    return 'https://stores.tulasierp.com/pay?${parts.join('&')}';
   }
 
   /// Generate the UPI QR code data string (same as deep link, for QR rendering)
