@@ -86,6 +86,25 @@ class PaymentLinkService {
     return 'upi://pay?$queryString';
   }
 
+  /// Generate an HTTPS payment page URL (clickable in WhatsApp)
+  ///
+  /// Returns a link to the hosted payment page that auto-opens UPI apps
+  /// on the customer's phone. This is an HTTPS URL so WhatsApp makes it clickable.
+  static String generatePaymentPageUrl({
+    required String upiId,
+    required double amount,
+    String? payeeName,
+    String? transactionNote,
+  }) {
+    final params = <String, String>{'pa': upiId};
+    if (amount > 0) params['am'] = amount.toStringAsFixed(2);
+    if (payeeName != null && payeeName.isNotEmpty) params['pn'] = payeeName;
+    if (transactionNote != null && transactionNote.isNotEmpty) {
+      params['tn'] = transactionNote;
+    }
+    return Uri.https('stores.tulasierp.com', '/pay', params).toString();
+  }
+
   /// Generate the UPI QR code data string (same as deep link, for QR rendering)
   static String generateUpiQrData({required String upiId, String? payeeName}) {
     return generateUpiDeepLink(
@@ -318,7 +337,12 @@ Supports: UPI, Cards, Net Banking
 Thank you! 🙏''';
     }
 
-    // UPI payment message (works for both upi:// links and fallback)
+    // UPI payment message with clickable payment page link
+    final payUrl = generatePaymentPageUrl(
+      upiId: _upiId,
+      amount: amount,
+      payeeName: shopName,
+    );
     return '''${greeting}Please pay $amountStr for your purchase at $shop.
 
 💳 *UPI Payment Details:*
@@ -327,7 +351,8 @@ Thank you! 🙏''';
 💰 Amount: *$amountStr*
 ━━━━━━━━━━━━━━━━━
 
-👉 Open GPay/PhonePe/Paytm → Send Money → Enter UPI ID above
+👉 *Click to pay:*
+$payUrl
 
 Thank you! 🙏''';
   }

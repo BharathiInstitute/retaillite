@@ -1098,6 +1098,12 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
 
     String messageText;
     if (customer.balance > 0 && hasUpi) {
+      final payUrl = PaymentLinkService.generatePaymentPageUrl(
+        upiId: upiId,
+        amount: customer.balance,
+        payeeName: shopName,
+        transactionNote: 'Payment to $shopName',
+      );
       messageText =
           'नमस्ते ${customer.name},\n\n'
           'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
@@ -1106,7 +1112,8 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
           '📱 UPI ID: *$upiId*\n'
           '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
           '━━━━━━━━━━━━━━\n\n'
-          '👉 GPay / PhonePe / Paytm खोलें → Send Money → UPI ID डालें\n\n'
+          '👉 *भुगतान करने के लिए यहाँ क्लिक करें:*\n'
+          '$payUrl\n\n'
           'धन्यवाद 🙏\n'
           '— $shopName';
     } else if (customer.balance > 0) {

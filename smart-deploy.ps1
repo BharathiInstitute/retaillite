@@ -668,7 +668,7 @@ WScript.Quit 0
                 # Update version.json with EXE download URL
                 $winVersionPath = Join-Path $root "installer\version.json"
                 $exeStorageName = "TulasiStores_Setup_v$newVersion.exe"
-                $exeDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2F$exeStorageName`?alt=media"
+                $exeDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fwindows%2F$exeStorageName`?alt=media"
 
                 $versionJson = @{
                     version        = $newVersion
@@ -703,7 +703,7 @@ WScript.Quit 0
                 # Upload EXE to Firebase Storage (MSIX goes to Microsoft Store separately)
                 $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
                 if ($gsutilExists) {
-                    $storagePath = "gs://login-radha.firebasestorage.app/updates/windows/"
+                    $storagePath = "gs://login-radha.firebasestorage.app/downloads/windows/"
 
                     # Clean old EXE files from Storage
                     Write-Step "Cleaning old EXE files from Storage..."
@@ -785,7 +785,7 @@ WScript.Quit 0
             # Update android-version.json
             $androidVersionPath = Join-Path $root "installer\android-version.json"
             $apkStorageName = "TulasiStores_v$newVersion.apk"
-            $apkDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fandroid%2F$apkStorageName`?alt=media"
+            $apkDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2F$apkStorageName`?alt=media"
 
             $versionJson = @{
                 version     = $newVersion
@@ -820,7 +820,7 @@ WScript.Quit 0
             # Upload APK to Firebase Storage
             $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
             if ($gsutilExists) {
-                $storagePath = "gs://login-radha.firebasestorage.app/updates/android/"
+                $storagePath = "gs://login-radha.firebasestorage.app/downloads/android/"
 
                 # Clean old APK files from Storage
                 Write-Step "Cleaning old APK files from Storage..."

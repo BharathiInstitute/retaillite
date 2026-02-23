@@ -1,8 +1,8 @@
 {
-    "changelog":  "Bug fixes and improvements",
-    "version":  "2.1.0",
-    "exeDownloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2FTulasiStores_Setup_v2.1.0.exe?alt=media",
-    "storeUrl":  "https://apps.microsoft.com/detail/tulasi-stores",
-    "forceUpdate":  true,
-    "buildNumber":  13
+    "changelog": "Bug fixes and improvements",
+    "version": "2.1.0",
+    "exeDownloadUrl": "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fwindows%2FTulasiStores_Setup_v2.1.0.exe?alt=media",
+    "storeUrl": "https://apps.microsoft.com/detail/tulasi-stores",
+    "forceUpdate": true,
+    "buildNumber": 13
 }

@@ -11,9 +11,9 @@ service firebase.storage {
       allow delete: if request.auth != null && request.auth.uid == userId;
     }
     
-    // Public read for update files (version.json, installers)
+    // Public read for download files (version.json, installers)
     // Windows/Android updaters check these without auth
-    match /updates/{allPaths=**} {
+    match /downloads/{allPaths=**} {
       allow read: if true;
       // Only admin uploads (done via gsutil/Firebase Console)
       allow write: if false;

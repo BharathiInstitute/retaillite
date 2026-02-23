@@ -571,6 +571,12 @@ class CustomerDetailScreen extends ConsumerWidget {
 
     String messageText;
     if (hasUpi) {
+      final payUrl = PaymentLinkService.generatePaymentPageUrl(
+        upiId: upiId,
+        amount: customer.balance,
+        payeeName: shopName,
+        transactionNote: 'Payment to $shopName',
+      );
       messageText =
           'नमस्ते ${customer.name},\n\n'
           'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
@@ -579,7 +585,8 @@ class CustomerDetailScreen extends ConsumerWidget {
           '📱 UPI ID: *$upiId*\n'
           '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
           '━━━━━━━━━━━━━━\n\n'
-          '👉 GPay / PhonePe / Paytm खोलें → Send Money → UPI ID डालें\n\n'
+          '👉 *भुगतान करने के लिए यहाँ क्लिक करें:*\n'
+          '$payUrl\n\n'
           'धन्यवाद 🙏\n'
           '— $shopName';
     } else {

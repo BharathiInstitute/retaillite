@@ -83,7 +83,7 @@ enum UpdateLayer {
 class WindowsUpdateService {
   // Firebase Storage URL for version manifest
   static const String _versionUrl =
-      'https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/updates%2Fwindows%2Fversion.json?alt=media';
+      'https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fwindows%2Fversion.json?alt=media';
 
   /// Max silent attempts before escalating to dialog (Layer 4)
   static const int _maxSilentAttempts = 3;
