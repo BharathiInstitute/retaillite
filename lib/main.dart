@@ -32,6 +32,9 @@ const String appVersion = '1.0.0';
 const int appBuildNumber = 1;
 
 void main() {
+  // CRITICAL: Initialize binding FIRST, before anything else
+  WidgetsFlutterBinding.ensureInitialized();
+
   // Mark app start time for health metrics
   AppHealthService.markAppStart();
 
@@ -48,7 +51,7 @@ Future<void> _initializeApp() async {
   final isWindows = !kIsWeb && Platform.isWindows;
 
   try {
-    WidgetsFlutterBinding.ensureInitialized();
+    // Binding already initialized in main()
 
     // Initialize Firebase first (required by other services)
     await Firebase.initializeApp(
@@ -170,13 +173,14 @@ Future<void> _initializeApp() async {
     await SyncSettingsService.initializeFirestorePersistence();
 
     // Run independent initializations in PARALLEL for faster startup
+    // Each wrapped in try-catch so one failure doesn't crash the app
     await Future.wait([
-      OfflineStorageService.initialize(),
-      PrinterStorage.initialize(),
-      SyncSettingsService.initialize(),
-      ConnectivityService.initialize(),
-      AppHealthService.initialize(),
-      WindowsNotificationService.init(),
+      _safeInit('OfflineStorage', OfflineStorageService.initialize),
+      _safeInit('PrinterStorage', PrinterStorage.initialize),
+      _safeInit('SyncSettings', SyncSettingsService.initialize),
+      _safeInit('Connectivity', ConnectivityService.initialize),
+      _safeInit('AppHealth', AppHealthService.initialize),
+      _safeInit('WindowsNotification', WindowsNotificationService.init),
     ]);
 
     // Launch the main app
@@ -213,6 +217,15 @@ Future<void> _initializeApp() async {
         },
       ),
     );
+  }
+}
+
+/// Safely initialize a service — logs error but doesn't crash the app
+Future<void> _safeInit(String name, Future<void> Function() init) async {
+  try {
+    await init();
+  } catch (e) {
+    debugPrint('⚠️ $name init failed (non-fatal): $e');
   }
 }
 
