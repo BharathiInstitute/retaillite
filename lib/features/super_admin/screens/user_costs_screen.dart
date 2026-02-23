@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/user_usage_service.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 /// Provider for usage summary
 final usageSummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
@@ -22,6 +23,14 @@ class UserCostsScreen extends ConsumerWidget {
         title: const Text('User Costs'),
         backgroundColor: Colors.amber.shade700,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -39,10 +48,68 @@ class UserCostsScreen extends ConsumerWidget {
   }
 
   Widget _buildContent(Map<String, dynamic> summary) {
+    final totalUsers = summary['totalUsers'] as int? ?? 0;
+
+    // If no usage data, show empty state
+    if (totalUsers == 0) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(48),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.analytics_outlined,
+                size: 64,
+                color: Colors.grey.shade400,
+              ),
+              const SizedBox(height: 24),
+              const Text(
+                'No usage data available',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Per-user cost tracking requires usage instrumentation.\n'
+                'View actual usage in the Firebase Console.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+              ),
+              const SizedBox(height: 24),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.info_outline,
+                      color: Colors.blue.shade700,
+                      size: 18,
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Firestore usage is visible in Firebase Console → Usage & Billing',
+                      style: TextStyle(
+                        color: Colors.blue.shade800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     final totalCost = summary['totalCost'] as double? ?? 0.0;
     final adminCost = summary['adminCost'] as double? ?? 0.0;
     final userCost = summary['userCost'] as double? ?? 0.0;
-    final totalUsers = summary['totalUsers'] as int? ?? 0;
     final adminUsers = summary['adminUsers'] as int? ?? 0;
     final regularUsers = summary['regularUsers'] as int? ?? 0;
     final totalReads = summary['totalReads'] as int? ?? 0;

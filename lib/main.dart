@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/app.dart';
 import 'package:retaillite/core/config/app_check_config.dart';
+import 'package:retaillite/core/services/analytics_service.dart';
 import 'package:retaillite/core/services/android_update_service.dart';
 import 'package:retaillite/core/services/app_health_service.dart';
 import 'package:retaillite/core/services/connectivity_service.dart';
@@ -86,15 +87,18 @@ Future<void> _initializeApp() async {
       debugPrint('ℹ️ Skipping App Check on web (no reCAPTCHA key configured)');
     }
 
-    // Initialize Crashlytics (not supported on web or Windows)
+    // Initialize Crashlytics collection (not supported on web or Windows)
+    // Note: FlutterError.onError is set by ErrorHandler.initialize() below
+    // which handles both Crashlytics + Firestore logging with full context
     if (!kIsWeb && !isWindows) {
-      FlutterError.onError =
-          FirebaseCrashlytics.instance.recordFlutterFatalError;
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
     }
 
     // Initialize global error handling
     ErrorHandler.initialize();
+
+    // Initialize analytics + performance monitoring
+    await AnalyticsService.initialize();
 
     // Initialize Remote Config with defaults
     String merchantUpiId = '';

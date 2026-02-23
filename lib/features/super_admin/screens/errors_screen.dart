@@ -1,350 +1,815 @@
-/// Errors Screen for Super Admin - View crash reports and errors
+/// Errors & Health Screen — Enhanced with full context, copy, dedup, filters, trend
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:retaillite/core/services/app_health_service.dart';
 import 'package:retaillite/core/services/error_logging_service.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
-/// Provider for error logs
-final errorLogsProvider = FutureProvider<List<ErrorLogEntry>>((ref) async {
-  return ErrorLoggingService.getRecentErrors();
+// ── Providers ──
+
+final _groupedErrorsProvider = FutureProvider.autoDispose<List<GroupedError>>((
+  ref,
+) {
+  return ErrorLoggingService.getGroupedErrors(hideResolved: false);
 });
 
-/// Provider for health summary
-final healthSummaryProvider = FutureProvider<Map<String, dynamic>>((ref) async {
-  return AppHealthService.getHealthSummary();
+final _healthSummaryProvider = FutureProvider.autoDispose<Map<String, dynamic>>(
+  (ref) {
+    return AppHealthService.getHealthSummary();
+  },
+);
+
+final _dailyTrendProvider = FutureProvider.autoDispose<Map<DateTime, int>>((
+  ref,
+) {
+  return ErrorLoggingService.getDailyErrorCounts(days: 30);
 });
 
-/// Provider for error count by platform
-final errorsByPlatformProvider = FutureProvider<Map<String, int>>((ref) async {
-  return ErrorLoggingService.getErrorCountByPlatform();
-});
+// ── Screen ──
 
-class ErrorsScreen extends ConsumerWidget {
+class ErrorsScreen extends ConsumerStatefulWidget {
   const ErrorsScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final errorsAsync = ref.watch(errorLogsProvider);
-    final healthAsync = ref.watch(healthSummaryProvider);
+  ConsumerState<ErrorsScreen> createState() => _ErrorsScreenState();
+}
+
+class _ErrorsScreenState extends ConsumerState<ErrorsScreen> {
+  // Filters
+  String? _platformFilter;
+  String? _severityFilter;
+  bool _hideResolved = true;
+
+  @override
+  Widget build(BuildContext context) {
+    final groupedErrors = ref.watch(_groupedErrorsProvider);
+    final health = ref.watch(_healthSummaryProvider);
+    final trend = ref.watch(_dailyTrendProvider);
+    final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('Errors & Health'),
         backgroundColor: Colors.red.shade700,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
-              ref.invalidate(errorLogsProvider);
-              ref.invalidate(healthSummaryProvider);
-              ref.invalidate(errorsByPlatformProvider);
-            },
-          ),
-          IconButton(
-            icon: const Icon(Icons.open_in_new),
-            tooltip: 'Open Firebase Crashlytics',
-            onPressed: () {
-              // Could open Firebase Console URL
+              ref.invalidate(_groupedErrorsProvider);
+              ref.invalidate(_healthSummaryProvider);
+              ref.invalidate(_dailyTrendProvider);
             },
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Health Summary
-            healthAsync.when(
-              data: (health) => _buildHealthSummary(health),
-              loading: () => const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(32),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(_groupedErrorsProvider);
+          ref.invalidate(_healthSummaryProvider);
+          ref.invalidate(_dailyTrendProvider);
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Health Summary Card
+              health.when(
+                data: (data) => _buildHealthCard(data, cs),
+                loading: () => const SizedBox(
+                  height: 100,
                   child: Center(child: CircularProgressIndicator()),
                 ),
+                error: (e, _) => _errorChip('Health: $e'),
               ),
-              error: (e, _) => Card(child: Text('Error: $e')),
-            ),
+              const SizedBox(height: 12),
 
-            const SizedBox(height: 24),
+              // 7-Day Trend Chart
+              trend.when(
+                data: (data) => data.isEmpty
+                    ? const SizedBox.shrink()
+                    : _buildTrendChart(data, cs),
+                loading: () => const SizedBox.shrink(),
+                error: (_, _) => const SizedBox.shrink(),
+              ),
+              const SizedBox(height: 16),
 
-            // Error Logs
-            const Text(
-              'Recent Errors',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Web errors logged to Firestore. Mobile crashes in Firebase Crashlytics.',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            const SizedBox(height: 16),
-            errorsAsync.when(
-              data: (errors) => errors.isEmpty
-                  ? _buildNoErrorsCard()
-                  : _buildErrorsList(errors),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Text('Error loading logs: $e'),
-            ),
-          ],
+              // Filter Bar
+              _buildFilterBar(cs),
+              const SizedBox(height: 12),
+
+              // Error List
+              groupedErrors.when(
+                data: (errors) => _buildErrorList(errors, cs),
+                loading: () => const SizedBox(
+                  height: 200,
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+                error: (e, _) => _errorChip('Errors: $e'),
+              ),
+            ],
+          ),
         ),
+      ),
+      floatingActionButton: FloatingActionButton.small(
+        onPressed: () => _cleanUpOldLogs(context),
+        tooltip: 'Clean up logs > 30 days',
+        child: const Icon(Icons.delete_sweep),
       ),
     );
   }
 
-  Widget _buildHealthSummary(Map<String, dynamic> health) {
-    final sessions = (health['sessionsLast24h'] as int?) ?? 0;
-    final errors = (health['errorsLast24h'] as int?) ?? 0;
-    final avgStartup = ((health['avgStartupTimeMs'] as num?) ?? 0).toDouble();
-    final errorRate = ((health['errorRate'] as num?) ?? 0).toDouble();
+  // ─── Health Card ───
 
-    return Card(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              errorRate > 5 ? Colors.red.shade600 : Colors.green.shade600,
-              errorRate > 5 ? Colors.red.shade400 : Colors.green.shade400,
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
+  Widget _buildHealthCard(Map<String, dynamic> data, ColorScheme cs) {
+    final status = data['status'] as String? ?? 'unknown';
+    final isHealthy = status == 'healthy';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: isHealthy
+              ? [Colors.green.shade600, Colors.green.shade800]
+              : [Colors.red.shade600, Colors.red.shade800],
         ),
-        child: Column(
-          children: [
-            Row(
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isHealthy ? Icons.check_circle : Icons.warning,
+            color: Colors.white,
+            size: 32,
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.health_and_safety, color: Colors.white),
-                const SizedBox(width: 8),
-                const Text(
-                  'App Health (Last 24h)',
-                  style: TextStyle(
+                Text(
+                  isHealthy ? 'System Healthy' : 'Issues Detected',
+                  style: const TextStyle(
                     color: Colors.white,
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    errorRate < 1
-                        ? 'HEALTHY'
-                        : (errorRate < 5 ? 'WARNING' : 'CRITICAL'),
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'Uptime: ${data['uptimeHours'] ?? '?'}h · '
+                  'Errors (24h): ${data['recentErrorCount'] ?? '?'}',
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    fontSize: 13,
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildHealthMetric(
-                  'Sessions',
-                  sessions.toString(),
-                  Icons.login,
-                ),
-                _buildHealthMetric('Errors', errors.toString(), Icons.error),
-                _buildHealthMetric(
-                  'Avg Startup',
-                  '${avgStartup.toStringAsFixed(0)}ms',
-                  Icons.timer,
-                ),
-                _buildHealthMetric(
-                  'Error Rate',
-                  '${errorRate.toStringAsFixed(1)}%',
-                  Icons.percent,
-                ),
-              ],
-            ),
-          ],
-        ),
+          ),
+          IconButton(
+            onPressed: () {
+              ref.invalidate(_groupedErrorsProvider);
+              ref.invalidate(_healthSummaryProvider);
+              ref.invalidate(_dailyTrendProvider);
+            },
+            icon: const Icon(Icons.refresh, color: Colors.white),
+            tooltip: 'Refresh',
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildHealthMetric(String label, String value, IconData icon) {
-    return Column(
+  // ─── 30-Day Uptime Bar Strip ───
+
+  Widget _buildTrendChart(Map<DateTime, int> data, ColorScheme cs) {
+    final entries = data.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+
+    // Calculate uptime: days with 0 errors / total days
+    final totalDays = entries.length;
+    final cleanDays = entries.where((e) => e.value == 0).length;
+    final uptimePercent = totalDays > 0 ? (cleanDays / totalDays * 100) : 100.0;
+
+    Color barColor(int errorCount) {
+      if (errorCount == 0) return Colors.green.shade400;
+      if (errorCount <= 5) return Colors.amber.shade600;
+      return Colors.red.shade500;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header row with uptime %
+          Row(
+            children: [
+              Icon(Icons.monitor_heart_outlined, size: 18, color: cs.primary),
+              const SizedBox(width: 6),
+              Text(
+                'Uptime (30 days)',
+                style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                  color: cs.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  color: uptimePercent >= 99
+                      ? Colors.green.shade50
+                      : uptimePercent >= 95
+                      ? Colors.amber.shade50
+                      : Colors.red.shade50,
+                ),
+                child: Text(
+                  '${uptimePercent.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                    color: uptimePercent >= 99
+                        ? Colors.green.shade700
+                        : uptimePercent >= 95
+                        ? Colors.amber.shade800
+                        : Colors.red.shade700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // 30-day bar strip
+          SizedBox(
+            height: 28,
+            child: Row(
+              children: entries.map((e) {
+                return Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 0.5),
+                    child: Tooltip(
+                      message:
+                          '${DateFormat.MMMd().format(e.key)}: ${e.value} error${e.value == 1 ? '' : 's'}',
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(2),
+                          color: barColor(e.value),
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+          ),
+          const SizedBox(height: 6),
+
+          // Date labels
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                '30 days ago',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+              // Legend
+              Row(
+                children: [
+                  _legendDot(Colors.green.shade400, '0', cs),
+                  const SizedBox(width: 8),
+                  _legendDot(Colors.amber.shade600, '1–5', cs),
+                  const SizedBox(width: 8),
+                  _legendDot(Colors.red.shade500, '6+', cs),
+                ],
+              ),
+              Text(
+                'Today',
+                style: TextStyle(
+                  fontSize: 9,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _legendDot(Color color, String label, ColorScheme cs) {
+    return Row(
       children: [
-        Icon(icon, color: Colors.white70, size: 24),
-        const SizedBox(height: 4),
-        Text(
-          value,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+        Container(
+          width: 8,
+          height: 8,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(2),
+            color: color,
           ),
         ),
+        const SizedBox(width: 3),
         Text(
           label,
-          style: const TextStyle(color: Colors.white70, fontSize: 12),
+          style: TextStyle(
+            fontSize: 9,
+            color: cs.onSurface.withValues(alpha: 0.5),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildNoErrorsCard() {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(48),
-        child: Center(
+  // ─── Filter Bar ───
+
+  Widget _buildFilterBar(ColorScheme cs) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        // Platform filter
+        _filterChip('All', _platformFilter == null, () {
+          setState(() => _platformFilter = null);
+        }),
+        _filterChip('Android', _platformFilter == 'android', () {
+          setState(() => _platformFilter = 'android');
+        }),
+        _filterChip('Web', _platformFilter == 'web', () {
+          setState(() => _platformFilter = 'web');
+        }),
+        _filterChip('Windows', _platformFilter == 'windows', () {
+          setState(() => _platformFilter = 'windows');
+        }),
+
+        const SizedBox(width: 8),
+
+        // Severity filter
+        _filterChip('Critical', _severityFilter == 'critical', () {
+          setState(
+            () => _severityFilter = _severityFilter == 'critical'
+                ? null
+                : 'critical',
+          );
+        }, color: Colors.red),
+        _filterChip('Error', _severityFilter == 'error', () {
+          setState(
+            () => _severityFilter = _severityFilter == 'error' ? null : 'error',
+          );
+        }, color: Colors.orange),
+        _filterChip('Warning', _severityFilter == 'warning', () {
+          setState(
+            () => _severityFilter = _severityFilter == 'warning'
+                ? null
+                : 'warning',
+          );
+        }, color: Colors.amber),
+
+        const SizedBox(width: 8),
+
+        // Resolved toggle
+        FilterChip(
+          label: Text(
+            _hideResolved ? 'Hide Resolved' : 'Show All',
+            style: const TextStyle(fontSize: 12),
+          ),
+          selected: _hideResolved,
+          onSelected: (v) => setState(() => _hideResolved = v),
+          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
+    );
+  }
+
+  Widget _filterChip(
+    String label,
+    bool selected,
+    VoidCallback onTap, {
+    Color? color,
+  }) {
+    return ActionChip(
+      label: Text(
+        label,
+        style: TextStyle(fontSize: 12, color: selected ? Colors.white : null),
+      ),
+      onPressed: onTap,
+      backgroundColor: selected ? (color ?? Colors.deepPurple) : null,
+      side: selected ? BorderSide.none : null,
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+
+  // ─── Error List ───
+
+  Widget _buildErrorList(List<GroupedError> errors, ColorScheme cs) {
+    // Apply client-side filters
+    final filtered = errors.where((g) {
+      if (_platformFilter != null &&
+          g.latestEntry.platform != _platformFilter) {
+        return false;
+      }
+      if (_severityFilter != null &&
+          g.latestEntry.severity.name != _severityFilter) {
+        return false;
+      }
+      if (_hideResolved && g.latestEntry.resolved) return false;
+      return true;
+    }).toList();
+
+    if (filtered.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(40),
           child: Column(
             children: [
-              Icon(Icons.check_circle, size: 64, color: Colors.green.shade400),
-              const SizedBox(height: 16),
-              const Text(
-                'No recent errors!',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              Icon(
+                Icons.check_circle_outline,
+                size: 48,
+                color: Colors.green.shade400,
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 12),
               Text(
-                'Your app is running smoothly',
-                style: TextStyle(color: Colors.grey.shade600),
+                'No errors found',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: cs.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _hideResolved ? 'Try showing resolved errors' : 'All clear!',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
               ),
             ],
           ),
         ),
+      );
+    }
+
+    return ListView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: filtered.length,
+      itemBuilder: (context, index) => _buildErrorCard(filtered[index], cs),
+    );
+  }
+
+  // ─── Error Card ───
+
+  Widget _buildErrorCard(GroupedError group, ColorScheme cs) {
+    final e = group.latestEntry;
+    final severityColor = e.severity == ErrorSeverity.critical
+        ? Colors.red
+        : e.severity == ErrorSeverity.error
+        ? Colors.orange
+        : Colors.amber;
+    final severityIcon = e.severity == ErrorSeverity.critical
+        ? Icons.error
+        : e.severity == ErrorSeverity.error
+        ? Icons.warning
+        : Icons.info;
+
+    final timeAgo = _formatTimeAgo(group.lastSeen);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: e.resolved
+            ? BorderSide(color: Colors.green.withValues(alpha: 0.3))
+            : BorderSide.none,
+      ),
+      child: ExpansionTile(
+        tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        leading: Icon(severityIcon, color: severityColor, size: 22),
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                e.message.split('\n').first,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  decoration: e.resolved ? TextDecoration.lineThrough : null,
+                ),
+              ),
+            ),
+            if (group.count > 1)
+              Container(
+                margin: const EdgeInsets.only(left: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: severityColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '×${group.count}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: severityColor,
+                  ),
+                ),
+              ),
+            IconButton(
+              icon: const Icon(Icons.copy, size: 16),
+              onPressed: () => _copyError(e),
+              tooltip: 'Copy error report',
+              visualDensity: VisualDensity.compact,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+            ),
+          ],
+        ),
+        subtitle: Row(
+          children: [
+            _platformIcon(e.platform),
+            const SizedBox(width: 4),
+            Text(
+              e.platform.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                color: cs.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+            if (e.route != null) ...[
+              Text(
+                ' · ',
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3)),
+              ),
+              Flexible(
+                child: Text(
+                  e.route!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    color: cs.primary.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+            ],
+            Text(
+              ' · ',
+              style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3)),
+            ),
+            Text(
+              timeAgo,
+              style: TextStyle(
+                fontSize: 10,
+                color: cs.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+            if (group.affectedUsers > 0) ...[
+              Text(
+                ' · ',
+                style: TextStyle(color: cs.onSurface.withValues(alpha: 0.3)),
+              ),
+              Icon(
+                Icons.person,
+                size: 10,
+                color: cs.onSurface.withValues(alpha: 0.4),
+              ),
+              Text(
+                ' ${group.affectedUsers}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: cs.onSurface.withValues(alpha: 0.5),
+                ),
+              ),
+            ],
+          ],
+        ),
+        children: [
+          // Error type badge
+          if (e.errorType != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Container(
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: severityColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(6),
+                  border: Border.all(
+                    color: severityColor.withValues(alpha: 0.3),
+                  ),
+                ),
+                child: Text(
+                  e.errorType!,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: severityColor,
+                  ),
+                ),
+              ),
+            ),
+
+          // Dedup info
+          if (group.count > 1)
+            _detailRow(
+              Icons.repeat,
+              'Occurrences',
+              '${group.count} times · First: ${DateFormat.MMMd().add_jm().format(group.firstSeen)}'
+                  ' · Last: ${DateFormat.MMMd().add_jm().format(group.lastSeen)}',
+              cs,
+            ),
+
+          // Context details
+          if (e.route != null) _detailRow(Icons.route, 'Route', e.route!, cs),
+          if (e.widgetContext != null)
+            _detailRow(Icons.widgets, 'Widget', e.widgetContext!, cs),
+          if (e.library != null)
+            _detailRow(Icons.code, 'Library', e.library!, cs),
+          if (e.screenWidth != null && e.screenHeight != null)
+            _detailRow(
+              Icons.aspect_ratio,
+              'Screen',
+              '${e.screenWidth!.toInt()}×${e.screenHeight!.toInt()}',
+              cs,
+            ),
+          if (e.connectivity != null)
+            _detailRow(Icons.wifi, 'Connectivity', e.connectivity!, cs),
+          if (e.lifecycleState != null)
+            _detailRow(Icons.sync, 'Lifecycle', e.lifecycleState!, cs),
+          if (e.buildMode != null)
+            _detailRow(Icons.build, 'Build', e.buildMode!, cs),
+          if (e.sessionId != null)
+            _detailRow(Icons.fingerprint, 'Session', e.sessionId!, cs),
+
+          // Full message
+          const SizedBox(height: 8),
+          _detailRow(Icons.message, 'Message', e.message, cs),
+
+          // Widget info
+          if (e.widgetInfo != null && e.widgetInfo!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _monoBox('Widget Info', e.widgetInfo!, cs),
+          ],
+
+          // Stack trace
+          if (e.stackTrace != null && e.stackTrace!.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _monoBox('Stack Trace', e.stackTrace!, cs),
+          ],
+
+          // User info
+          if (e.userEmail != null ||
+              e.shopName != null ||
+              e.userId != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: cs.primaryContainer.withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.person, size: 14, color: cs.primary),
+                      const SizedBox(width: 6),
+                      Text(
+                        'User',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: cs.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  if (e.userEmail != null)
+                    Text(
+                      e.userEmail!,
+                      style: TextStyle(fontSize: 12, color: cs.onSurface),
+                    ),
+                  if (e.shopName != null)
+                    Text(
+                      e.shopName!,
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: cs.onSurface.withValues(alpha: 0.7),
+                      ),
+                    ),
+                  if (e.userId != null)
+                    Text(
+                      e.userId!,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontFamily: 'monospace',
+                        color: cs.onSurface.withValues(alpha: 0.4),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+
+          // Resolve button
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              if (!e.resolved)
+                TextButton.icon(
+                  onPressed: () => _resolveError(group),
+                  icon: const Icon(Icons.check_circle_outline, size: 16),
+                  label: Text(
+                    group.count > 1
+                        ? 'Resolve All (${group.count})'
+                        : 'Mark Resolved',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  style: TextButton.styleFrom(foregroundColor: Colors.green),
+                )
+              else
+                Chip(
+                  label: const Text('Resolved', style: TextStyle(fontSize: 11)),
+                  backgroundColor: Colors.green.withValues(alpha: 0.1),
+                  avatar: const Icon(
+                    Icons.check_circle,
+                    size: 14,
+                    color: Colors.green,
+                  ),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  visualDensity: VisualDensity.compact,
+                ),
+              const Spacer(),
+              Text(
+                DateFormat.yMMMd().add_jm().format(e.timestamp),
+                style: TextStyle(
+                  fontSize: 10,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildErrorsList(List<ErrorLogEntry> errors) {
-    return Column(
-      children: errors.map((error) => _buildErrorCard(error)).toList(),
-    );
-  }
+  // ─── Helpers ───
 
-  Widget _buildErrorCard(ErrorLogEntry error) {
-    final dateFormat = DateFormat('MMM d, h:mm a');
-
-    Color severityColor;
-    IconData severityIcon;
-    switch (error.severity) {
-      case ErrorSeverity.critical:
-        severityColor = Colors.red;
-        severityIcon = Icons.dangerous;
-        break;
-      case ErrorSeverity.error:
-        severityColor = Colors.orange;
-        severityIcon = Icons.error;
-        break;
-      case ErrorSeverity.warning:
-        severityColor = Colors.amber;
-        severityIcon = Icons.warning;
-        break;
-    }
-
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      child: ExpansionTile(
-        leading: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: severityColor.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(severityIcon, color: severityColor, size: 20),
-        ),
-        title: Text(
-          error.message.length > 60
-              ? '${error.message.substring(0, 60)}...'
-              : error.message,
-          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
-        ),
-        subtitle: Row(
-          children: [
-            Icon(
-              _getPlatformIcon(error.platform),
-              size: 14,
-              color: Colors.grey,
-            ),
-            const SizedBox(width: 4),
-            Text(
-              error.platform.toUpperCase(),
-              style: const TextStyle(fontSize: 11),
-            ),
-            const SizedBox(width: 12),
-            const Icon(Icons.access_time, size: 14, color: Colors.grey),
-            const SizedBox(width: 4),
-            Text(
-              dateFormat.format(error.timestamp),
-              style: const TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
+  Widget _detailRow(IconData icon, String label, String value, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Full Message:',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 4),
-                Text(error.message),
-                if (error.stackTrace != null) ...[
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Stack Trace:',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Text(
-                        error.stackTrace!,
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-                if (error.userId != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    'User ID: ${error.userId}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                  ),
-                ],
-                if (error.screenName != null) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    'Screen: ${error.screenName}',
-                    style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                  ),
-                ],
-              ],
+          Icon(icon, size: 14, color: cs.onSurface.withValues(alpha: 0.4)),
+          const SizedBox(width: 6),
+          SizedBox(
+            width: 80,
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: cs.onSurface.withValues(alpha: 0.5),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(fontSize: 12, color: cs.onSurface),
             ),
           ),
         ],
@@ -352,22 +817,167 @@ class ErrorsScreen extends ConsumerWidget {
     );
   }
 
-  IconData _getPlatformIcon(String platform) {
-    switch (platform.toLowerCase()) {
+  Widget _monoBox(String title, String content, ColorScheme cs) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.bold,
+            color: cs.onSurface.withValues(alpha: 0.5),
+          ),
+        ),
+        const SizedBox(height: 4),
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(10),
+          constraints: const BoxConstraints(maxHeight: 200),
+          decoration: BoxDecoration(
+            color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: SingleChildScrollView(
+            child: Text(
+              content,
+              style: TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 10,
+                color: cs.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _platformIcon(String platform) {
+    switch (platform) {
       case 'android':
-        return Icons.android;
-      case 'ios':
-        return Icons.apple;
+        return Icon(Icons.android, size: 12, color: Colors.green.shade600);
       case 'web':
-        return Icons.web;
+        return Icon(Icons.language, size: 12, color: Colors.blue.shade600);
       case 'windows':
-        return Icons.desktop_windows;
-      case 'macos':
-        return Icons.laptop_mac;
-      case 'linux':
-        return Icons.computer;
+        return Icon(
+          Icons.desktop_windows,
+          size: 12,
+          color: Colors.indigo.shade600,
+        );
       default:
-        return Icons.device_unknown;
+        return Icon(
+          Icons.device_unknown,
+          size: 12,
+          color: Colors.grey.shade600,
+        );
+    }
+  }
+
+  Widget _errorChip(String msg) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        msg,
+        style: TextStyle(color: Colors.red.shade800, fontSize: 12),
+      ),
+    );
+  }
+
+  String _formatTimeAgo(DateTime dt) {
+    final diff = DateTime.now().difference(dt);
+    if (diff.inMinutes < 1) return 'just now';
+    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+    if (diff.inHours < 24) return '${diff.inHours}h ago';
+    if (diff.inDays < 7) return '${diff.inDays}d ago';
+    return DateFormat.MMMd().format(dt);
+  }
+
+  // ─── Actions ───
+
+  void _copyError(ErrorLogEntry e) {
+    Clipboard.setData(ClipboardData(text: e.toCopyText()));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Row(
+          children: [
+            Icon(Icons.check, color: Colors.white, size: 16),
+            SizedBox(width: 8),
+            Text('Error report copied to clipboard'),
+          ],
+        ),
+        backgroundColor: Colors.green.shade700,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
+  Future<void> _resolveError(GroupedError group) async {
+    final hash = group.latestEntry.errorHash;
+    if (hash != null && group.count > 1) {
+      final count = await ErrorLoggingService.markAllResolvedByHash(hash);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Resolved $count errors'),
+            backgroundColor: Colors.green.shade700,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } else if (group.docId != null) {
+      await ErrorLoggingService.markResolved(group.docId!);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Marked as resolved'),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+    ref.invalidate(_groupedErrorsProvider);
+  }
+
+  Future<void> _cleanUpOldLogs(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Clean Up Old Logs'),
+        content: const Text('Delete all error logs older than 30 days?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final count = await ErrorLoggingService.deleteOldLogs();
+    if (mounted) {
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Deleted $count old error logs'),
+          backgroundColor: Colors.green.shade700,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      ref.invalidate(_groupedErrorsProvider);
+      ref.invalidate(_dailyTrendProvider);
     }
   }
 }

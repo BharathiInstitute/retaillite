@@ -152,6 +152,28 @@ service cloud.firestore {
         allow update: if false;
         allow delete: if false;
       }
+      
+      // ===================
+      // NOTIFICATIONS (sub-collection)
+      // Written by Cloud Functions, read/updated by client
+      // ===================
+      match /notifications/{notificationId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow update: if isAuthenticated() && isOwner(userId); // mark read
+        allow delete: if isAuthenticated() && isOwner(userId);
+        // Only Cloud Functions create notifications (Admin SDK bypasses rules)
+        allow create: if false;
+      }
+      
+      // ===================
+      // ATTENDANCE (sub-collection)
+      // ===================
+      match /attendance/{attendanceId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow create, update: if isAuthenticated() && isOwner(userId)
+          && isReasonableSize();
+        allow delete: if isAuthenticated() && isOwner(userId);
+      }
     }
     
     // ===================
@@ -194,6 +216,39 @@ service cloud.firestore {
       allow create: if isAuthenticated() && isReasonableSize();
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
+    }
+    
+    // ===================
+    // GLOBAL NOTIFICATIONS (system-wide alerts)
+    // Created by Cloud Functions, read by admins
+    // ===================
+    match /notifications/{notifId} {
+      allow read: if isAdmin();
+      // Only Cloud Functions create/manage these
+      allow write: if false;
+    }
+    
+    // ===================
+    // PAYMENT LINKS (created by Cloud Functions)
+    // ===================
+    match /payment_links/{linkId} {
+      allow read: if isAdmin();
+      // Cloud Functions create and update these via Admin SDK
+      allow write: if false;
+    }
+    
+    // ===================
+    // ADMINS COLLECTION (used by Cloud Functions only)
+    // ===================
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+    
+    // ===================
+    // REGISTRATION OTPs (Cloud Functions only — no client access)
+    // ===================
+    match /registration_otps/{otpId} {
+      allow read, write: if false;
     }
     
     // ===================

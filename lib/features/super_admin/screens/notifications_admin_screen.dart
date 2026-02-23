@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/notifications/models/notification_model.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 // ─── Notification Templates ───
 class _NotifTemplate {
@@ -126,20 +127,51 @@ class _NotificationsAdminScreenState
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Notifications Manager'),
+        title: const Text(
+          'Notifications Manager',
+          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
+        ),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        elevation: 0,
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Colors.deepPurple, Color(0xFF7C4DFF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+          ),
+        ),
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadHistory),
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded),
+            tooltip: 'Refresh',
+            onPressed: _loadHistory,
+          ),
         ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
+          indicatorWeight: 3,
+          indicatorSize: TabBarIndicatorSize.label,
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white60,
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.w600,
+            fontSize: 13,
+          ),
           tabs: const [
-            Tab(icon: Icon(Icons.send), text: 'Compose'),
-            Tab(icon: Icon(Icons.history), text: 'History'),
+            Tab(icon: Icon(Icons.send_rounded), text: 'Compose'),
+            Tab(icon: Icon(Icons.history_rounded), text: 'History'),
           ],
         ),
       ),
@@ -214,12 +246,20 @@ class _ComposeTabState extends State<_ComposeTab> {
   final _selectedUserIds = <String>{};
   final _selectedUserNames = <String, String>{}; // id -> displayName
   var _isSending = false;
+  int? _selectedTemplateIndex;
 
-  void _applyTemplate(_NotifTemplate template) {
+  void _applyTemplate(int index) {
     setState(() {
-      _titleCtrl.text = template.title;
-      _bodyCtrl.text = template.body;
-      _selectedType = template.type;
+      if (_selectedTemplateIndex == index) {
+        _selectedTemplateIndex = null;
+        _titleCtrl.clear();
+        _bodyCtrl.clear();
+      } else {
+        _selectedTemplateIndex = index;
+        _titleCtrl.text = _templates[index].title;
+        _bodyCtrl.text = _templates[index].body;
+        _selectedType = _templates[index].type;
+      }
     });
   }
 
@@ -306,209 +346,343 @@ class _ComposeTabState extends State<_ComposeTab> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final cardColor = isDark ? Colors.grey.shade900 : Colors.white;
+    final surfaceColor = isDark ? Colors.grey.shade800 : Colors.grey.shade50;
+
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // ─── Templates Section ───
-          const Text(
-            '📋 Quick Templates',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 80,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _templates.length,
-              separatorBuilder: (_, separatorIndex) => const SizedBox(width: 8),
-              itemBuilder: (context, index) {
+          _SectionCard(
+            cardColor: cardColor,
+            icon: Icons.dashboard_customize,
+            title: 'Quick Templates',
+            subtitle: 'Tap to auto-fill the form',
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: List.generate(_templates.length, (index) {
                 final t = _templates[index];
-                return _TemplateCard(
+                final isSelected = _selectedTemplateIndex == index;
+                return _TemplateChip(
                   template: t,
-                  onTap: () => _applyTemplate(t),
+                  isSelected: isSelected,
+                  onTap: () => _applyTemplate(index),
                 );
-              },
+              }),
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // ─── Type Selector ───
-          const Text(
-            'Notification Type',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          SegmentedButton<NotificationType>(
-            segments: const [
-              ButtonSegment(
-                value: NotificationType.announcement,
-                label: Text('Announce'),
-                icon: Icon(Icons.campaign, size: 16),
-              ),
-              ButtonSegment(
-                value: NotificationType.alert,
-                label: Text('Alert'),
-                icon: Icon(Icons.warning_amber, size: 16),
-              ),
-              ButtonSegment(
-                value: NotificationType.reminder,
-                label: Text('Remind'),
-                icon: Icon(Icons.alarm, size: 16),
-              ),
-              ButtonSegment(
-                value: NotificationType.system,
-                label: Text('System'),
-                icon: Icon(Icons.info_outline, size: 16),
-              ),
-            ],
-            selected: {_selectedType},
-            onSelectionChanged: (set) {
-              setState(() => _selectedType = set.first);
-            },
-          ),
-          const SizedBox(height: 20),
-
-          // ─── Target Selector ───
-          const Text('Send To', style: TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(
-                value: 'all',
-                label: Text('All Users'),
-                icon: Icon(Icons.people, size: 16),
-              ),
-              ButtonSegment(
-                value: 'selected',
-                label: Text('Selected'),
-                icon: Icon(Icons.person_search, size: 16),
-              ),
-              ButtonSegment(
-                value: 'plan',
-                label: Text('By Plan'),
-                icon: Icon(Icons.credit_card, size: 16),
-              ),
-            ],
-            selected: {_targetMode},
-            onSelectionChanged: (set) {
-              setState(() => _targetMode = set.first);
-            },
-          ),
-          const SizedBox(height: 12),
-
-          // ─── Plan Selector (if by plan) ───
-          if (_targetMode == 'plan') ...[
-            DropdownButtonFormField<String>(
-              initialValue: _selectedPlan,
-              decoration: const InputDecoration(
-                labelText: 'Select Plan',
-                border: OutlineInputBorder(),
-              ),
-              items: const [
-                DropdownMenuItem(value: 'free', child: Text('Free')),
-                DropdownMenuItem(value: 'trial', child: Text('Trial')),
-                DropdownMenuItem(value: 'pro', child: Text('Pro')),
-                DropdownMenuItem(value: 'business', child: Text('Business')),
-              ],
-              onChanged: (v) {
-                if (v != null) setState(() => _selectedPlan = v);
-              },
-            ),
-            const SizedBox(height: 12),
-          ],
-
-          // ─── User Picker (if selected) ───
-          if (_targetMode == 'selected') ...[
-            Row(
+          // ─── Configuration Section ───
+          _SectionCard(
+            cardColor: cardColor,
+            icon: Icons.tune,
+            title: 'Configuration',
+            subtitle: 'Choose type and audience',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    '${_selectedUserIds.length} user(s) selected',
-                    style: TextStyle(color: Colors.grey.shade600),
+                // Type selector
+                Text(
+                  'Notification Type',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
                   ),
                 ),
-                FilledButton.icon(
-                  onPressed: () => _showUserPicker(context),
-                  icon: const Icon(Icons.person_add, size: 16),
-                  label: const Text('Pick Users'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: Colors.deepPurple,
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<NotificationType>(
+                    segments: const [
+                      ButtonSegment(
+                        value: NotificationType.announcement,
+                        label: Text('Announce', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.campaign, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: NotificationType.alert,
+                        label: Text('Alert', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.warning_amber, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: NotificationType.reminder,
+                        label: Text('Remind', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.alarm, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: NotificationType.system,
+                        label: Text('System', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.info_outline, size: 16),
+                      ),
+                    ],
+                    selected: {_selectedType},
+                    onSelectionChanged: (set) {
+                      setState(() => _selectedType = set.first);
+                    },
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // Target selector
+                Text(
+                  'Send To',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(
+                        value: 'all',
+                        label: Text(
+                          'All Users',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                        icon: Icon(Icons.people, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: 'selected',
+                        label: Text('Selected', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.person_search, size: 16),
+                      ),
+                      ButtonSegment(
+                        value: 'plan',
+                        label: Text('By Plan', style: TextStyle(fontSize: 12)),
+                        icon: Icon(Icons.credit_card, size: 16),
+                      ),
+                    ],
+                    selected: {_targetMode},
+                    onSelectionChanged: (set) {
+                      setState(() => _targetMode = set.first);
+                    },
+                    style: const ButtonStyle(
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // ─── Plan picker ───
+                if (_targetMode == 'plan') ...[
+                  const SizedBox(height: 4),
+                  DropdownButtonFormField<String>(
+                    initialValue: _selectedPlan,
+                    decoration: InputDecoration(
+                      labelText: 'Select Plan',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      filled: true,
+                      fillColor: surfaceColor,
+                    ),
+                    items: const [
+                      DropdownMenuItem(value: 'free', child: Text('Free')),
+                      DropdownMenuItem(value: 'trial', child: Text('Trial')),
+                      DropdownMenuItem(value: 'pro', child: Text('Pro')),
+                      DropdownMenuItem(
+                        value: 'business',
+                        child: Text('Business'),
+                      ),
+                    ],
+                    onChanged: (v) {
+                      if (v != null) setState(() => _selectedPlan = v);
+                    },
+                  ),
+                ],
+
+                // ─── User picker ───
+                if (_targetMode == 'selected') ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: surfaceColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: Colors.deepPurple.withValues(alpha: 0.2),
+                      ),
+                    ),
+                    child: Column(
+                      children: [
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.people_alt_outlined,
+                              size: 18,
+                              color: Colors.deepPurple.shade300,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _selectedUserIds.isEmpty
+                                    ? 'No users selected'
+                                    : '${_selectedUserIds.length} user(s) selected',
+                                style: TextStyle(
+                                  color: Colors.grey.shade600,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                            FilledButton.tonalIcon(
+                              onPressed: () => _showUserPicker(context),
+                              icon: const Icon(Icons.person_add, size: 16),
+                              label: const Text(
+                                'Pick',
+                                style: TextStyle(fontSize: 13),
+                              ),
+                              style: FilledButton.styleFrom(
+                                backgroundColor: Colors.deepPurple.withValues(
+                                  alpha: 0.1,
+                                ),
+                                foregroundColor: Colors.deepPurple,
+                                visualDensity: VisualDensity.compact,
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (_selectedUserNames.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: _selectedUserNames.entries.map((entry) {
+                              return Chip(
+                                label: Text(
+                                  entry.value,
+                                  style: const TextStyle(fontSize: 12),
+                                ),
+                                deleteIcon: const Icon(Icons.close, size: 14),
+                                onDeleted: () {
+                                  setState(() {
+                                    _selectedUserIds.remove(entry.key);
+                                    _selectedUserNames.remove(entry.key);
+                                  });
+                                },
+                                visualDensity: VisualDensity.compact,
+                                backgroundColor: Colors.deepPurple.withValues(
+                                  alpha: 0.08,
+                                ),
+                                side: BorderSide.none,
+                              );
+                            }).toList(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ─── Message Section ───
+          _SectionCard(
+            cardColor: cardColor,
+            icon: Icons.edit_note,
+            title: 'Compose Message',
+            subtitle: 'Write your notification content',
+            child: Column(
+              children: [
+                TextField(
+                  controller: _titleCtrl,
+                  decoration: InputDecoration(
+                    labelText: 'Title',
+                    hintText: 'e.g. New Feature Available!',
+                    prefixIcon: const Icon(Icons.title, size: 20),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: surfaceColor,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                TextField(
+                  controller: _bodyCtrl,
+                  maxLines: 5,
+                  decoration: InputDecoration(
+                    labelText: 'Message',
+                    hintText: 'Write your notification message here...',
+                    prefixIcon: const Padding(
+                      padding: EdgeInsets.only(bottom: 64),
+                      child: Icon(Icons.message_outlined, size: 20),
+                    ),
+                    alignLabelWithHint: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    filled: true,
+                    fillColor: surfaceColor,
                   ),
                 ),
               ],
             ),
-            if (_selectedUserNames.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: _selectedUserNames.entries.map((entry) {
-                  return Chip(
-                    label: Text(
-                      entry.value,
-                      style: const TextStyle(fontSize: 12),
-                    ),
-                    deleteIcon: const Icon(Icons.close, size: 14),
-                    onDeleted: () {
-                      setState(() {
-                        _selectedUserIds.remove(entry.key);
-                        _selectedUserNames.remove(entry.key);
-                      });
-                    },
-                    visualDensity: VisualDensity.compact,
-                  );
-                }).toList(),
-              ),
-            ],
-            const SizedBox(height: 12),
-          ],
-
-          // ─── Title & Body ───
-          TextField(
-            controller: _titleCtrl,
-            decoration: const InputDecoration(
-              labelText: 'Title',
-              border: OutlineInputBorder(),
-              hintText: 'e.g. New Feature Available!',
-              prefixIcon: Icon(Icons.title),
-            ),
           ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _bodyCtrl,
-            maxLines: 4,
-            decoration: const InputDecoration(
-              labelText: 'Message',
-              border: OutlineInputBorder(),
-              hintText: 'Notification message body...',
-              prefixIcon: Icon(Icons.message),
-              alignLabelWithHint: true,
-            ),
-          ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
 
           // ─── Send Button ───
           SizedBox(
             width: double.infinity,
-            height: 48,
-            child: FilledButton.icon(
-              onPressed: _isSending ? null : _send,
-              icon: _isSending
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Icon(Icons.send),
-              label: Text(_isSending ? 'Sending...' : 'Send Notification'),
-              style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
+            height: 52,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(14),
+                gradient: const LinearGradient(
+                  colors: [Colors.deepPurple, Color(0xFF7C4DFF)],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.deepPurple.withValues(alpha: 0.35),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              child: FilledButton.icon(
+                onPressed: _isSending ? null : _send,
+                icon: _isSending
+                    ? const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      )
+                    : const Icon(Icons.send_rounded, size: 20),
+                label: Text(
+                  _isSending ? 'Sending...' : 'Send Notification',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: FilledButton.styleFrom(
+                  backgroundColor: Colors.transparent,
+                  shadowColor: Colors.transparent,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
+              ),
             ),
           ),
+          const SizedBox(height: 20),
         ],
       ),
     );
@@ -740,44 +914,134 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
   }
 }
 
-// ─── Template Card ───
+// ─── Section Card ───
 
-class _TemplateCard extends StatelessWidget {
-  final _NotifTemplate template;
-  final VoidCallback onTap;
+class _SectionCard extends StatelessWidget {
+  final Color cardColor;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Widget child;
 
-  const _TemplateCard({required this.template, required this.onTap});
+  const _SectionCard({
+    required this.cardColor,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        width: 120,
-        padding: const EdgeInsets.all(10),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.deepPurple.shade100),
-          color: Colors.deepPurple.shade50,
-        ),
+    return Card(
+      color: cardColor,
+      elevation: 0,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(18),
         child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(template.icon, color: Colors.deepPurple, size: 24),
-            const SizedBox(height: 6),
-            Text(
-              template.name,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Colors.deepPurple,
-              ),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(icon, size: 18, color: Colors.deepPurple),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 16),
+            child,
           ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Template Chip (Radio-style) ───
+
+class _TemplateChip extends StatelessWidget {
+  final _NotifTemplate template;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _TemplateChip({
+    required this.template,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(24),
+            color: isSelected
+                ? Colors.deepPurple
+                : Colors.deepPurple.withValues(alpha: 0.06),
+            border: Border.all(
+              color: isSelected
+                  ? Colors.deepPurple
+                  : Colors.deepPurple.withValues(alpha: 0.2),
+              width: isSelected ? 1.5 : 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                template.icon,
+                size: 16,
+                color: isSelected ? Colors.white : Colors.deepPurple,
+              ),
+              const SizedBox(width: 6),
+              Text(
+                template.name,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isSelected ? Colors.white : Colors.deepPurple,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

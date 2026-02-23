@@ -32,16 +32,27 @@ final productsProvider = StreamProvider.autoDispose<List<ProductModel>>((ref) {
   }
 
   // Firebase mode: stream from Firestore
+  // Safety cap at 2000 products to prevent massive reads if a user
+  // accidentally imports a huge inventory
   debugPrint('📦 productsProvider: Listening to Firestore products...');
-  return _firestore.collection(_productsPath).orderBy('name').snapshots().map((
-    snapshot,
-  ) {
-    final products = snapshot.docs
-        .map((doc) => ProductModel.fromFirestore(doc))
-        .toList();
-    debugPrint('📦 productsProvider: Got ${products.length} products');
-    return products;
-  });
+  return _firestore
+      .collection(_productsPath)
+      .orderBy('name')
+      .limit(2000)
+      .snapshots()
+      .map((snapshot) {
+        final products = snapshot.docs
+            .map((doc) => ProductModel.fromFirestore(doc))
+            .toList();
+        if (products.length >= 1000) {
+          debugPrint(
+            '⚠️ productsProvider: Large inventory (${products.length} products) — '
+            'consider pagination for better performance',
+          );
+        }
+        debugPrint('📦 productsProvider: Got ${products.length} products');
+        return products;
+      });
 });
 
 /// Low stock products provider

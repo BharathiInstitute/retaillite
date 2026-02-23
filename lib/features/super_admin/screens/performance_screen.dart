@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/performance_service.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 /// Provider for screen performance data
 final screenPerformanceProvider = FutureProvider<Map<String, dynamic>>((
@@ -38,6 +39,14 @@ class PerformanceScreen extends ConsumerWidget {
         title: const Text('Performance'),
         backgroundColor: Colors.teal.shade700,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -141,8 +150,10 @@ class PerformanceScreen extends ConsumerWidget {
     final crashFree =
         (crashStats['crashFreePercent'] as num?)?.toDouble() ?? 100.0;
     final avgScreenLoad = (screenStats?['avgLoadTime'] as int?) ?? 0;
+    final hasScreenData = (screenStats?['totalMeasurements'] as int? ?? 0) > 0;
     final avgNetworkLatency = (networkStats?['avgLatency'] as int?) ?? 0;
     final networkSuccessRate = (networkStats?['successRate'] as int?) ?? 100;
+    final hasNetworkData = (networkStats?['totalRequests'] as int? ?? 0) > 0;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -153,11 +164,20 @@ class PerformanceScreen extends ConsumerWidget {
             children: [
               Expanded(child: _buildCrashFreeCard(crashFree)),
               const SizedBox(width: 12),
-              Expanded(child: _buildAvgScreenLoadCard(avgScreenLoad)),
+              Expanded(
+                child: _buildAvgScreenLoadCard(avgScreenLoad, hasScreenData),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _buildAvgLatencyCard(avgNetworkLatency)),
+              Expanded(
+                child: _buildAvgLatencyCard(avgNetworkLatency, hasNetworkData),
+              ),
               const SizedBox(width: 12),
-              Expanded(child: _buildSuccessRateCard(networkSuccessRate)),
+              Expanded(
+                child: _buildSuccessRateCard(
+                  networkSuccessRate,
+                  hasNetworkData,
+                ),
+              ),
             ],
           );
         } else {
@@ -167,15 +187,30 @@ class PerformanceScreen extends ConsumerWidget {
                 children: [
                   Expanded(child: _buildCrashFreeCard(crashFree)),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildAvgScreenLoadCard(avgScreenLoad)),
+                  Expanded(
+                    child: _buildAvgScreenLoadCard(
+                      avgScreenLoad,
+                      hasScreenData,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
-                  Expanded(child: _buildAvgLatencyCard(avgNetworkLatency)),
+                  Expanded(
+                    child: _buildAvgLatencyCard(
+                      avgNetworkLatency,
+                      hasNetworkData,
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildSuccessRateCard(networkSuccessRate)),
+                  Expanded(
+                    child: _buildSuccessRateCard(
+                      networkSuccessRate,
+                      hasNetworkData,
+                    ),
+                  ),
                 ],
               ),
             ],
@@ -233,13 +268,12 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvgScreenLoadCard(int avgMs) {
-    final isGood = avgMs < 300;
-    final isOkay = avgMs >= 300 && avgMs < 600;
-
-    final Color color = isGood
+  Widget _buildAvgScreenLoadCard(int avgMs, bool hasData) {
+    final Color color = !hasData
+        ? Colors.grey
+        : avgMs < 300
         ? Colors.blue
-        : (isOkay ? Colors.orange : Colors.red);
+        : (avgMs < 600 ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -253,7 +287,7 @@ class PerformanceScreen extends ConsumerWidget {
             Icon(Icons.speed, color: color, size: 32),
             const SizedBox(height: 8),
             Text(
-              '${avgMs}ms',
+              hasData ? '${avgMs}ms' : 'N/A',
               style: TextStyle(
                 color: color,
                 fontSize: 28,
@@ -270,13 +304,12 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvgLatencyCard(int avgMs) {
-    final isGood = avgMs < 200;
-    final isOkay = avgMs >= 200 && avgMs < 500;
-
-    final Color color = isGood
+  Widget _buildAvgLatencyCard(int avgMs, bool hasData) {
+    final Color color = !hasData
+        ? Colors.grey
+        : avgMs < 200
         ? Colors.teal
-        : (isOkay ? Colors.orange : Colors.red);
+        : (avgMs < 500 ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -290,7 +323,7 @@ class PerformanceScreen extends ConsumerWidget {
             Icon(Icons.network_check, color: color, size: 32),
             const SizedBox(height: 8),
             Text(
-              '${avgMs}ms',
+              hasData ? '${avgMs}ms' : 'N/A',
               style: TextStyle(
                 color: color,
                 fontSize: 28,
@@ -307,13 +340,12 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSuccessRateCard(int rate) {
-    final isGood = rate >= 99;
-    final isOkay = rate >= 95 && rate < 99;
-
-    final Color color = isGood
+  Widget _buildSuccessRateCard(int rate, bool hasData) {
+    final Color color = !hasData
+        ? Colors.grey
+        : rate >= 99
         ? Colors.green
-        : (isOkay ? Colors.orange : Colors.red);
+        : (rate >= 95 ? Colors.orange : Colors.red);
 
     return Card(
       child: Container(
@@ -327,7 +359,7 @@ class PerformanceScreen extends ConsumerWidget {
             Icon(Icons.check_circle, color: color, size: 32),
             const SizedBox(height: 8),
             Text(
-              '$rate%',
+              hasData ? '$rate%' : 'N/A',
               style: TextStyle(
                 color: color,
                 fontSize: 28,

@@ -70,7 +70,7 @@ interface PaymentLinkResponse {
  */
 export const createPaymentLink = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 30, memory: "256MB" })
+    .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 10 })
     .https.onCall(
         async (data: PaymentLinkRequest, context): Promise<PaymentLinkResponse> => {
             // Verify authentication (optional but recommended)
@@ -202,7 +202,7 @@ export const createPaymentLink = functions
  */
 export const razorpayWebhook = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 30, memory: "256MB" })
+    .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 10 })
     .https.onRequest(async (req, res) => {
         if (req.method !== "POST") {
             res.status(405).send("Method not allowed");
@@ -291,7 +291,7 @@ export const razorpayWebhook = functions
  */
 export const sendRegistrationOTP = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 30, memory: "256MB" })
+    .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 10 })
     .https.onCall(async (data: { email: string }) => {
         const email = data.email?.trim()?.toLowerCase();
 
@@ -373,7 +373,7 @@ export const sendRegistrationOTP = functions
  */
 export const verifyRegistrationOTP = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 15, memory: "256MB" })
+    .runWith({ timeoutSeconds: 15, memory: "256MB", maxInstances: 10 })
     .https.onCall(async (data: { email: string; otp: string }) => {
         const email = data.email?.trim()?.toLowerCase();
         const { otp } = data;
@@ -476,7 +476,7 @@ export const onUserDeleted = functions
  */
 export const generateDesktopToken = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 15, memory: "256MB" })
+    .runWith({ timeoutSeconds: 15, memory: "256MB", maxInstances: 10 })
     .https.onCall(async (data: { linkCode: string }, context) => {
         // Must be authenticated (web user just signed in)
         if (!context.auth) {
@@ -711,7 +711,7 @@ export const sendPushNotification = functions
  */
 export const cleanupOldNotifications = functions
     .region("asia-south1")
-    .runWith({ timeoutSeconds: 300, memory: "512MB" })
+    .runWith({ timeoutSeconds: 300, memory: "512MB", maxInstances: 3 })
     .pubsub.schedule("30 18 * * *") // 18:30 UTC = midnight IST
     .timeZone("Asia/Kolkata")
     .onRun(async () => {
@@ -969,4 +969,72 @@ export const sendDailySalesSummary = functions
         }
 
         console.log(`📊 Sent ${sentCount} daily sales summary(ies)`);
+    });
+
+// ─── Scheduled Firestore Backup ───
+
+/**
+ * Daily automated Firestore export at 2 AM IST (20:30 UTC).
+ * Exports all collections to Google Cloud Storage for disaster recovery.
+ *
+ * Prerequisites:
+ *   1. Create a GCS bucket: gsutil mb gs://YOUR_PROJECT_ID-backups
+ *   2. Grant the default service account the "Cloud Datastore Import Export Admin" role
+ *      and "Storage Admin" on the backup bucket:
+ *        gcloud projects add-iam-policy-binding YOUR_PROJECT_ID \
+ *          --member=serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com \
+ *          --role=roles/datastore.importExportAdmin
+ *        gsutil iam ch serviceAccount:YOUR_PROJECT_ID@appspot.gserviceaccount.com:admin \
+ *          gs://YOUR_PROJECT_ID-backups
+ */
+export const scheduledFirestoreBackup = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 300, memory: "256MB", maxInstances: 1 })
+    .pubsub.schedule("30 20 * * *") // 20:30 UTC = 2:00 AM IST
+    .timeZone("Asia/Kolkata")
+    .onRun(async () => {
+        const projectId = process.env.GCLOUD_PROJECT || process.env.GCP_PROJECT;
+        if (!projectId) {
+            console.error("❌ Firestore backup: Could not determine project ID");
+            return;
+        }
+
+        const bucket = `gs://${projectId}-backups`;
+        const today = new Date().toISOString().split("T")[0]; // e.g. 2026-02-24
+        const outputUri = `${bucket}/firestore-daily/${today}`;
+
+        console.log(`💾 Starting Firestore backup to ${outputUri}...`);
+
+        try {
+            // Use the Firestore Admin REST API to trigger an export
+            const accessToken = await admin.credential.applicationDefault()
+                .getAccessToken();
+
+            const response = await fetch(
+                `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default):exportDocuments`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Authorization": `Bearer ${accessToken.access_token}`,
+                        "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                        outputUriPrefix: outputUri,
+                        // Empty collectionIds = export ALL collections
+                        collectionIds: [],
+                    }),
+                }
+            );
+
+            if (!response.ok) {
+                const errorBody = await response.text();
+                console.error(`❌ Firestore backup failed (${response.status}):`, errorBody);
+                return;
+            }
+
+            const result = await response.json() as Record<string, unknown>;
+            console.log(`✅ Firestore backup started successfully:`, result.name);
+        } catch (error) {
+            console.error("❌ Firestore backup error:", error);
+        }
     });

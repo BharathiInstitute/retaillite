@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
 
@@ -59,6 +60,14 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
         title: const Text('Super Admin Dashboard'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: ResponsiveHelper.isDesktop(context)
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -169,17 +178,32 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
       ),
     ];
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: isWide ? 6 : 2,
-        childAspectRatio: isWide ? 1.5 : 1.3,
-        crossAxisSpacing: 12,
-        mainAxisSpacing: 12,
-      ),
-      itemCount: cards.length,
-      itemBuilder: (context, index) => cards[index],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 900
+            ? 6
+            : width >= 600
+            ? 3
+            : 2;
+        final aspectRatio = crossAxisCount == 6
+            ? 1.3
+            : crossAxisCount == 3
+            ? 1.6
+            : 2.0;
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: crossAxisCount,
+            childAspectRatio: aspectRatio,
+            crossAxisSpacing: 12,
+            mainAxisSpacing: 12,
+          ),
+          itemCount: cards.length,
+          itemBuilder: (context, index) => cards[index],
+        );
+      },
     );
   }
 
@@ -327,7 +351,14 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(plan, style: const TextStyle(fontWeight: FontWeight.w500)),
-            Text('$count users (${(percentage * 100).toStringAsFixed(0)}%)'),
+            const SizedBox(width: 4),
+            Flexible(
+              child: Text(
+                '$count users (${(percentage * 100).toStringAsFixed(0)}%)',
+                textAlign: TextAlign.end,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
           ],
         ),
         const SizedBox(height: 4),
@@ -502,21 +533,27 @@ class _StatCard extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-                color: color,
+            const SizedBox(height: 4),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
             Text(
               title,
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),

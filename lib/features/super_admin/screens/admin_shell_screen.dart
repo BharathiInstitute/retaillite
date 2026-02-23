@@ -7,23 +7,33 @@ import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
 
+/// Global key so child screens can open the admin drawer on mobile
+final adminShellScaffoldKey = GlobalKey<ScaffoldState>();
+
 class AdminShellScreen extends ConsumerWidget {
   final Widget child;
   const AdminShellScreen({super.key, required this.child});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isWide = !ResponsiveHelper.isMobile(context);
+    final isWide = ResponsiveHelper.isDesktop(context);
     final currentPath = GoRouterState.of(context).matchedLocation;
 
-    return Row(
-      children: [
-        // Persistent sidebar on desktop
-        if (isWide) _buildSidebar(context, currentPath, ref),
+    // Desktop: sidebar + content
+    if (isWide) {
+      return Row(
+        children: [
+          _buildSidebar(context, currentPath, ref),
+          Expanded(child: child),
+        ],
+      );
+    }
 
-        // Main content (child screen has its own Scaffold + AppBar)
-        Expanded(child: child),
-      ],
+    // Mobile: drawer-based navigation
+    return Scaffold(
+      key: adminShellScaffoldKey,
+      drawer: _buildDrawer(context, currentPath, ref),
+      body: child,
     );
   }
 
@@ -122,6 +132,109 @@ class AdminShellScreen extends ConsumerWidget {
             const SizedBox(height: 8),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildDrawer(BuildContext context, String currentPath, WidgetRef ref) {
+    return Drawer(
+      child: Column(
+        children: [
+          // Same branding header as sidebar
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.only(
+              top: MediaQuery.of(context).padding.top + 16,
+              left: 16,
+              right: 16,
+              bottom: 16,
+            ),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Colors.deepPurple, Colors.purple],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+            ),
+            child: const Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.admin_panel_settings, color: Colors.white, size: 32),
+                SizedBox(height: 8),
+                Text(
+                  'Super Admin',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Full Access',
+                  style: TextStyle(color: Colors.white70, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          // Nav items
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: _navItems.map((item) {
+                final route = item['route'] as String;
+                final isActive = currentPath == route;
+                return ListTile(
+                  leading: Icon(
+                    item['icon'] as IconData,
+                    color: isActive ? Colors.deepPurple : Colors.grey.shade600,
+                    size: 22,
+                  ),
+                  title: Text(
+                    item['label'] as String,
+                    style: TextStyle(
+                      color: isActive
+                          ? Colors.deepPurple
+                          : Colors.grey.shade800,
+                      fontWeight: isActive
+                          ? FontWeight.bold
+                          : FontWeight.normal,
+                    ),
+                  ),
+                  selected: isActive,
+                  selectedTileColor: Colors.deepPurple.withValues(alpha: 0.08),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  onTap: () {
+                    Navigator.of(context).pop(); // close drawer
+                    context.go(route);
+                  },
+                );
+              }).toList(),
+            ),
+          ),
+          const Divider(height: 1),
+          // Back to store
+          ListTile(
+            leading: Icon(Icons.store, color: Colors.grey.shade700),
+            title: const Text('Back to Store'),
+            onTap: () {
+              Navigator.of(context).pop();
+              context.go('/billing');
+            },
+          ),
+          // Logout
+          ListTile(
+            leading: const Icon(Icons.logout, color: Colors.red),
+            title: const Text('Logout', style: TextStyle(color: Colors.red)),
+            onTap: () {
+              Navigator.of(context).pop();
+              showLogoutDialog(context, ref);
+            },
+          ),
+          SizedBox(height: MediaQuery.of(context).padding.bottom + 8),
+        ],
       ),
     );
   }

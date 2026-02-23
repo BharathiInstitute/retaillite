@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 class ManageAdminsScreen extends ConsumerWidget {
   const ManageAdminsScreen({super.key});
@@ -19,6 +20,14 @@ class ManageAdminsScreen extends ConsumerWidget {
         title: const Text('Manage Admins'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),

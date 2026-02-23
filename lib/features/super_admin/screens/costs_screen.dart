@@ -1,10 +1,10 @@
-/// Costs Screen for Super Admin
+/// Costs Screen for Super Admin — Revenue analytics from real Firestore data
 library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 class CostsScreen extends ConsumerWidget {
   const CostsScreen({super.key});
@@ -12,47 +12,58 @@ class CostsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statsAsync = ref.watch(adminStatsProvider);
-    final isWide = MediaQuery.of(context).size.width > 800;
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cost Monitoring'),
+        title: const Text('Revenue & Costs'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => ref.invalidate(adminStatsProvider),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Cost Overview
-            _buildCostOverviewCard(isWide),
-
-            const SizedBox(height: 24),
-
-            // Firebase Services Breakdown
-            _buildServicesCard(),
-
-            const SizedBox(height: 24),
-
-            // Top Users by Usage
-            statsAsync.when(
-              data: (stats) => _buildEstimatedCostsCard(stats),
-              loading: () => const SizedBox(),
-              error: (e, _) => const SizedBox(),
-            ),
-
-            const SizedBox(height: 24),
-
-            // Cost Saving Tips
-            _buildTipsCard(),
-          ],
+      body: statsAsync.when(
+        data: (stats) => SingleChildScrollView(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _buildRevenueCard(stats),
+              const SizedBox(height: 16),
+              _buildBreakdownCards(stats),
+              const SizedBox(height: 16),
+              _buildCostNote(),
+            ],
+          ),
         ),
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (e, _) => Center(child: Text('Failed to load: $e')),
       ),
     );
   }
 
-  Widget _buildCostOverviewCard(bool isWide) {
+  // ─── Revenue Card (real MRR data) ───
+
+  Widget _buildRevenueCard(dynamic stats) {
+    final revenuePerUser = (stats.totalUsers as int) > 0
+        ? stats.mrr / stats.totalUsers
+        : 0.0;
+    final paidUsers = stats.proUsers + stats.businessUsers;
+    final paidUsersRatio = (stats.totalUsers as int) > 0
+        ? (paidUsers / stats.totalUsers * 100)
+        : 0.0;
+
     return Card(
       child: Container(
         width: double.infinity,
@@ -67,54 +78,28 @@ class CostsScreen extends ConsumerWidget {
         ),
         child: Column(
           children: [
-            const Icon(Icons.cloud_queue, size: 48, color: Colors.white70),
-            const SizedBox(height: 16),
-            const Text(
-              'Firebase Cost Monitoring',
-              style: TextStyle(
+            const Icon(Icons.trending_up, size: 40, color: Colors.white70),
+            const SizedBox(height: 12),
+            Text(
+              '₹${stats.mrr.toStringAsFixed(0)}',
+              style: const TextStyle(
                 color: Colors.white,
-                fontSize: 20,
+                fontSize: 36,
                 fontWeight: FontWeight.bold,
               ),
             ),
-            const SizedBox(height: 8),
             const Text(
-              'View your actual Firebase costs in the Google Cloud Console',
+              'Monthly Recurring Revenue',
               style: TextStyle(color: Colors.white70, fontSize: 14),
-              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 24),
-            ElevatedButton.icon(
-              onPressed: () {
-                // Could open URL to Firebase console
-              },
-              icon: const Icon(Icons.open_in_new, size: 18),
-              label: const Text('Open Firebase Console'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: Colors.deepPurple,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.info_outline, color: Colors.white70, size: 16),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Accurate costs require Google Cloud Billing API integration',
-                      style: TextStyle(color: Colors.white70, fontSize: 12),
-                    ),
-                  ),
-                ],
-              ),
+            const SizedBox(height: 20),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _miniStat('Per User', '₹${revenuePerUser.toStringAsFixed(1)}'),
+                _miniStat('Paid Users', '$paidUsers'),
+                _miniStat('Paid %', '${paidUsersRatio.toStringAsFixed(1)}%'),
+              ],
             ),
           ],
         ),
@@ -122,240 +107,102 @@ class CostsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildServicesCard() {
-    // Firebase services used by the app
-    final services = [
-      {
-        'name': 'Firestore',
-        'icon': Icons.storage,
-        'color': Colors.orange,
-        'description': 'Database for users, products, bills, and customers',
-      },
-      {
-        'name': 'Authentication',
-        'icon': Icons.security,
-        'color': Colors.blue,
-        'description': 'User login and account management',
-      },
-      {
-        'name': 'Cloud Functions',
-        'icon': Icons.functions,
-        'color': Colors.purple,
-        'description': 'Backend logic for subscriptions and analytics',
-      },
-      {
-        'name': 'Storage',
-        'icon': Icons.cloud,
-        'color': Colors.green,
-        'description': 'User receipts and product images',
-      },
-      {
-        'name': 'Hosting',
-        'icon': Icons.web,
-        'color': Colors.teal,
-        'description': 'Web app hosting',
-      },
-    ];
+  Widget _miniStat(String label, String value) {
+    return Column(
+      children: [
+        Text(
+          value,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white60, fontSize: 11),
+        ),
+      ],
+    );
+  }
 
+  // ─── Subscription Breakdown Cards ───
+
+  Widget _buildBreakdownCards(dynamic stats) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(left: 4, bottom: 8),
+          child: Text(
+            'Subscription Breakdown',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+          ),
+        ),
+        Row(
+          children: [
+            Expanded(
+              child: _planCard(
+                'Free',
+                stats.freeUsers as int,
+                '₹0',
+                Colors.grey,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _planCard(
+                'Pro',
+                stats.proUsers as int,
+                '₹299/mo',
+                Colors.blue,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _planCard(
+                'Business',
+                stats.businessUsers as int,
+                '₹999/mo',
+                Colors.purple,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _planCard(String plan, int count, String price, Color color) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                const Text(
-                  'Firebase Services',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'IN USE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.blue,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Services powering this application',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
-            ...services.map(
-              (service) => Container(
-                margin: const EdgeInsets.only(bottom: 12),
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade50,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: AppShadows.small,
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: (service['color'] as Color).withValues(
-                          alpha: 0.1,
-                        ),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: Icon(
-                        service['icon'] as IconData,
-                        color: service['color'] as Color,
-                        size: 20,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            service['name'] as String,
-                            style: const TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                          Text(
-                            service['description'] as String,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      Icons.check_circle,
-                      color: Colors.green.shade400,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildEstimatedCostsCard(dynamic stats) {
-    // Use real MRR data from Firestore
-    final revenuePerUser = (stats.totalUsers as int) > 0
-        ? stats.mrr / stats.totalUsers
-        : 0.0;
-    final paidUsersRatio = (stats.totalUsers as int) > 0
-        ? ((stats.proUsers + stats.businessUsers) / stats.totalUsers * 100)
-        : 0.0;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text(
-                  'Revenue Analytics',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Based on actual subscription data',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildUnitCard(
-                    'Total MRR',
-                    '₹${stats.mrr.toStringAsFixed(0)}',
-                    Icons.currency_rupee,
-                    Colors.green,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildUnitCard(
-                    'Revenue per User',
-                    '₹${revenuePerUser.toStringAsFixed(2)}',
-                    Icons.person,
-                    Colors.blue,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: _buildUnitCard(
-                    'Paid Users',
-                    '${paidUsersRatio.toStringAsFixed(1)}%',
-                    Icons.star,
-                    Colors.purple,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 20),
             Container(
-              padding: const EdgeInsets.all(12),
+              width: 40,
+              height: 40,
               decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(8),
+                color: color.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(10),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, color: Colors.blue.shade700),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      'Cost analysis requires Google Cloud Billing API integration. View actual costs in Firebase Console.',
-                      style: TextStyle(
-                        color: Colors.blue.shade800,
-                        fontSize: 12,
-                      ),
-                    ),
+              child: Center(
+                child: Text(
+                  '$count',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: color,
                   ),
-                ],
+                ),
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(plan, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(
+              price,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
             ),
           ],
         ),
@@ -363,99 +210,26 @@ class CostsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildUnitCard(
-    String label,
-    String value,
-    IconData icon,
-    Color color,
-  ) {
+  // ─── Cost Note ───
+
+  Widget _buildCostNote() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
+        color: Colors.blue.shade50,
         borderRadius: BorderRadius.circular(12),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Icon(icon, color: color),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: color,
+          Icon(Icons.info_outline, color: Colors.blue.shade700, size: 20),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'For actual Firebase infrastructure costs, visit the Firebase Console → Usage and billing.',
+              style: TextStyle(color: Colors.blue.shade800, fontSize: 12),
             ),
-          ),
-          Text(
-            label,
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-            textAlign: TextAlign.center,
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildTipsCard() {
-    final tips = [
-      {'tip': 'Enable Firestore caching to reduce reads', 'savings': '~30%'},
-      {
-        'tip': 'Use batch writes instead of individual writes',
-        'savings': '~20%',
-      },
-      {'tip': 'Implement pagination for large collections', 'savings': '~40%'},
-      {'tip': 'Optimize Cloud Function cold starts', 'savings': '~15%'},
-    ];
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.lightbulb, color: Colors.amber.shade700),
-                const SizedBox(width: 8),
-                const Text(
-                  'Cost Saving Tips',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            ...tips.map(
-              (tip) => Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.arrow_right, color: Colors.green),
-                    Expanded(child: Text(tip['tip'] as String)),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade50,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        tip['savings'] as String,
-                        style: TextStyle(
-                          color: Colors.green.shade700,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
       ),
     );
   }

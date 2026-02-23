@@ -38,6 +38,7 @@ import 'package:retaillite/features/super_admin/screens/notifications_admin_scre
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/features/notifications/screens/notifications_screen.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/error_logging_service.dart';
 import 'package:retaillite/core/widgets/splash_screen.dart';
 
 /// Route paths
@@ -119,6 +120,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     debugLogDiagnostics: true,
     // Re-evaluate redirects when auth state changes (no GoRouter recreation)
     refreshListenable: authChangeNotifier,
+    // Track route changes for error context
+    observers: [_ErrorRouteObserver()],
 
     redirect: (context, state) {
       // Read auth state inside redirect (not watch — GoRouter is not recreated)
@@ -182,6 +185,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           if (currentPath == AppRoutes.superAdminLogin) {
             return '/super-admin';
           }
+          // Persist super-admin route for refresh restoration
+          OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
           return null; // Authorized — allow
         }
         return AppRoutes.billing; // Not authorized — send to store
@@ -203,7 +208,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
 
       // ── Persist current route for restoration after web refresh ──
-      // Save all app routes (including super-admin dashboard, but not auth/login pages)
+      // Save all app routes (but not auth/login pages)
       if (isLoggedIn && !isAuthRoute) {
         OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
       }
@@ -379,3 +384,31 @@ final routerProvider = Provider<GoRouter>((ref) {
         Scaffold(body: Center(child: Text('Page not found: ${state.uri}'))),
   );
 });
+
+/// Route observer that auto-tracks current screen for error context
+class _ErrorRouteObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPush(route, previousRoute);
+    _trackRoute(route);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    if (newRoute != null) _trackRoute(newRoute);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    super.didPop(route, previousRoute);
+    if (previousRoute != null) _trackRoute(previousRoute);
+  }
+
+  void _trackRoute(Route<dynamic> route) {
+    final name = route.settings.name;
+    if (name != null && name.isNotEmpty) {
+      ErrorLoggingService.setCurrentScreen(name);
+    }
+  }
+}

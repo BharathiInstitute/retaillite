@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 class SubscriptionsScreen extends ConsumerWidget {
   const SubscriptionsScreen({super.key});
@@ -20,6 +21,14 @@ class SubscriptionsScreen extends ConsumerWidget {
         title: const Text('Subscriptions'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),

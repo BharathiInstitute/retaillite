@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 
 class AnalyticsScreen extends ConsumerWidget {
   const AnalyticsScreen({super.key});
@@ -20,6 +21,14 @@ class AnalyticsScreen extends ConsumerWidget {
         title: const Text('Analytics'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -98,43 +107,50 @@ class AnalyticsScreen extends ConsumerWidget {
   }
 
   Widget _buildActiveUsersGrid(dynamic stats, bool isWide) {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: isWide ? 4 : 2,
-      childAspectRatio: isWide ? 1.8 : 1.3,
-      crossAxisSpacing: 12,
-      mainAxisSpacing: 12,
-      children: [
-        _buildMetricCard(
-          'DAU',
-          stats.activeToday.toString(),
-          'Daily Active Users',
-          Icons.today,
-          Colors.blue,
-        ),
-        _buildMetricCard(
-          'WAU',
-          stats.activeThisWeek.toString(),
-          'Weekly Active Users',
-          Icons.date_range,
-          Colors.green,
-        ),
-        _buildMetricCard(
-          'MAU',
-          stats.activeThisMonth.toString(),
-          'Monthly Active Users',
-          Icons.calendar_month,
-          Colors.orange,
-        ),
-        _buildMetricCard(
-          'Total',
-          stats.totalUsers.toString(),
-          'Total Registered',
-          Icons.people,
-          Colors.purple,
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final crossAxisCount = width >= 900 ? 4 : 2;
+        final aspectRatio = crossAxisCount == 4 ? 1.5 : 1.6;
+        return GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: crossAxisCount,
+          childAspectRatio: aspectRatio,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          children: [
+            _buildMetricCard(
+              'DAU',
+              stats.activeToday.toString(),
+              'Daily Active Users',
+              Icons.today,
+              Colors.blue,
+            ),
+            _buildMetricCard(
+              'WAU',
+              stats.activeThisWeek.toString(),
+              'Weekly Active Users',
+              Icons.date_range,
+              Colors.green,
+            ),
+            _buildMetricCard(
+              'MAU',
+              stats.activeThisMonth.toString(),
+              'Monthly Active Users',
+              Icons.calendar_month,
+              Colors.orange,
+            ),
+            _buildMetricCard(
+              'Total',
+              stats.totalUsers.toString(),
+              'Total Registered',
+              Icons.people,
+              Colors.purple,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -147,25 +163,34 @@ class AnalyticsScreen extends ConsumerWidget {
   ) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
-                color: color,
+            Icon(icon, color: color, size: 20),
+            const SizedBox(height: 2),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                value,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
               ),
             ),
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
+            ),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
               textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
             ),
           ],
         ),
@@ -180,20 +205,20 @@ class AnalyticsScreen extends ConsumerWidget {
           child: Card(
             color: Colors.green.shade50,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
                 children: [
-                  const Icon(Icons.person_add, color: Colors.green, size: 32),
-                  const SizedBox(height: 12),
+                  const Icon(Icons.person_add, color: Colors.green, size: 20),
+                  const SizedBox(height: 2),
                   Text(
                     stats.newUsersToday.toString(),
                     style: const TextStyle(
-                      fontSize: 32,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.green,
                     ),
                   ),
-                  const Text('New Users Today'),
+                  const Text('New Users Today', style: TextStyle(fontSize: 12)),
                 ],
               ),
             ),
@@ -204,20 +229,23 @@ class AnalyticsScreen extends ConsumerWidget {
           child: Card(
             color: Colors.blue.shade50,
             child: Padding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
               child: Column(
                 children: [
-                  const Icon(Icons.group_add, color: Colors.blue, size: 32),
-                  const SizedBox(height: 12),
+                  const Icon(Icons.group_add, color: Colors.blue, size: 20),
+                  const SizedBox(height: 2),
                   Text(
                     stats.newUsersThisWeek.toString(),
                     style: const TextStyle(
-                      fontSize: 32,
+                      fontSize: 20,
                       fontWeight: FontWeight.bold,
                       color: Colors.blue,
                     ),
                   ),
-                  const Text('New Users This Week'),
+                  const Text(
+                    'New Users This Week',
+                    style: TextStyle(fontSize: 12),
+                  ),
                 ],
               ),
             ),

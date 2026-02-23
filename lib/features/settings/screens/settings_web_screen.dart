@@ -17,6 +17,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
+import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
 /// Settings tab enum
 enum SettingsTab { general, account, hardware, billing }
@@ -631,6 +632,39 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           const SizedBox(height: 8),
           ...SettingsTab.values.map((tab) => _buildNavItem(tab)),
           const Spacer(),
+          // Super Admin button (only visible to admins)
+          if (ref.watch(isSuperAdminProvider))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              child: Material(
+                color: Colors.deepPurple.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+                child: InkWell(
+                  onTap: () => context.go('/super-admin'),
+                  borderRadius: BorderRadius.circular(8),
+                  child: const Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.admin_panel_settings,
+                          size: 20,
+                          color: Colors.deepPurple,
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          'Super Admin',
+                          style: TextStyle(
+                            color: Colors.deepPurple,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Logout button
           Padding(
             padding: const EdgeInsets.all(16),

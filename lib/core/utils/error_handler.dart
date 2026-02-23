@@ -2,10 +2,12 @@
 library;
 
 import 'dart:io' show Platform;
+import 'dart:math';
 
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:retaillite/core/services/connectivity_service.dart';
 import 'package:retaillite/core/services/error_logging_service.dart';
 
 /// Check if Crashlytics is supported (not web and not Windows)
@@ -79,37 +81,76 @@ class AppError implements Exception {
   String toString() => message;
 }
 
-/// Global error handler
-class ErrorHandler {
+/// Global error handler with full context extraction
+class ErrorHandler extends WidgetsBindingObserver {
   ErrorHandler._();
 
   static bool _initialized = false;
+  static final ErrorHandler _instance = ErrorHandler._();
+
+  /// Current app lifecycle state
+  static AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
+  static String get currentLifecycleState => _lifecycleState.name;
+
+  /// Session ID (generated once per app launch)
+  static late final String _sessionId;
 
   /// Initialize global error handling
   static void initialize() {
     if (_initialized) return;
 
-    // Handle Flutter errors (web uses different handling)
-    if (_supportsCrashlytics) {
-      // Mobile: Use Crashlytics
-      FlutterError.onError = (FlutterErrorDetails details) {
-        FlutterError.presentError(details);
+    // Generate session ID
+    _sessionId = _generateSessionId();
+    ErrorLoggingService.setSessionId(_sessionId);
+
+    // Register lifecycle observer
+    WidgetsBinding.instance.addObserver(_instance);
+
+    // Handle Flutter framework errors
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.presentError(details);
+
+      // Extract rich context from FlutterErrorDetails
+      final metadata = _extractFlutterErrorContext(details);
+
+      if (_supportsCrashlytics) {
+        // Mobile: Crashlytics + Firestore
         FirebaseCrashlytics.instance.recordFlutterError(details);
-        _logError(details.exception, details.stack);
-      };
-    } else {
-      // Web/Windows: Use console + Firestore logging
-      FlutterError.onError = (FlutterErrorDetails details) {
-        FlutterError.presentError(details);
-        _logError(details.exception, details.stack);
-      };
-    }
+      }
+
+      // ALL platforms: Log to Firestore with full context
+      ErrorLoggingService.logError(
+        error: details.exception,
+        stackTrace: details.stack,
+        severity: details.silent ? ErrorSeverity.warning : ErrorSeverity.error,
+        metadata: metadata,
+      );
+    };
 
     // Handle async errors (platform dispatcher)
     PlatformDispatcher.instance.onError = (error, stack) {
-      _logError(error, stack);
+      final metadata = _buildContextMetadata();
+      metadata['errorType'] = _parseErrorType(error.toString());
+
+      if (_supportsCrashlytics) {
+        FirebaseCrashlytics.instance.recordError(error, stack);
+      }
+
+      // ALL platforms: Firestore
+      ErrorLoggingService.logError(
+        error: error,
+        stackTrace: stack,
+        metadata: metadata,
+      );
       return true;
     };
+
+    // Listen for connectivity changes to flush offline queue
+    ConnectivityService.statusStream.listen((status) {
+      if (status == ConnectivityStatus.online) {
+        ErrorLoggingService.flushOfflineQueue();
+      }
+    });
 
     _initialized = true;
     debugPrint(
@@ -117,37 +158,131 @@ class ErrorHandler {
           ? "Web"
           : Platform.isWindows
           ? "Windows"
-          : "Native"} mode)',
+          : "Native"} mode, session: $_sessionId)',
     );
   }
 
-  /// Log error with platform-specific handling
-  static void _logError(dynamic error, StackTrace? stack) {
-    // Debug console logging
-    if (kDebugMode) {
-      debugPrint('═══════════════════════════════════════════');
-      debugPrint('ERROR: $error');
-      if (stack != null) {
-        debugPrint('STACK TRACE:');
-        debugPrint(stack.toString());
-      }
-      debugPrint('═══════════════════════════════════════════');
+  /// Extract rich context from FlutterErrorDetails
+  static Map<String, dynamic> _extractFlutterErrorContext(
+    FlutterErrorDetails details,
+  ) {
+    final metadata = _buildContextMetadata();
+
+    // Widget context (e.g., "while building MyWidget")
+    final context = details.context;
+    if (context != null) {
+      metadata['widgetContext'] = context.toString();
     }
 
-    // Platform-specific error reporting
-    if (kIsWeb) {
-      // Web: Log to Firestore
-      ErrorLoggingService.logError(error: error, stackTrace: stack);
-    } else if (_supportsCrashlytics) {
-      // Mobile: Log to Crashlytics (non-fatal)
-      FirebaseCrashlytics.instance.recordError(error, stack);
+    // Library (e.g., "rendering library", "widgets library")
+    if (details.library != null) {
+      metadata['library'] = details.library!;
     }
-    // Windows: Just console logging (Crashlytics not supported)
+
+    // Error type parsed from exception
+    metadata['errorType'] = _parseErrorType(details.exception.toString());
+
+    // Widget tree info from informationCollector
+    if (details.informationCollector != null) {
+      try {
+        final info = details.informationCollector!()
+            .map((node) => node.toString())
+            .join('\n');
+        // Truncate to 2000 chars to avoid bloating Firestore
+        metadata['widgetInfo'] = info.length > 2000
+            ? '${info.substring(0, 2000)}\n... (truncated)'
+            : info;
+      } catch (_) {
+        // informationCollector can throw
+      }
+    }
+
+    return metadata;
+  }
+
+  /// Build common context metadata (shared by all error types)
+  static Map<String, dynamic> _buildContextMetadata() {
+    final metadata = <String, dynamic>{};
+
+    // Screen size
+    try {
+      final views = WidgetsBinding.instance.renderViews;
+      if (views.isNotEmpty) {
+        final size = views.first.size;
+        metadata['screenWidth'] = size.width;
+        metadata['screenHeight'] = size.height;
+      }
+    } catch (_) {}
+
+    // Connectivity
+    metadata['connectivity'] = ConnectivityService.currentStatus.name;
+
+    // Lifecycle
+    metadata['lifecycleState'] = _lifecycleState.name;
+
+    // Build mode
+    metadata['buildMode'] = kReleaseMode
+        ? 'release'
+        : kProfileMode
+        ? 'profile'
+        : 'debug';
+
+    // Session
+    metadata['sessionId'] = _sessionId;
+
+    return metadata;
+  }
+
+  /// Parse error type from error message
+  static String _parseErrorType(String error) {
+    if (error.contains('RenderFlex overflowed')) return 'RenderFlex overflow';
+    if (error.contains('RenderBox was not laid out')) return 'Layout error';
+    if (error.contains('setState()')) return 'setState after dispose';
+    if (error.contains('Null check')) return 'Null check error';
+    if (error.contains('RangeError')) return 'Range error';
+    if (error.contains('TypeError')) return 'Type error';
+    if (error.contains('FormatException')) return 'Format exception';
+    if (error.contains('SocketException')) return 'Network error';
+    if (error.contains('TimeoutException')) return 'Timeout';
+    if (error.contains('FirebaseException')) return 'Firebase error';
+    if (error.contains('PlatformException')) return 'Platform error';
+    if (error.contains('LateInitializationError')) return 'Late init error';
+    if (error.contains('StateError')) return 'State error';
+    if (error.contains('NoSuchMethodError')) return 'Method not found';
+    // Fallback: first word up to colon or newline
+    final match = RegExp(r'^(\w+(?:Error|Exception)?)').firstMatch(error);
+    return match?.group(1) ?? 'Unknown';
+  }
+
+  /// Generate a simple session ID
+  static String _generateSessionId() {
+    final now = DateTime.now();
+    final random = Random().nextInt(0xFFFF).toRadixString(16).padLeft(4, '0');
+    return '${now.hour.toString().padLeft(2, '0')}'
+        '${now.minute.toString().padLeft(2, '0')}'
+        '-$random';
+  }
+
+  /// Lifecycle observer
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _lifecycleState = state;
   }
 
   /// Report a caught error (use this for try-catch blocks)
   static void report(dynamic error, [StackTrace? stack]) {
-    _logError(error, stack);
+    final metadata = _buildContextMetadata();
+    metadata['errorType'] = _parseErrorType(error.toString());
+
+    if (_supportsCrashlytics) {
+      FirebaseCrashlytics.instance.recordError(error, stack);
+    }
+
+    ErrorLoggingService.logError(
+      error: error,
+      stackTrace: stack,
+      metadata: metadata,
+    );
   }
 
   /// Report a non-fatal error with custom message
@@ -160,13 +295,17 @@ class ErrorHandler {
       debugPrint('⚠️ $message: $error');
     }
 
-    if (kIsWeb) {
-      ErrorLoggingService.logError(
-        error: '$message: $error',
-        stackTrace: stack,
-        severity: ErrorSeverity.warning,
-      );
-    } else if (_supportsCrashlytics) {
+    final metadata = _buildContextMetadata();
+    metadata['errorType'] = _parseErrorType(error.toString());
+
+    ErrorLoggingService.logError(
+      error: '$message: $error',
+      stackTrace: stack,
+      severity: ErrorSeverity.warning,
+      metadata: metadata,
+    );
+
+    if (_supportsCrashlytics) {
       FirebaseCrashlytics.instance.log(message);
       FirebaseCrashlytics.instance.recordError(error, stack);
     }

@@ -11,15 +11,21 @@ class AnalyticsService {
   AnalyticsService._();
 
   static final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
-  static final FirebaseCrashlytics _crashlytics = FirebaseCrashlytics.instance;
   static final FirebasePerformance _performance = FirebasePerformance.instance;
+
+  /// Crashlytics is NOT supported on web — guard all usage with [_hasCrashlytics]
+  static final bool _hasCrashlytics = !kIsWeb;
 
   // ==================== Initialization ====================
 
   /// Initialize all monitoring services
   static Future<void> initialize() async {
-    // Enable crashlytics collection
-    await _crashlytics.setCrashlyticsCollectionEnabled(!kDebugMode);
+    // Enable crashlytics collection (not supported on web)
+    if (_hasCrashlytics) {
+      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+        !kDebugMode,
+      );
+    }
 
     // Set default analytics consent
     await _analytics.setAnalyticsCollectionEnabled(true);
@@ -38,7 +44,9 @@ class AnalyticsService {
   }) async {
     if (userId != null) {
       await _analytics.setUserId(id: userId);
-      await _crashlytics.setUserIdentifier(userId);
+      if (_hasCrashlytics) {
+        await FirebaseCrashlytics.instance.setUserIdentifier(userId);
+      }
     }
 
     if (shopName != null) {
@@ -131,17 +139,21 @@ class AnalyticsService {
     String? reason,
     bool fatal = false,
   }) async {
-    await _crashlytics.recordError(
-      error,
-      stackTrace,
-      reason: reason,
-      fatal: fatal,
-    );
+    if (_hasCrashlytics) {
+      await FirebaseCrashlytics.instance.recordError(
+        error,
+        stackTrace,
+        reason: reason,
+        fatal: fatal,
+      );
+    }
   }
 
   /// Log a custom message to crashlytics
   static Future<void> log(String message) async {
-    await _crashlytics.log(message);
+    if (_hasCrashlytics) {
+      await FirebaseCrashlytics.instance.log(message);
+    }
   }
 
   // ==================== Performance Monitoring ====================

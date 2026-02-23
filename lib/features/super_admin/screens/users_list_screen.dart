@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/app_colors.dart';
+import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
@@ -29,13 +30,21 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
     final usersAsync = ref.watch(filteredUsersProvider);
     final searchQuery = ref.watch(usersSearchQueryProvider);
     final planFilter = ref.watch(usersPlanFilterProvider);
-    final isWide = MediaQuery.of(context).size.width > 600;
+    final isWide = MediaQuery.of(context).size.width >= 1024;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('All Users'),
         backgroundColor: Colors.deepPurple,
         foregroundColor: Colors.white,
+        leading: MediaQuery.of(context).size.width >= 1024
+            ? null
+            : IconButton(
+                icon: const Icon(Icons.menu),
+                onPressed: () {
+                  adminShellScaffoldKey.currentState?.openDrawer();
+                },
+              ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -97,9 +106,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                     hint: const Text('All Plans'),
                     underline: const SizedBox(),
                     items: [
-                      const DropdownMenuItem(
-                        child: Text('All Plans'),
-                      ),
+                      const DropdownMenuItem(child: Text('All Plans')),
                       ...SubscriptionPlan.values.map(
                         (plan) => DropdownMenuItem(
                           value: plan,
