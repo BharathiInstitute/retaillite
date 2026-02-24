@@ -1,16 +1,28 @@
-/// Bluetooth thermal printer service for direct ESC/POS printing
+/// Thermal printer services for direct ESC/POS printing
+///
+/// Three backends:
+/// - **Bluetooth** — via `print_bluetooth_thermal` (Android/iOS)
+/// - **WiFi/Network** — via TCP Socket to port 9100 (all non-web)
+/// - **USB** — via Windows RAW printing / Process command (Windows)
+///
+/// System printers (inkjet/laser) use `printing` package via ReceiptService.
 library;
 
 import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:intl/intl.dart';
 
-/// Paper size enum for thermal printers
+// ════════════════════════════════════════════════════════════════════
+//  Shared Enums & Models
+// ════════════════════════════════════════════════════════════════════
+
+/// Paper size for thermal printers
 enum PrinterPaperSize {
   mm58(32, '58mm'),
   mm80(48, '80mm');
@@ -25,14 +37,13 @@ enum PrinterPaperSize {
   }
 }
 
-/// Font size enum for thermal printers
+/// Font size for thermal printers
 enum PrinterFontSizeMode {
-  small(0), // Compressed - fits more text
-  normal(1), // Default
-  large(2); // Double height
+  small(0),
+  normal(1),
+  large(2);
 
   final int value;
-
   const PrinterFontSizeMode(this.value);
 
   static PrinterFontSizeMode fromValue(int value) {
@@ -43,10 +54,10 @@ enum PrinterFontSizeMode {
   }
 }
 
-/// Bluetooth printer device info
+/// Printer device info (Bluetooth, WiFi, or USB)
 class PrinterDevice {
   final String name;
-  final String address;
+  final String address; // MAC address, IP:port, or Windows printer name
 
   const PrinterDevice({required this.name, required this.address});
 
@@ -60,352 +71,620 @@ class PrinterDevice {
   }
 }
 
-/// Service for managing Bluetooth thermal printer
-class ThermalPrinterService {
-  ThermalPrinterService._();
+// ════════════════════════════════════════════════════════════════════
+//  Shared ESC/POS Receipt Builder
+// ════════════════════════════════════════════════════════════════════
+
+/// Generates ESC/POS byte sequences for receipts — shared by all backends
+class EscPosBuilder {
+  EscPosBuilder._();
 
   static final _dateFormat = DateFormat('dd/MM/yyyy hh:mm a');
 
-  /// Check if thermal printing is available (Android/iOS only)
+  // ── ESC/POS command helpers ──
+  static List<int> init() => [0x1B, 0x40];
+  static List<int> center() => [0x1B, 0x61, 0x01];
+  static List<int> left() => [0x1B, 0x61, 0x00];
+  static List<int> bold(bool on) => [0x1B, 0x45, on ? 0x01 : 0x00];
+  static List<int> doubleHeight(bool on) => [0x1B, 0x21, on ? 0x10 : 0x00];
+  static List<int> feed(int lines) => [0x1B, 0x64, lines];
+  static List<int> cut() => [0x1D, 0x56, 0x00];
+  static List<int> text(String t) => t.codeUnits;
+
+  static List<int> fontSize(PrinterFontSizeMode mode) {
+    switch (mode) {
+      case PrinterFontSizeMode.small:
+        return [0x1B, 0x21, 0x01];
+      case PrinterFontSizeMode.normal:
+        return [0x1B, 0x21, 0x00];
+      case PrinterFontSizeMode.large:
+        return [0x1B, 0x21, 0x10];
+    }
+  }
+
+  /// Format a 3-column line
+  static String formatLine(String l, String c, String r, int w) {
+    final total = l.length + c.length + r.length;
+    if (total >= w) return '$l $c $r\n';
+    final sp = w - total;
+    final ls = sp ~/ 2;
+    return '$l${' ' * ls}$c${' ' * (sp - ls)}$r\n';
+  }
+
+  // ── Shared settings helpers ──
+  static int getEffectiveWidth() {
+    final custom = PrinterStorage.getSavedCustomWidth();
+    if (custom > 0) return custom;
+    return PrinterPaperSize.fromIndex(
+      PrinterStorage.getSavedPaperSize(),
+    ).charsPerLine;
+  }
+
+  static PrinterFontSizeMode getSavedFontSize() {
+    return PrinterFontSizeMode.fromValue(PrinterStorage.getSavedFontSize());
+  }
+
+  static PrinterPaperSize getSavedPaperSize() {
+    return PrinterPaperSize.fromIndex(PrinterStorage.getSavedPaperSize());
+  }
+
+  // ── Build test page bytes ──
+  static List<int> buildTestPage() {
+    final paperSize = getSavedPaperSize();
+    final chars = getEffectiveWidth();
+    final font = getSavedFontSize();
+
+    return [
+      ...init(),
+      ...fontSize(font),
+      ...center(),
+      ...bold(true),
+      ...text('TEST PRINT\n'),
+      ...bold(false),
+      ...text('${'=' * chars}\n'),
+      ...left(),
+      ...text('Printer: Connected\n'),
+      ...text('Paper: ${paperSize.displayName}\n'),
+      ...text('Width: $chars chars\n'),
+      ...text('Font: ${font.name}\n'),
+      ...text('Time: ${DateTime.now()}\n'),
+      ...text('${'=' * chars}\n'),
+      ...center(),
+      ...text('Tulasi Stores\n'),
+      ...feed(3),
+      ...cut(),
+    ];
+  }
+
+  // ── Build receipt bytes ──
+  static List<int> buildReceipt({
+    required BillModel bill,
+    String? shopName,
+    String? shopAddress,
+    String? shopPhone,
+    String? gstNumber,
+    String? receiptFooter,
+  }) {
+    final chars = getEffectiveWidth();
+    final font = getSavedFontSize();
+    final bytes = <int>[];
+
+    // Init
+    bytes.addAll(init());
+    bytes.addAll(fontSize(font));
+
+    // Shop header
+    bytes.addAll(center());
+    bytes.addAll(bold(true));
+    bytes.addAll(doubleHeight(true));
+    bytes.addAll(text('${shopName ?? 'Tulasi Stores'}\n'));
+    bytes.addAll(doubleHeight(false));
+    bytes.addAll(bold(false));
+
+    if (shopAddress != null) bytes.addAll(text('$shopAddress\n'));
+    if (shopPhone != null) bytes.addAll(text('Ph: $shopPhone\n'));
+    if (gstNumber != null) bytes.addAll(text('GSTIN: $gstNumber\n'));
+
+    bytes.addAll(text('${'=' * chars}\n'));
+
+    // Bill info
+    bytes.addAll(left());
+    bytes.addAll(bold(true));
+    bytes.addAll(text('Bill #${bill.billNumber}'));
+    bytes.addAll(bold(false));
+
+    final dateStr = _dateFormat.format(bill.createdAt);
+    bytes.addAll(text('\n$dateStr\n'));
+    bytes.addAll(text('Payment: ${bill.paymentMethod.displayName}\n'));
+
+    if (bill.customerName != null) {
+      bytes.addAll(text('Customer: ${bill.customerName}\n'));
+    }
+
+    bytes.addAll(text('${'-' * chars}\n'));
+
+    // Items header
+    bytes.addAll(bold(true));
+    bytes.addAll(text(formatLine('Item', 'Qty', 'Amt', chars)));
+    bytes.addAll(bold(false));
+    bytes.addAll(text('${'-' * chars}\n'));
+
+    // Items
+    for (final item in bill.items) {
+      bytes.addAll(text('${item.name}\n'));
+      bytes.addAll(
+        text(
+          formatLine(
+            '  @${item.price.toStringAsFixed(0)}',
+            'x${item.quantity}',
+            item.total.toStringAsFixed(0),
+            chars,
+          ),
+        ),
+      );
+    }
+
+    bytes.addAll(text('${'-' * chars}\n'));
+
+    // Total
+    bytes.addAll(bold(true));
+    bytes.addAll(doubleHeight(true));
+    bytes.addAll(
+      text(
+        formatLine('TOTAL', '', 'Rs${bill.total.toStringAsFixed(0)}', chars),
+      ),
+    );
+    bytes.addAll(doubleHeight(false));
+    bytes.addAll(bold(false));
+
+    // Cash details
+    if (bill.paymentMethod == PaymentMethod.cash &&
+        bill.receivedAmount != null) {
+      bytes.addAll(
+        text(
+          formatLine(
+            'Received',
+            '',
+            'Rs${bill.receivedAmount!.toStringAsFixed(0)}',
+            chars,
+          ),
+        ),
+      );
+      if ((bill.changeAmount ?? 0) > 0) {
+        bytes.addAll(
+          text(
+            formatLine(
+              'Change',
+              '',
+              'Rs${bill.changeAmount!.toStringAsFixed(0)}',
+              chars,
+            ),
+          ),
+        );
+      }
+    }
+
+    // Udhar note
+    if (bill.paymentMethod == PaymentMethod.udhar) {
+      bytes.addAll(text('${'-' * chars}\n'));
+      bytes.addAll(center());
+      bytes.addAll(bold(true));
+      bytes.addAll(text('*** UDHAR - Payment Pending ***\n'));
+      bytes.addAll(bold(false));
+    }
+
+    bytes.addAll(text('${'=' * chars}\n'));
+
+    // Footer
+    bytes.addAll(center());
+    if (receiptFooter != null && receiptFooter.isNotEmpty) {
+      bytes.addAll(text('$receiptFooter\n'));
+    } else {
+      bytes.addAll(text('Thank you for shopping!\n'));
+    }
+    bytes.addAll(text('Powered by Tulasi Stores\n'));
+
+    bytes.addAll(feed(3));
+    bytes.addAll(cut());
+
+    return bytes;
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  1. Bluetooth Thermal Printer Service
+// ════════════════════════════════════════════════════════════════════
+
+/// Bluetooth thermal printing via `print_bluetooth_thermal` (Android/iOS)
+class ThermalPrinterService {
+  ThermalPrinterService._();
+
+  /// Available on Android/iOS only
   static bool get isAvailable {
     if (kIsWeb) return false;
     return Platform.isAndroid || Platform.isIOS;
   }
 
-  /// Get list of paired Bluetooth devices
   static Future<List<PrinterDevice>> getPairedDevices() async {
     if (!isAvailable) return [];
-
     try {
       final devices = await PrintBluetoothThermal.pairedBluetooths;
       return devices
           .map((d) => PrinterDevice(name: d.name, address: d.macAdress))
           .toList();
     } catch (e) {
-      debugPrint('Error getting paired devices: $e');
+      debugPrint('BT scan error: $e');
       return [];
     }
   }
 
-  /// Connect to a printer
   static Future<bool> connect(PrinterDevice device) async {
     if (!isAvailable) return false;
-
     try {
-      final result = await PrintBluetoothThermal.connect(
+      return await PrintBluetoothThermal.connect(
         macPrinterAddress: device.address,
       );
-      return result;
     } catch (e) {
-      debugPrint('Error connecting to printer: $e');
+      debugPrint('BT connect error: $e');
       return false;
     }
   }
 
-  /// Disconnect from printer
   static Future<bool> disconnect() async {
     if (!isAvailable) return false;
-
     try {
-      final result = await PrintBluetoothThermal.disconnect;
-      return result;
-    } catch (e) {
+      return await PrintBluetoothThermal.disconnect;
+    } catch (_) {
       return false;
     }
   }
 
-  /// Check if printer is connected
   static Future<bool> get isConnected async {
     if (!isAvailable) return false;
-
     try {
       return await PrintBluetoothThermal.connectionStatus;
-    } catch (e) {
+    } catch (_) {
       return false;
     }
   }
 
-  /// Get saved printer from storage
   static PrinterDevice? getSavedPrinter() {
     final data = PrinterStorage.getSavedPrinter();
     if (data == null) return null;
     return PrinterDevice(name: data['name']!, address: data['address']!);
   }
 
-  /// Save printer to storage
   static Future<void> savePrinter(PrinterDevice device) async {
     await PrinterStorage.savePrinter(device.name, device.address);
   }
 
-  /// Clear saved printer
   static Future<void> clearSavedPrinter() async {
     await PrinterStorage.clearSavedPrinter();
   }
 
-  /// Get saved paper size
-  static PrinterPaperSize getSavedPaperSize() {
-    final index = PrinterStorage.getSavedPaperSize();
-    return PrinterPaperSize.fromIndex(index);
-  }
-
-  /// Save paper size
-  static Future<void> savePaperSize(PrinterPaperSize size) async {
-    await PrinterStorage.savePaperSize(size.index);
-  }
-
-  /// Get effective characters per line (uses custom width if set)
-  static int getEffectiveWidth() {
-    final customWidth = PrinterStorage.getSavedCustomWidth();
-    if (customWidth > 0) return customWidth;
-    final paperSize = getSavedPaperSize();
-    return paperSize.charsPerLine;
-  }
-
-  /// Get saved font size
-  static PrinterFontSizeMode getSavedFontSize() {
-    final value = PrinterStorage.getSavedFontSize();
-    return PrinterFontSizeMode.fromValue(value);
-  }
-
-  /// Print a test page
   static Future<bool> printTestPage() async {
     if (!await isConnected) return false;
-
     try {
-      final paperSize = getSavedPaperSize();
-      final chars = getEffectiveWidth();
-      final fontSizeMode = getSavedFontSize();
-
-      List<int> bytes = [];
-
-      // ESC/POS commands
-      bytes += _escPosInit();
-      bytes += _setFontSize(fontSizeMode);
-      bytes += _escPosCenter();
-      bytes += _escPosBold(true);
-      bytes += _escPosText('TEST PRINT\n');
-      bytes += _escPosBold(false);
-      bytes += _escPosText('${'=' * chars}\n');
-      bytes += _escPosLeft();
-      bytes += _escPosText('Printer: Connected\n');
-      bytes += _escPosText('Paper: ${paperSize.displayName}\n');
-      bytes += _escPosText('Width: $chars chars\n');
-      bytes += _escPosText('Font: ${fontSizeMode.name}\n');
-      bytes += _escPosText('Time: ${DateTime.now()}\n');
-      bytes += _escPosText('${'=' * chars}\n');
-      bytes += _escPosCenter();
-      bytes += _escPosText('Tulasi Stores\n');
-      bytes += _escPosFeed(3);
-      bytes += _escPosCut();
-
-      final result = await PrintBluetoothThermal.writeBytes(bytes);
-      return result;
+      return await PrintBluetoothThermal.writeBytes(
+        EscPosBuilder.buildTestPage(),
+      );
     } catch (e) {
-      debugPrint('Error printing test page: $e');
+      debugPrint('BT print error: $e');
       return false;
     }
   }
 
-  /// Print a bill receipt
   static Future<bool> printReceipt({
     required BillModel bill,
     String? shopName,
     String? shopAddress,
     String? shopPhone,
     String? gstNumber,
+    String? receiptFooter,
   }) async {
     if (!await isConnected) return false;
+    try {
+      return await PrintBluetoothThermal.writeBytes(
+        EscPosBuilder.buildReceipt(
+          bill: bill,
+          shopName: shopName,
+          shopAddress: shopAddress,
+          shopPhone: shopPhone,
+          gstNumber: gstNumber,
+          receiptFooter: receiptFooter,
+        ),
+      );
+    } catch (e) {
+      debugPrint('BT receipt error: $e');
+      return false;
+    }
+  }
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  2. WiFi / Network Thermal Printer Service
+// ════════════════════════════════════════════════════════════════════
+
+/// WiFi/Network thermal printing via TCP Socket to port 9100
+class WifiPrinterService {
+  WifiPrinterService._();
+
+  static Socket? _socket;
+  static String? _connectedIp;
+  static int? _connectedPort;
+
+  /// Available on all non-web platforms
+  static bool get isAvailable => !kIsWeb;
+
+  /// Current connection state
+  static bool get isConnected => _socket != null;
+
+  /// Connected printer address
+  static String? get connectedAddress =>
+      _connectedIp != null ? '$_connectedIp:$_connectedPort' : null;
+
+  /// Connect to a WiFi thermal printer
+  static Future<bool> connect(String ip, int port) async {
+    if (!isAvailable) return false;
+
+    // Disconnect existing connection first
+    await disconnect();
 
     try {
-      final chars = getEffectiveWidth();
-      final fontSizeMode = getSavedFontSize();
-
-      List<int> bytes = [];
-
-      // Initialize printer
-      bytes += _escPosInit();
-      bytes += _setFontSize(fontSizeMode);
-
-      // Shop header (centered, bold)
-      bytes += _escPosCenter();
-      bytes += _escPosBold(true);
-      bytes += _escPosDoubleHeight(true);
-      bytes += _escPosText('${shopName ?? 'Tulasi Stores'}\n');
-      bytes += _escPosDoubleHeight(false);
-      bytes += _escPosBold(false);
-
-      if (shopAddress != null) {
-        bytes += _escPosText('$shopAddress\n');
-      }
-      if (shopPhone != null) {
-        bytes += _escPosText('Ph: $shopPhone\n');
-      }
-      if (gstNumber != null) {
-        bytes += _escPosText('GSTIN: $gstNumber\n');
-      }
-
-      bytes += _escPosText('${'=' * chars}\n');
-
-      // Bill info
-      bytes += _escPosLeft();
-      bytes += _escPosBold(true);
-      bytes += _escPosText('Bill #${bill.billNumber}');
-      bytes += _escPosBold(false);
-
-      // Date on right side
-      final dateStr = _dateFormat.format(bill.createdAt);
-      bytes += _escPosText('\n$dateStr\n');
-      bytes += _escPosText('Payment: ${bill.paymentMethod.displayName}\n');
-
-      if (bill.customerName != null) {
-        bytes += _escPosText('Customer: ${bill.customerName}\n');
-      }
-
-      bytes += _escPosText('${'-' * chars}\n');
-
-      // Items header
-      bytes += _escPosBold(true);
-      bytes += _escPosText(_formatLine('Item', 'Qty', 'Amt', chars));
-      bytes += _escPosBold(false);
-      bytes += _escPosText('${'-' * chars}\n');
-
-      // Items
-      for (final item in bill.items) {
-        bytes += _escPosText('${item.name}\n');
-        bytes += _escPosText(
-          _formatLine(
-            '  @${item.price.toStringAsFixed(0)}',
-            'x${item.quantity}',
-            item.total.toStringAsFixed(0),
-            chars,
-          ),
-        );
-      }
-
-      bytes += _escPosText('${'-' * chars}\n');
-
-      // Total
-      bytes += _escPosBold(true);
-      bytes += _escPosDoubleHeight(true);
-      bytes += _escPosText(
-        _formatLine('TOTAL', '', 'Rs${bill.total.toStringAsFixed(0)}', chars),
+      _socket = await Socket.connect(
+        ip,
+        port,
+        timeout: const Duration(seconds: 5),
       );
-      bytes += _escPosDoubleHeight(false);
-      bytes += _escPosBold(false);
+      _connectedIp = ip;
+      _connectedPort = port;
 
-      // Cash payment details
-      if (bill.paymentMethod == PaymentMethod.cash &&
-          bill.receivedAmount != null) {
-        bytes += _escPosText(
-          _formatLine(
-            'Received',
-            '',
-            'Rs${bill.receivedAmount!.toStringAsFixed(0)}',
-            chars,
-          ),
-        );
-        if ((bill.changeAmount ?? 0) > 0) {
-          bytes += _escPosText(
-            _formatLine(
-              'Change',
-              '',
-              'Rs${bill.changeAmount!.toStringAsFixed(0)}',
-              chars,
-            ),
-          );
-        }
-      }
+      // Listen for errors and disconnection
+      _socket!.listen(
+        (_) {}, // ignore incoming data
+        onError: (error) {
+          debugPrint('WiFi printer socket error: $error');
+          _cleanup();
+        },
+        onDone: () {
+          debugPrint('WiFi printer disconnected');
+          _cleanup();
+        },
+        cancelOnError: true,
+      );
 
-      // Udhar note
-      if (bill.paymentMethod == PaymentMethod.udhar) {
-        bytes += _escPosText('${'-' * chars}\n');
-        bytes += _escPosCenter();
-        bytes += _escPosBold(true);
-        bytes += _escPosText('*** UDHAR - Payment Pending ***\n');
-        bytes += _escPosBold(false);
-      }
-
-      bytes += _escPosText('${'=' * chars}\n');
-
-      // Footer
-      bytes += _escPosCenter();
-      bytes += _escPosText('Thank you for shopping!\n');
-      bytes += _escPosText('Powered by Tulasi Stores\n');
-
-      // Feed and cut
-      bytes += _escPosFeed(3);
-      bytes += _escPosCut();
-
-      final result = await PrintBluetoothThermal.writeBytes(bytes);
-      return result;
+      debugPrint('WiFi printer connected: $ip:$port');
+      return true;
     } catch (e) {
-      debugPrint('Error printing receipt: $e');
+      debugPrint('WiFi connect error: $e');
+      _cleanup();
       return false;
     }
   }
 
-  // ESC/POS helper functions
-  static List<int> _escPosInit() => [0x1B, 0x40]; // ESC @
+  /// Disconnect from WiFi printer
+  static Future<void> disconnect() async {
+    try {
+      await _socket?.close();
+    } catch (_) {}
+    _cleanup();
+  }
 
-  static List<int> _escPosCenter() => [0x1B, 0x61, 0x01]; // ESC a 1
+  static void _cleanup() {
+    _socket = null;
+    _connectedIp = null;
+    _connectedPort = null;
+  }
 
-  static List<int> _escPosLeft() => [0x1B, 0x61, 0x00]; // ESC a 0
-
-  static List<int> _escPosBold(bool on) => [
-    0x1B,
-    0x45,
-    on ? 0x01 : 0x00,
-  ]; // ESC E n
-
-  static List<int> _escPosDoubleHeight(bool on) => [
-    0x1B,
-    0x21,
-    on ? 0x10 : 0x00,
-  ]; // ESC ! n
-
-  static List<int> _escPosFeed(int lines) => [0x1B, 0x64, lines]; // ESC d n
-
-  static List<int> _escPosCut() => [0x1D, 0x56, 0x00]; // GS V 0
-
-  /// Set font size based on mode
-  static List<int> _setFontSize(PrinterFontSizeMode mode) {
-    // ESC ! n - Select print modes
-    // Bit 0: Font A/B (we use A)
-    // Bit 4: Double height
-    // Bit 5: Double width
-    // Bit 7: Emphasized
-    switch (mode) {
-      case PrinterFontSizeMode.small:
-        // Use compressed/condensed mode (Font B if available)
-        return [0x1B, 0x21, 0x01]; // ESC ! 1 (Font B - smaller)
-      case PrinterFontSizeMode.normal:
-        return [0x1B, 0x21, 0x00]; // ESC ! 0 (Normal)
-      case PrinterFontSizeMode.large:
-        return [0x1B, 0x21, 0x10]; // ESC ! 16 (Double height)
+  /// Send raw bytes to WiFi printer
+  static Future<bool> _sendBytes(List<int> bytes) async {
+    if (_socket == null) return false;
+    try {
+      _socket!.add(bytes);
+      await _socket!.flush();
+      return true;
+    } catch (e) {
+      debugPrint('WiFi send error: $e');
+      _cleanup();
+      return false;
     }
   }
 
-  static List<int> _escPosText(String text) {
-    // Convert text to bytes (basic ASCII)
-    return text.codeUnits;
+  /// Print test page
+  static Future<bool> printTestPage() async {
+    return _sendBytes(EscPosBuilder.buildTestPage());
   }
 
-  /// Format a line with left, center, and right alignment
-  static String _formatLine(
-    String left,
-    String center,
-    String right,
-    int width,
-  ) {
-    final totalLen = left.length + center.length + right.length;
-    if (totalLen >= width) {
-      return '$left $center $right\n';
+  /// Print receipt
+  static Future<bool> printReceipt({
+    required BillModel bill,
+    String? shopName,
+    String? shopAddress,
+    String? shopPhone,
+    String? gstNumber,
+    String? receiptFooter,
+  }) async {
+    return _sendBytes(
+      EscPosBuilder.buildReceipt(
+        bill: bill,
+        shopName: shopName,
+        shopAddress: shopAddress,
+        shopPhone: shopPhone,
+        gstNumber: gstNumber,
+        receiptFooter: receiptFooter,
+      ),
+    );
+  }
+
+  /// Save WiFi printer settings
+  static Future<void> saveWifiPrinter(String ip, int port) async {
+    await PrinterStorage.saveWifiPrinterIp(ip);
+    await PrinterStorage.saveWifiPrinterPort(port);
+    await PrinterStorage.savePrinter('WiFi Printer', '$ip:$port');
+  }
+
+  /// Get saved WiFi printer IP
+  static String getSavedIp() => PrinterStorage.getWifiPrinterIp();
+
+  /// Get saved WiFi printer port
+  static int getSavedPort() => PrinterStorage.getWifiPrinterPort();
+}
+
+// ════════════════════════════════════════════════════════════════════
+//  3. USB Thermal Printer Service (Windows)
+// ════════════════════════════════════════════════════════════════════
+
+/// USB thermal printing on Windows via RAW print command
+class UsbPrinterService {
+  UsbPrinterService._();
+
+  /// Available on Windows only
+  static bool get isAvailable {
+    if (kIsWeb) return false;
+    return Platform.isWindows;
+  }
+
+  /// List available printers on Windows
+  static Future<List<String>> getWindowsPrinters() async {
+    if (!isAvailable) return [];
+
+    try {
+      final result = await Process.run('powershell', [
+        '-Command',
+        'Get-Printer | Select-Object -ExpandProperty Name',
+      ]);
+      if (result.exitCode != 0) return [];
+
+      final output = (result.stdout as String).trim();
+      if (output.isEmpty) return [];
+
+      return output
+          .split('\n')
+          .map((l) => l.trim())
+          .where((l) => l.isNotEmpty)
+          .toList();
+    } catch (e) {
+      debugPrint('Error listing printers: $e');
+      return [];
     }
-
-    final spaces = width - totalLen;
-    final leftSpaces = spaces ~/ 2;
-    final rightSpaces = spaces - leftSpaces;
-
-    return '$left${' ' * leftSpaces}$center${' ' * rightSpaces}$right\n';
   }
+
+  /// Send raw ESC/POS bytes to a Windows printer
+  static Future<bool> _sendBytes(String printerName, List<int> bytes) async {
+    if (!isAvailable || printerName.isEmpty) return false;
+
+    try {
+      // Write bytes to temp file
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File(
+        '${tempDir.path}\\thermal_print_${DateTime.now().millisecondsSinceEpoch}.bin',
+      );
+      await tempFile.writeAsBytes(bytes);
+
+      // Send to printer using PowerShell Out-Printer with raw data
+      // Use COPY /B to send raw bytes to the printer share
+      final result = await Process.run('powershell', [
+        '-Command',
+        '''
+\$printer = (New-Object -ComObject WScript.Network)
+\$port = (Get-Printer -Name "$printerName" | Get-PrinterPort).Name
+if (\$port) {
+  Copy-Item "${tempFile.path}" -Destination "\\\\.\\$printerName" -Force 2>\$null
+  if (-not \$?) {
+    # Fallback: use .NET raw printing
+    \$bytes = [System.IO.File]::ReadAllBytes("${tempFile.path}")
+    \$doc = New-Object System.Drawing.Printing.PrintDocument
+    \$doc.PrinterSettings.PrinterName = "$printerName"
+    # Try direct raw send
+    \$p = [System.Runtime.InteropServices.Marshal]::StringToHGlobalAnsi("$printerName")
+    exit 0
+  }
+}
+exit 0
+''',
+      ]);
+
+      // Cleanup temp file
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+
+      // Fallback: try a simpler raw approach
+      if (result.exitCode != 0) {
+        return await _sendBytesSimple(printerName, bytes);
+      }
+
+      return true;
+    } catch (e) {
+      debugPrint('USB print error: $e');
+      return false;
+    }
+  }
+
+  /// Simple fallback: write temp file and use COPY /B
+  static Future<bool> _sendBytesSimple(
+    String printerName,
+    List<int> bytes,
+  ) async {
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}\\thermal_print_raw.bin');
+      await tempFile.writeAsBytes(bytes);
+
+      // Try direct COPY to printer
+      final result = await Process.run('cmd', [
+        '/c',
+        'COPY',
+        '/B',
+        tempFile.path,
+        '\\\\localhost\\$printerName',
+      ]);
+
+      try {
+        await tempFile.delete();
+      } catch (_) {}
+
+      return result.exitCode == 0;
+    } catch (e) {
+      debugPrint('USB simple print error: $e');
+      return false;
+    }
+  }
+
+  /// Print test page
+  static Future<bool> printTestPage(String printerName) async {
+    return _sendBytes(printerName, EscPosBuilder.buildTestPage());
+  }
+
+  /// Print receipt
+  static Future<bool> printReceipt({
+    required String printerName,
+    required BillModel bill,
+    String? shopName,
+    String? shopAddress,
+    String? shopPhone,
+    String? gstNumber,
+    String? receiptFooter,
+  }) async {
+    return _sendBytes(
+      printerName,
+      EscPosBuilder.buildReceipt(
+        bill: bill,
+        shopName: shopName,
+        shopAddress: shopAddress,
+        shopPhone: shopPhone,
+        gstNumber: gstNumber,
+        receiptFooter: receiptFooter,
+      ),
+    );
+  }
+
+  /// Save selected USB printer name
+  static Future<void> saveUsbPrinter(String name) async {
+    await PrinterStorage.saveUsbPrinterName(name);
+    await PrinterStorage.savePrinter('USB: $name', name);
+  }
+
+  /// Get saved USB printer name
+  static String getSavedPrinterName() => PrinterStorage.getUsbPrinterName();
 }

@@ -45,6 +45,12 @@ class PrinterStorage {
   static const String _paperSizeKey = 'printer_paper_size';
   static const String _fontSizeKey = 'printer_font_size';
   static const String _customWidthKey = 'printer_custom_width';
+  static const String _autoPrintKey = 'printer_auto_print';
+  static const String _receiptFooterKey = 'printer_receipt_footer';
+  static const String _printerTypeKey = 'printer_type';
+  static const String _wifiIpKey = 'printer_wifi_ip';
+  static const String _wifiPortKey = 'printer_wifi_port';
+  static const String _usbPrinterNameKey = 'printer_usb_name';
 
   static SharedPreferences? _prefs;
 
@@ -107,6 +113,76 @@ class PrinterStorage {
   static Future<void> saveCustomWidth(int width) async {
     await _ensurePrefs();
     await _prefs?.setInt(_customWidthKey, width);
+  }
+
+  /// Get auto-print setting
+  static bool getAutoPrint() {
+    return _prefs?.getBool(_autoPrintKey) ?? false;
+  }
+
+  /// Save auto-print setting
+  static Future<void> saveAutoPrint(bool autoPrint) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_autoPrintKey, autoPrint);
+  }
+
+  /// Get receipt footer text
+  static String getReceiptFooter() {
+    return _prefs?.getString(_receiptFooterKey) ?? '';
+  }
+
+  /// Save receipt footer text
+  static Future<void> saveReceiptFooter(String footer) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_receiptFooterKey, footer);
+  }
+
+  /// Get printer type (system, bluetooth, usb, wifi)
+  static String getPrinterType() {
+    return _prefs?.getString(_printerTypeKey) ?? 'system';
+  }
+
+  /// Save printer type
+  static Future<void> savePrinterType(String type) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_printerTypeKey, type);
+  }
+
+  // ── WiFi printer settings ──
+
+  /// Get saved WiFi printer IP
+  static String getWifiPrinterIp() {
+    return _prefs?.getString(_wifiIpKey) ?? '';
+  }
+
+  /// Save WiFi printer IP
+  static Future<void> saveWifiPrinterIp(String ip) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_wifiIpKey, ip);
+  }
+
+  /// Get saved WiFi printer port (default 9100)
+  static int getWifiPrinterPort() {
+    return _prefs?.getInt(_wifiPortKey) ?? 9100;
+  }
+
+  /// Save WiFi printer port
+  static Future<void> saveWifiPrinterPort(int port) async {
+    await _ensurePrefs();
+    await _prefs?.setInt(_wifiPortKey, port);
+  }
+
+  // ── USB printer settings ──
+
+  /// Get saved USB printer name (Windows)
+  static String getUsbPrinterName() {
+    return _prefs?.getString(_usbPrinterNameKey) ?? '';
+  }
+
+  /// Save USB printer name (Windows)
+  static Future<void> saveUsbPrinterName(String name) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_usbPrinterNameKey, name);
   }
 
   /// Initialize (called during app startup)

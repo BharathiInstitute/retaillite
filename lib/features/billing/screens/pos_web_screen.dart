@@ -17,7 +17,9 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/reports/providers/reports_provider.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
+import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
+import 'package:retaillite/features/settings/providers/settings_provider.dart';
 
 class PosWebScreen extends ConsumerStatefulWidget {
   const PosWebScreen({super.key});
@@ -734,6 +736,12 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
         ref.read(cartProvider.notifier).clearCart();
 
+        // Auto-print if enabled
+        final printerState = ref.read(printerProvider);
+        if (printerState.autoPrint) {
+          _autoPrintReceipt(bill);
+        }
+
         // Show success/receipt dialog
         _showBillCompleteDialog(bill);
       }
@@ -753,11 +761,108 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
     }
   }
 
+  /// Print receipt using the configured printer type
+  Future<void> _printReceipt(
+    BillModel bill,
+    ScaffoldMessengerState scaffoldMessenger,
+  ) async {
+    try {
+      final user = ref.read(currentUserProvider);
+      final printerState = ref.read(printerProvider);
+      final footer = printerState.receiptFooter.isNotEmpty
+          ? printerState.receiptFooter
+          : null;
+
+      bool? directSuccess;
+
+      switch (printerState.printerType) {
+        case PrinterTypeOption.bluetooth:
+          if (ThermalPrinterService.isAvailable) {
+            directSuccess = await ThermalPrinterService.printReceipt(
+              bill: bill,
+              shopName: user?.shopName,
+              shopAddress: user?.address,
+              shopPhone: user?.phone,
+              gstNumber: user?.gstNumber,
+              receiptFooter: footer,
+            );
+          }
+          break;
+
+        case PrinterTypeOption.wifi:
+          if (WifiPrinterService.isConnected) {
+            directSuccess = await WifiPrinterService.printReceipt(
+              bill: bill,
+              shopName: user?.shopName,
+              shopAddress: user?.address,
+              shopPhone: user?.phone,
+              gstNumber: user?.gstNumber,
+              receiptFooter: footer,
+            );
+          }
+          break;
+
+        case PrinterTypeOption.usb:
+          final usbName = UsbPrinterService.getSavedPrinterName();
+          if (usbName.isNotEmpty) {
+            directSuccess = await UsbPrinterService.printReceipt(
+              printerName: usbName,
+              bill: bill,
+              shopName: user?.shopName,
+              shopAddress: user?.address,
+              shopPhone: user?.phone,
+              gstNumber: user?.gstNumber,
+              receiptFooter: footer,
+            );
+          }
+          break;
+
+        case PrinterTypeOption.system:
+          await ReceiptService.printReceipt(
+            bill: bill,
+            shopName: user?.shopName,
+            shopAddress: user?.address,
+            shopPhone: user?.phone,
+            gstNumber: user?.gstNumber,
+            receiptFooter: footer,
+          );
+          return;
+      }
+
+      if (directSuccess == false) {
+        scaffoldMessenger.showSnackBar(
+          const SnackBar(content: Text('Print failed: Printer not connected')),
+        );
+      } else if (directSuccess == null) {
+        await ReceiptService.printReceipt(
+          bill: bill,
+          shopName: user?.shopName,
+          shopAddress: user?.address,
+          shopPhone: user?.phone,
+          gstNumber: user?.gstNumber,
+          receiptFooter: footer,
+        );
+      }
+    } catch (e) {
+      scaffoldMessenger.showSnackBar(
+        SnackBar(content: Text('Print failed: $e')),
+      );
+    }
+  }
+
+  /// Auto-print receipt silently
+  void _autoPrintReceipt(BillModel bill) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final scaffoldMessenger = ScaffoldMessenger.of(context);
+      await _printReceipt(bill, scaffoldMessenger);
+    });
+  }
+
   void _showBillCompleteDialog(BillModel bill) {
     showDialog(
       context: context,
       builder: (dialogContext) {
-        final user = ref.read(currentUserProvider);
         return AlertDialog(
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -791,19 +896,7 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                       onPressed: () async {
                         final scaffoldMessenger = ScaffoldMessenger.of(context);
                         Navigator.pop(dialogContext);
-                        try {
-                          await ReceiptService.printReceipt(
-                            bill: bill,
-                            shopName: user?.shopName,
-                            shopAddress: user?.address,
-                            shopPhone: user?.phone,
-                            gstNumber: user?.gstNumber,
-                          );
-                        } catch (e) {
-                          scaffoldMessenger.showSnackBar(
-                            SnackBar(content: Text('Print failed: $e')),
-                          );
-                        }
+                        await _printReceipt(bill, scaffoldMessenger);
                       },
                       icon: const Icon(Icons.print),
                       label: const Text('Print'),

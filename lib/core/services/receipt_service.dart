@@ -4,6 +4,7 @@ library;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:intl/intl.dart';
 
@@ -14,6 +15,17 @@ class ReceiptService {
   static final _dateFormat = DateFormat('dd/MM/yyyy');
   static final _timeFormat = DateFormat('hh:mm a');
 
+  /// Get PdfPageFormat from paper size index
+  static PdfPageFormat _getPageFormat(int paperSizeIndex) {
+    switch (paperSizeIndex) {
+      case 0:
+        return PdfPageFormat.roll57; // 58mm
+      case 1:
+      default:
+        return PdfPageFormat.roll80; // 80mm
+    }
+  }
+
   /// Generate receipt PDF
   static Future<pw.Document> generateReceipt({
     required BillModel bill,
@@ -22,12 +34,16 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    int? paperSizeIndex,
   }) async {
     final pdf = pw.Document();
+    final effectivePaperSize =
+        paperSizeIndex ?? PrinterStorage.getSavedPaperSize();
+    final pageFormat = _getPageFormat(effectivePaperSize);
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.roll80, // 80mm thermal printer
+        pageFormat: pageFormat,
         build: (context) => _buildReceipt(
           bill: bill,
           shopName: shopName ?? 'Tulasi Stores',
@@ -50,7 +66,10 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    int? paperSizeIndex,
   }) async {
+    final effectivePaperSize =
+        paperSizeIndex ?? PrinterStorage.getSavedPaperSize();
     final pdf = await generateReceipt(
       bill: bill,
       shopName: shopName,
@@ -58,12 +77,13 @@ class ReceiptService {
       shopPhone: shopPhone,
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
+      paperSizeIndex: effectivePaperSize,
     );
 
     return await Printing.layoutPdf(
       onLayout: (format) => pdf.save(),
       name: 'Bill_${bill.billNumber}',
-      format: PdfPageFormat.roll80,
+      format: _getPageFormat(effectivePaperSize),
     );
   }
 
@@ -75,6 +95,7 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    int? paperSizeIndex,
   }) async {
     final pdf = await generateReceipt(
       bill: bill,
@@ -83,6 +104,7 @@ class ReceiptService {
       shopPhone: shopPhone,
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
+      paperSizeIndex: paperSizeIndex,
     );
 
     await Printing.sharePdf(

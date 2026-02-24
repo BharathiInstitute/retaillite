@@ -258,6 +258,28 @@ enum PrinterFontSize {
   }
 }
 
+/// Printer type enum
+enum PrinterTypeOption {
+  system('System Printer', 'Uses system print dialog (USB, WiFi, network)'),
+  bluetooth('Bluetooth', 'Direct ESC/POS via Bluetooth'),
+  usb('USB', 'Direct ESC/POS via USB cable'),
+  wifi('WiFi', 'Direct ESC/POS via network');
+
+  final String label;
+  final String description;
+  const PrinterTypeOption(this.label, this.description);
+
+  /// Whether this type uses direct ESC/POS thermal printing
+  bool get isThermal => this != system;
+
+  static PrinterTypeOption fromString(String value) {
+    return PrinterTypeOption.values.firstWhere(
+      (t) => t.name == value,
+      orElse: () => PrinterTypeOption.system,
+    );
+  }
+}
+
 /// Printer state
 class PrinterState {
   final bool isConnected;
@@ -268,6 +290,9 @@ class PrinterState {
   final int customWidth; // 0 = auto, 28-52 = custom chars per line
   final bool isScanning;
   final String? error;
+  final PrinterTypeOption printerType;
+  final bool autoPrint;
+  final String receiptFooter;
 
   const PrinterState({
     this.isConnected = false,
@@ -278,6 +303,9 @@ class PrinterState {
     this.customWidth = 0, // Default auto
     this.isScanning = false,
     this.error,
+    this.printerType = PrinterTypeOption.system,
+    this.autoPrint = false,
+    this.receiptFooter = '',
   });
 
   String get paperSizeLabel => paperSizeIndex == 0 ? '58mm' : '80mm';
@@ -305,6 +333,9 @@ class PrinterState {
     int? customWidth,
     bool? isScanning,
     String? error,
+    PrinterTypeOption? printerType,
+    bool? autoPrint,
+    String? receiptFooter,
   }) {
     return PrinterState(
       isConnected: isConnected ?? this.isConnected,
@@ -315,6 +346,9 @@ class PrinterState {
       customWidth: customWidth ?? this.customWidth,
       isScanning: isScanning ?? this.isScanning,
       error: error,
+      printerType: printerType ?? this.printerType,
+      autoPrint: autoPrint ?? this.autoPrint,
+      receiptFooter: receiptFooter ?? this.receiptFooter,
     );
   }
 }
@@ -334,6 +368,11 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
     final paperSize = PrinterStorage.getSavedPaperSize();
     final fontSize = PrinterStorage.getSavedFontSize();
     final customWidth = PrinterStorage.getSavedCustomWidth();
+    final autoPrint = PrinterStorage.getAutoPrint();
+    final receiptFooter = PrinterStorage.getReceiptFooter();
+    final printerType = PrinterTypeOption.fromString(
+      PrinterStorage.getPrinterType(),
+    );
 
     if (savedPrinter != null) {
       state = PrinterState(
@@ -342,12 +381,18 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
         paperSizeIndex: paperSize,
         fontSizeIndex: fontSize,
         customWidth: customWidth,
+        autoPrint: autoPrint,
+        receiptFooter: receiptFooter,
+        printerType: printerType,
       );
     } else {
       state = PrinterState(
         paperSizeIndex: paperSize,
         fontSizeIndex: fontSize,
         customWidth: customWidth,
+        autoPrint: autoPrint,
+        receiptFooter: receiptFooter,
+        printerType: printerType,
       );
     }
   }
@@ -406,7 +451,28 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
       paperSizeIndex: state.paperSizeIndex,
       fontSizeIndex: state.fontSizeIndex,
       customWidth: state.customWidth,
+      autoPrint: state.autoPrint,
+      receiptFooter: state.receiptFooter,
+      printerType: state.printerType,
     );
+  }
+
+  /// Set printer type
+  Future<void> setPrinterType(PrinterTypeOption type) async {
+    await PrinterStorage.savePrinterType(type.name);
+    state = state.copyWith(printerType: type);
+  }
+
+  /// Set auto-print
+  Future<void> setAutoPrint(bool autoPrint) async {
+    await PrinterStorage.saveAutoPrint(autoPrint);
+    state = state.copyWith(autoPrint: autoPrint);
+  }
+
+  /// Set receipt footer text
+  Future<void> setReceiptFooter(String footer) async {
+    await PrinterStorage.saveReceiptFooter(footer);
+    state = state.copyWith(receiptFooter: footer);
   }
 
   /// Set error state

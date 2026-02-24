@@ -84,46 +84,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   void _navigateToTab(SettingsTab tab) {
-    if (tab == SettingsTab.hardware) {
-      _showComingSoonDialog(tab.name);
-    }
     context.go('/settings/${tab.name}');
-  }
-
-  bool _hasShownComingSoon = false;
-
-  void _showComingSoonDialog([String? tabName]) {
-    if (_hasShownComingSoon) return;
-    _hasShownComingSoon = true;
-    final featureName = tabName == 'billing' ? 'Billing' : 'Hardware';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          icon: const Icon(
-            Icons.construction,
-            size: 48,
-            color: AppColors.warning,
-          ),
-          title: const Text('Coming Soon'),
-          content: Text(
-            '$featureName settings are under development. These features will be available in a future update.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _hasShownComingSoon = false;
-                context.go('/settings/general');
-              },
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   bool _isSyncing = false;
@@ -830,9 +791,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       case SettingsTab.account:
         return _buildAccountTab();
       case SettingsTab.hardware:
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showComingSoonDialog();
-        });
         return _buildHardwareTab();
       case SettingsTab.billing:
         return _buildBillingTab();
@@ -1450,39 +1408,60 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.12),
+              color:
+                  (printerState.printerType.isThermal
+                          ? (printerState.isConnected
+                                ? AppColors.success
+                                : AppColors.error)
+                          : AppColors.info)
+                      .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.success,
-                    shape: BoxShape.circle,
-                  ),
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Connected',
-                  style: TextStyle(
-                    color: AppColors.success,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
+            child: Text(
+              printerState.printerType == PrinterTypeOption.system
+                  ? 'System Print Dialog'
+                  : printerState.isConnected
+                  ? 'Connected'
+                  : 'Not Connected',
+              style: TextStyle(
+                color: printerState.printerType == PrinterTypeOption.system
+                    ? AppColors.info
+                    : printerState.isConnected
+                    ? AppColors.success
+                    : AppColors.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildFieldLabel('Select Printer'),
-              _buildDropdown(
-                printerState.printerName ?? 'Epson TM-T82 (Bluetooth)',
-                ['Epson TM-T82 (Bluetooth)', 'None'],
+              // Printer type info
+              _buildFieldLabel('Printer Type'),
+              const SizedBox(height: 8),
+              Text(
+                printerState.printerType.label,
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 15,
+                ),
+              ),
+              Text(
+                printerState.printerType.description,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textMuted,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Tip: Change printer type on the mobile app or desktop. Web uses the browser print dialog.',
+                style: TextStyle(
+                  fontSize: 11,
+                  color: AppColors.info.withValues(alpha: 0.8),
+                  fontStyle: FontStyle.italic,
+                ),
               ),
               const SizedBox(height: 20),
               _responsiveFields([
@@ -1493,9 +1472,21 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildToggleChip('58mm', false),
+                        _buildToggleChip(
+                          '58mm',
+                          printerState.paperSizeIndex == 0,
+                          onTap: () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(0),
+                        ),
                         const SizedBox(width: 8),
-                        _buildToggleChip('80mm', true),
+                        _buildToggleChip(
+                          '80mm',
+                          printerState.paperSizeIndex == 1,
+                          onTap: () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(1),
+                        ),
                       ],
                     ),
                   ],
@@ -1503,24 +1494,48 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildFieldLabel('Density'),
+                    _buildFieldLabel('Font Size'),
                     const SizedBox(height: 8),
-                    Slider(
-                      value: 0.7,
-                      onChanged: (v) {},
-                      activeColor: AppColors.primary,
+                    Row(
+                      children: [
+                        ...PrinterFontSize.values.map(
+                          (f) => Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: _buildToggleChip(
+                              f.label,
+                              printerState.fontSizeIndex == f.value,
+                              onTap: () => ref
+                                  .read(printerProvider.notifier)
+                                  .setFontSize(f.value),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ]),
+              const SizedBox(height: 20),
+
+              // Auto-print toggle
+              _buildPreferenceToggle(
+                'Auto-Print Receipts',
+                'Automatically print receipt after completing a bill.',
+                printerState.autoPrint,
+                onChanged: (v) =>
+                    ref.read(printerProvider.notifier).setAutoPrint(v),
+              ),
               const SizedBox(height: 16),
-              Align(
-                alignment: Alignment.centerRight,
-                child: OutlinedButton.icon(
-                  onPressed: () {},
-                  icon: const Icon(Icons.print, size: 18),
-                  label: const Text('Test Print'),
-                ),
+
+              // Receipt Footer
+              _buildFieldLabel('Receipt Footer'),
+              const SizedBox(height: 8),
+              _buildTextField(
+                value: printerState.receiptFooter.isEmpty
+                    ? 'Thank you for shopping!'
+                    : printerState.receiptFooter,
+                onChanged: (v) =>
+                    ref.read(printerProvider.notifier).setReceiptFooter(v),
               ),
             ],
           ),
@@ -2440,12 +2455,14 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     bool obscure = false,
     int maxLines = 1,
     bool enabled = true,
+    ValueChanged<String>? onChanged,
   }) {
     return TextField(
       controller: controller ?? TextEditingController(text: value ?? ''),
       obscureText: obscure,
       maxLines: maxLines,
       enabled: enabled,
+      onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
@@ -2669,24 +2686,31 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildToggleChip(String label, bool isSelected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? AppColors.primary.withValues(alpha: 0.1)
-            : Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: isSelected ? Border.all(color: AppColors.primary) : null,
-        boxShadow: isSelected ? null : AppShadows.small,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
+  Widget _buildToggleChip(
+    String label,
+    bool isSelected, {
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary
-              : Theme.of(context).colorScheme.onSurface,
-          fontWeight: FontWeight.w500,
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(8),
+          border: isSelected ? Border.all(color: AppColors.primary) : null,
+          boxShadow: isSelected ? null : AppShadows.small,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected
+                ? AppColors.primary
+                : Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
     );
@@ -2697,6 +2721,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     String description,
     bool value, {
     String? badge,
+    ValueChanged<bool>? onChanged,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2747,7 +2772,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         Switch(
           value: value,
-          onChanged: (v) {},
+          onChanged: onChanged ?? (v) {},
           activeThumbColor: AppColors.primary,
         ),
       ],

@@ -1,7 +1,7 @@
 {
-    "buildNumber":  21,
-    "forceUpdate":  true,
-    "version":  "3.0.0",
-    "downloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2FTulasiStores_v3.0.0.apk?alt=media",
-    "changelog":  "* super admin changes "
+    "buildNumber":  22,
+    "forceUpdate":  false,
+    "version":  "3.1.0",
+    "downloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2FTulasiStores_v3.1.0.apk?alt=media",
+    "changelog":  "Bug fixes and improvements"
 }
