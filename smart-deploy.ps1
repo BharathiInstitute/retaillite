@@ -667,7 +667,7 @@ WScript.Quit 0
 
                 # Update version.json with EXE download URL
                 $winVersionPath = Join-Path $root "installer\version.json"
-                $exeStorageName = "TulasiStores_Setup_v$newVersion.exe"
+                $exeStorageName = "TulasiStores_Setup.exe"
                 $exeDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fwindows%2F$exeStorageName`?alt=media"
 
                 $versionJson = @{
@@ -687,10 +687,7 @@ WScript.Quit 0
                     Write-Step "Updating website download page..."
                     $pageContent = Get-Content $downloadPage -Raw
 
-                    # Update EXE download URL
-                    $pageContent = $pageContent -replace 'TulasiStores_Setup_v[\d.]+\.exe', "TulasiStores_Setup_v$newVersion.exe"
-
-                    # Update version display
+                    # Update version display only (URLs are now fixed/stable)
                     $pageContent = $pageContent -replace '(<span>v)\d+\.\d+\.\d+(</span>)', "`${1}$newVersion`${2}"
                     $pageContent = $pageContent -replace '(Latest version: <strong>v)\d+\.\d+\.\d+(</strong>)', "`${1}$newVersion`${2}"
                     $pageContent = $pageContent -replace '(style="[^"]*">)\s*v\d+\.\d+\.\d+(</div>)', "`${1}v$newVersion`${2}"
@@ -705,29 +702,14 @@ WScript.Quit 0
                 if ($gsutilExists) {
                     $storagePath = "gs://login-radha.firebasestorage.app/downloads/windows/"
 
-                    # Clean old EXE files from Storage
-                    Write-Step "Cleaning old EXE files from Storage..."
-                    $ErrorActionPreference = "Continue"
-                    $oldExeFiles = gsutil ls "${storagePath}*.exe" 2>&1
-                    if ($oldExeFiles -and $oldExeFiles -notmatch "CommandException") {
-                        foreach ($oldFile in $oldExeFiles) {
-                            $oldFile = $oldFile.Trim()
-                            if ($oldFile -and $oldFile -notlike "*$exeStorageName*" -and $oldFile -like "*.exe") {
-                                gsutil rm $oldFile 2>&1 | Out-Null
-                                Write-Info "Deleted old: $($oldFile.Split('/')[-1])"
-                            }
-                        }
-                    }
-                    Write-Ok "Old files cleaned"
-
-                    # Upload version.json + EXE
+                    # Upload version.json + EXE (overwrite single fixed filename)
                     Write-Step "Uploading EXE + version.json to Firebase Storage..."
                     gsutil cp $winVersionPath "${storagePath}version.json"
                     gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
 
                     if ($exeFile -and (Test-Path $exeFile)) {
                         gsutil cp $exeFile "${storagePath}$exeStorageName"
-                        gsutil setmeta -h "Content-Type:application/octet-stream" "${storagePath}$exeStorageName"
+                        gsutil setmeta -h "Content-Type:application/octet-stream" -h "Cache-Control:no-cache,max-age=0" "${storagePath}$exeStorageName"
                         Write-Ok "EXE uploaded: $exeStorageName"
                     }
 
@@ -784,7 +766,7 @@ WScript.Quit 0
 
             # Update android-version.json
             $androidVersionPath = Join-Path $root "installer\android-version.json"
-            $apkStorageName = "TulasiStores_v$newVersion.apk"
+            $apkStorageName = "TulasiStores.apk"
             $apkDownloadUrl = "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2F$apkStorageName`?alt=media"
 
             $versionJson = @{
@@ -803,10 +785,7 @@ WScript.Quit 0
                 Write-Step "Updating website download page (Android)..."
                 $pageContent = Get-Content $downloadPage -Raw
 
-                # Update APK download URL
-                $pageContent = $pageContent -replace 'TulasiStores_v[\d.]+\.apk', "TulasiStores_v$newVersion.apk"
-
-                # Update APK file size display
+                # Update APK file size display only (URL is now fixed/stable)
                 if (Test-Path $apkPath) {
                     $apkSizeMB = [math]::Round((Get-Item $apkPath).Length / 1MB)
                     $pageContent = $pageContent -replace '(<span>~)\d+ MB(</span>\s*\n\s*<span>v[\d.]+</span>\s*\n\s*</div>\s*\n\s*<a href="https://firebasestorage[^"]*android)', "`${1}$apkSizeMB MB`${2}"
@@ -822,29 +801,14 @@ WScript.Quit 0
             if ($gsutilExists) {
                 $storagePath = "gs://login-radha.firebasestorage.app/downloads/android/"
 
-                # Clean old APK files from Storage
-                Write-Step "Cleaning old APK files from Storage..."
-                $ErrorActionPreference = "Continue"
-                $oldApkFiles = gsutil ls "${storagePath}*.apk" 2>&1
-                if ($oldApkFiles -and $oldApkFiles -notmatch "CommandException") {
-                    foreach ($oldFile in $oldApkFiles) {
-                        $oldFile = $oldFile.Trim()
-                        if ($oldFile -and $oldFile -notlike "*$apkStorageName*" -and $oldFile -like "*.apk") {
-                            gsutil rm $oldFile 2>&1 | Out-Null
-                            Write-Info "Deleted old: $($oldFile.Split('/')[-1])"
-                        }
-                    }
-                }
-                Write-Ok "Old APK files cleaned"
-
-                # Upload version.json + APK
+                # Upload version.json + APK (overwrite single fixed filename)
                 Write-Step "Uploading APK + version.json to Firebase Storage..."
                 gsutil cp $androidVersionPath "${storagePath}version.json"
                 gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
 
                 if (Test-Path $apkPath) {
                     gsutil cp $apkPath "${storagePath}$apkStorageName"
-                    gsutil setmeta -h "Content-Type:application/vnd.android.package-archive" "${storagePath}$apkStorageName"
+                    gsutil setmeta -h "Content-Type:application/vnd.android.package-archive" -h "Cache-Control:no-cache,max-age=0" "${storagePath}$apkStorageName"
                     Write-Ok "APK uploaded: $apkStorageName"
                 }
 

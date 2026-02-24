@@ -1,6 +1,8 @@
 /// Analytics and monitoring service for app health and crash reporting
 library;
 
+import 'dart:io' show Platform;
+
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_performance/firebase_performance.dart';
@@ -13,13 +15,21 @@ class AnalyticsService {
   static final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
   static final FirebasePerformance _performance = FirebasePerformance.instance;
 
-  /// Crashlytics is NOT supported on web — guard all usage with [_hasCrashlytics]
-  static final bool _hasCrashlytics = !kIsWeb;
+  /// Crashlytics is NOT supported on web or Windows desktop
+  static final bool _hasCrashlytics =
+      !kIsWeb && !(Platform.isWindows || Platform.isLinux);
 
   // ==================== Initialization ====================
 
   /// Initialize all monitoring services
   static Future<void> initialize() async {
+    // Firebase Analytics/Crashlytics/Performance not supported on desktop
+    if (!kIsWeb &&
+        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+      debugPrint('📊 AnalyticsService: Skipped on desktop (not supported)');
+      return;
+    }
+
     // Enable crashlytics collection (not supported on web)
     if (_hasCrashlytics) {
       await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(

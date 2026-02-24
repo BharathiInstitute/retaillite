@@ -399,7 +399,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       });
 
       // 3. Open web app in browser
-      const webAppUrl = 'https://stores.tulasierp.com/desktop-login';
+      const webAppUrl = 'https://stores.tulasierp.com/app/desktop-login';
       final fullUrl = Uri.parse('$webAppUrl?code=$linkCode');
 
       if (!await launchUrl(fullUrl, mode: LaunchMode.externalApplication)) {

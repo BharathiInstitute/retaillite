@@ -29,8 +29,8 @@ import 'package:retaillite/features/notifications/services/windows_notification_
 import 'package:retaillite/firebase_options.dart';
 
 /// App version info
-const String appVersion = '1.0.0';
-const int appBuildNumber = 1;
+const String appVersion = '3.1.0';
+const int appBuildNumber = 22;
 
 void main() {
   // CRITICAL: Initialize binding FIRST, before anything else
