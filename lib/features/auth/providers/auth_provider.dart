@@ -392,10 +392,12 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
       debugPrint('🖥️ Desktop: Link code: $linkCode');
 
-      // 2. Store pending session in Firestore
+      // 2. Store pending session in Firestore with TTL
+      final expiresAt = DateTime.now().add(const Duration(minutes: 10));
       await _firestore.collection('desktop_auth_sessions').doc(linkCode).set({
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
+        'expiresAt': Timestamp.fromDate(expiresAt),
       });
 
       // 3. Open web app in browser
@@ -686,10 +688,18 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       await OfflineStorageService.clearUserLocalSettings();
       // Reset theme to default light immediately
       _ref.read(themeSettingsProvider.notifier).resetToDefault();
+      // Clear Firestore offline cache BEFORE signing out
+      // This prevents race conditions with authStateChanges listener on web
+      try {
+        await FirebaseFirestore.instance.clearPersistence();
+      } catch (e) {
+        debugPrint('🔐 clearPersistence skipped (active listeners): $e');
+      }
+      // Sign out of Google so account picker shows on next sign-in
+      try {
+        await GoogleSignIn().signOut();
+      } catch (_) {}
       await _auth.signOut();
-      // Clear Firestore offline cache so next user can't see previous user's data
-      // This is critical for shared devices (all platforms: Android, Web, Windows)
-      await FirebaseFirestore.instance.clearPersistence();
       state = const AuthState(isLoading: false);
     } catch (e) {
       debugPrint('🔐 Error signing out: $e');

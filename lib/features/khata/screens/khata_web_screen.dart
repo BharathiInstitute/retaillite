@@ -927,8 +927,10 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
                 // Close panel
                 widget.onClose();
 
-                // Refresh list
+                // Refresh list, sorted list, and stats
                 ref.invalidate(customersProvider);
+                ref.invalidate(sortedCustomersProvider);
+                ref.invalidate(khataStatsProvider);
 
                 scaffoldMessenger.showSnackBar(
                   const SnackBar(

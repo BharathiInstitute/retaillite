@@ -120,11 +120,15 @@ class UserUsageService {
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   static final FirebaseAuth _auth = FirebaseAuth.instance;
 
-  /// Super admin emails
+  /// Super admin emails (synced with firestore.rules and super_admin_provider)
   static const List<String> _adminEmails = [
     'kehsaram001@gmail.com',
     'admin@retaillite.com',
     'bharathiinstitute1@gmail.com',
+    'bharahiinstitute1@gmail.com',
+    'shivamsingh8556@gmail.com',
+    'admin@lite.app',
+    'kehsihba@gmail.com',
   ];
 
   /// In-memory counters for batching

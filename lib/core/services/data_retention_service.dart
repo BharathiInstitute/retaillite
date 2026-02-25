@@ -3,8 +3,10 @@ library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Retention period options
@@ -78,10 +80,23 @@ class DataRetentionService {
     }
   }
 
-  /// Get count of expired transactions
-  Future<int> getExpiredTransactionsCount() async {
-    if (_period.neverExpires) return 0;
-    return 0;
+  /// Get count of expired expenses that would be deleted
+  Future<int> getExpiredExpensesCount() async {
+    if (_period.neverExpires || _basePath.isEmpty) return 0;
+
+    final cutoff = _period.cutoffDate;
+    if (cutoff == null) return 0;
+
+    try {
+      final snapshot = await _firestore
+          .collection('$_basePath/expenses')
+          .where('createdAt', isLessThan: Timestamp.fromDate(cutoff))
+          .count()
+          .get();
+      return snapshot.count ?? 0;
+    } catch (e) {
+      return 0;
+    }
   }
 
   /// Get storage statistics
@@ -110,6 +125,7 @@ class DataRetentionService {
         'customersCount': customersSnapshot.count ?? 0,
         'pendingSyncCount': 0, // Firebase handles sync
         'expiredBillsCount': await getExpiredBillsCount(),
+        'expiredExpensesCount': await getExpiredExpensesCount(),
         'retentionPeriod': _period.label,
         'cutoffDate': _period.cutoffDate?.toIso8601String(),
       };
@@ -118,13 +134,32 @@ class DataRetentionService {
     }
   }
 
+  /// Delete documents in chunked batches (Firestore max 500 per batch)
+  Future<int> _deleteInBatches(
+    List<QueryDocumentSnapshot> docs, {
+    bool dryRun = false,
+  }) async {
+    if (dryRun || docs.isEmpty) return docs.length;
+
+    const batchSize = 450; // Safe margin below 500 limit
+    for (var i = 0; i < docs.length; i += batchSize) {
+      final batch = _firestore.batch();
+      final end = (i + batchSize).clamp(0, docs.length);
+      for (var j = i; j < end; j++) {
+        batch.delete(docs[j].reference);
+      }
+      await batch.commit();
+    }
+    return docs.length;
+  }
+
   /// Cleanup expired data from Firestore
-  /// Returns the number of items deleted
+  /// Deletes expired bills and expenses in safe chunked batches
   Future<CleanupResult> cleanupExpiredData({bool dryRun = false}) async {
     if (_period.neverExpires || _basePath.isEmpty) {
       return CleanupResult(
         billsDeleted: 0,
-        transactionsDeleted: 0,
+        expensesDeleted: 0,
         bytesFreed: 0,
         skipped: true,
         reason: _period.neverExpires
@@ -137,7 +172,7 @@ class DataRetentionService {
     if (cutoff == null) {
       return const CleanupResult(
         billsDeleted: 0,
-        transactionsDeleted: 0,
+        expensesDeleted: 0,
         bytesFreed: 0,
         skipped: true,
         reason: 'No cutoff date',
@@ -145,23 +180,25 @@ class DataRetentionService {
     }
 
     int billsDeleted = 0;
+    int expensesDeleted = 0;
 
     try {
-      final snapshot = await _firestore
+      // 1. Delete expired bills
+      final billsSnapshot = await _firestore
           .collection('$_basePath/bills')
           .where('createdAt', isLessThan: Timestamp.fromDate(cutoff))
           .get();
+      billsDeleted = await _deleteInBatches(billsSnapshot.docs, dryRun: dryRun);
 
-      billsDeleted = snapshot.docs.length;
-
-      // Delete if not dry run
-      if (!dryRun && snapshot.docs.isNotEmpty) {
-        final batch = _firestore.batch();
-        for (final doc in snapshot.docs) {
-          batch.delete(doc.reference);
-        }
-        await batch.commit();
-      }
+      // 2. Delete expired expenses
+      final expensesSnapshot = await _firestore
+          .collection('$_basePath/expenses')
+          .where('createdAt', isLessThan: Timestamp.fromDate(cutoff))
+          .get();
+      expensesDeleted = await _deleteInBatches(
+        expensesSnapshot.docs,
+        dryRun: dryRun,
+      );
 
       // Update last cleanup time
       if (!dryRun) {
@@ -171,16 +208,22 @@ class DataRetentionService {
         );
       }
 
+      debugPrint(
+        '🧹 Cleanup: $billsDeleted bills, $expensesDeleted expenses '
+        '(dryRun=$dryRun, period=${_period.label})',
+      );
+
       return CleanupResult(
         billsDeleted: billsDeleted,
-        transactionsDeleted: 0,
-        bytesFreed: billsDeleted * 500, // Approximate bytes per bill
+        expensesDeleted: expensesDeleted,
+        bytesFreed: (billsDeleted + expensesDeleted) * 500,
         dryRun: dryRun,
       );
     } catch (e) {
+      debugPrint('🧹 Cleanup error: $e');
       return CleanupResult(
-        billsDeleted: 0,
-        transactionsDeleted: 0,
+        billsDeleted: billsDeleted,
+        expensesDeleted: expensesDeleted,
         bytesFreed: 0,
         skipped: true,
         reason: 'Error: $e',
@@ -207,7 +250,7 @@ class DataRetentionService {
 class CleanupResult {
   const CleanupResult({
     required this.billsDeleted,
-    required this.transactionsDeleted,
+    required this.expensesDeleted,
     required this.bytesFreed,
     this.skipped = false,
     this.dryRun = false,
@@ -215,13 +258,13 @@ class CleanupResult {
   });
 
   final int billsDeleted;
-  final int transactionsDeleted;
+  final int expensesDeleted;
   final int bytesFreed;
   final bool skipped;
   final bool dryRun;
   final String? reason;
 
-  int get totalDeleted => billsDeleted + transactionsDeleted;
+  int get totalDeleted => billsDeleted + expensesDeleted;
 
   String get bytesFreedFormatted {
     if (bytesFreed < 1024) return '$bytesFreed B';
@@ -232,10 +275,10 @@ class CleanupResult {
   }
 }
 
-/// Provider for data retention service
+/// Provider for data retention service — reads retention period from user settings
 final dataRetentionServiceProvider = Provider<DataRetentionService>((ref) {
-  const retentionDays = 90; // Default
-  return DataRetentionService(RetentionPeriod.fromDays(retentionDays));
+  final settings = ref.watch(settingsProvider);
+  return DataRetentionService(settings.retentionPeriod);
 });
 
 /// Provider for current retention period

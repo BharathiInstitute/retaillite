@@ -1,6 +1,7 @@
 {
     "indexes": [
         {
+            "__comment": "bills: date range queries with orderBy - LEGACY (date field)",
             "collectionGroup": "bills",
             "queryScope": "COLLECTION",
             "fields": [
@@ -43,6 +44,7 @@
             ]
         },
         {
+            "__comment": "transactions: customerId == X + orderBy(createdAt, desc)",
             "collectionGroup": "transactions",
             "queryScope": "COLLECTION",
             "fields": [
@@ -53,6 +55,126 @@
                 {
                     "fieldPath": "createdAt",
                     "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "users: subscription.plan filter + orderBy(createdAt, desc) — admin_firestore_service.getAllUsers()",
+            "collectionGroup": "users",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "subscription.plan",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "users: expiring subscriptions — subscription.status == active + subscription.expiresAt < X",
+            "collectionGroup": "users",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "subscription.status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "subscription.expiresAt",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "notifications: unread + orderBy(createdAt, desc) — windows_notification_service, notification_firestore_service",
+            "collectionGroup": "notifications",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "read",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "error_logs: severity filter + orderBy(timestamp, desc) — error_logging_service.getGroupedErrors()",
+            "collectionGroup": "error_logs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "severity",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timestamp",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "error_logs: platform filter + orderBy(timestamp, desc)",
+            "collectionGroup": "error_logs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "platform",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timestamp",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "error_logs: resolved filter + orderBy(timestamp, desc)",
+            "collectionGroup": "error_logs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "resolved",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timestamp",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "error_logs: severity+timestamp for getCrashFreeStats() — timestamp > X + severity == critical",
+            "collectionGroup": "error_logs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "severity",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "timestamp",
+                    "order": "ASCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "error_logs: errorHash + resolved for markAllResolvedByHash()",
+            "collectionGroup": "error_logs",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "errorHash",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "resolved",
+                    "order": "ASCENDING"
                 }
             ]
         }

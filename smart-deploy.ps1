@@ -692,6 +692,10 @@ WScript.Quit 0
                     $pageContent = $pageContent -replace '(Latest version: <strong>v)\d+\.\d+\.\d+(</strong>)', "`${1}$newVersion`${2}"
                     $pageContent = $pageContent -replace '(style="[^"]*">)\s*v\d+\.\d+\.\d+(</div>)', "`${1}v$newVersion`${2}"
 
+                    # Update download attribute filenames (saved filename includes version)
+                    $pageContent = $pageContent -replace 'download="TulasiStores_Setup_v[\d.]+\.exe"', "download=`"TulasiStores_Setup_v$newVersion.exe`""
+                    $pageContent = $pageContent -replace 'download="TulasiStores_v[\d.]+\.apk"', "download=`"TulasiStores_v$newVersion.apk`""
+
                     [System.IO.File]::WriteAllText($downloadPage, $pageContent, [System.Text.UTF8Encoding]::new($false))
                     Write-Ok "download.html updated to v$newVersion"
                     Write-DeployLog "WEBSITE | download.html updated to v$newVersion"

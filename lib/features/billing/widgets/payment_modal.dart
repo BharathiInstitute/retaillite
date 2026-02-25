@@ -1,13 +1,17 @@
 /// Payment modal for completing bills
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
@@ -61,6 +65,20 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
     setState(() => _isLoading = true);
 
     try {
+      // Check bill limit before creating
+      final allowed = await UserMetricsService.trackBillCreated();
+      if (!allowed) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Monthly bill limit reached. Upgrade your plan.'),
+            ),
+          );
+        }
+        return;
+      }
+
       BillModel bill;
 
       // Create bill locally
@@ -69,8 +87,8 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
       bill = BillModel(
-        id: 'bill_${now.millisecondsSinceEpoch}',
-        billNumber: now.millisecondsSinceEpoch % 10000,
+        id: generateSafeId('bill'),
+        billNumber: await OfflineStorageService.getNextBillNumber(),
         items: cart.items,
         total: cart.total,
         paymentMethod: _selectedMethod,
@@ -118,13 +136,17 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         }
 
         ref.read(cartProvider.notifier).clearCart();
-        Navigator.of(context).pop();
 
-        // Auto-print if enabled
+        // Auto-print BEFORE popping — after pop, widget is unmounted
+        // and mounted check in addPostFrameCallback would fail silently
         final printerState = ref.read(printerProvider);
         if (printerState.autoPrint) {
-          _autoPrintReceipt(bill);
+          final messenger = ScaffoldMessenger.of(context);
+          // Fire-and-forget — don't block navigation for printing
+          unawaited(_printReceipt(bill, messenger));
         }
+
+        Navigator.of(context).pop();
 
         _showBillCompleteDialog(bill);
       }
@@ -215,7 +237,13 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
 
       if (directSuccess == false) {
         scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text('Print failed: Printer not connected')),
+          SnackBar(
+            content: const Text('Print failed: Printer not connected'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _printReceipt(bill, scaffoldMessenger),
+            ),
+          ),
         );
       } else if (directSuccess == null) {
         // Printer type selected but not available — fallback to system
@@ -233,17 +261,6 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         SnackBar(content: Text('Print failed: $e')),
       );
     }
-  }
-
-  /// Auto-print receipt silently (called when auto-print is enabled)
-  void _autoPrintReceipt(BillModel bill) {
-    // Use a post-frame callback to avoid issues with navigation
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      await _printReceipt(bill, scaffoldMessenger);
-    });
   }
 
   void _showBillCompleteDialog(BillModel bill) {

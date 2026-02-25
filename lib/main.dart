@@ -15,9 +15,11 @@ import 'package:retaillite/core/services/analytics_service.dart';
 import 'package:retaillite/core/services/android_update_service.dart';
 import 'package:retaillite/core/services/app_health_service.dart';
 import 'package:retaillite/core/services/connectivity_service.dart';
+import 'package:retaillite/core/services/data_retention_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/windows_update_service.dart';
 import 'package:retaillite/core/config/remote_config_state.dart';
 import 'package:retaillite/core/utils/error_handler.dart';
@@ -27,10 +29,12 @@ import 'package:retaillite/core/widgets/splash_screen.dart';
 import 'package:retaillite/features/notifications/services/notification_service.dart';
 import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
 import 'package:retaillite/firebase_options.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
-/// App version info
-const String appVersion = '3.1.0';
-const int appBuildNumber = 22;
+/// App version — read from pubspec.yaml at runtime (single source of truth)
+/// Initialized in _initializeApp() before any version checks.
+String appVersion = '1.0.0'; // overwritten at startup
+int appBuildNumber = 0; // overwritten at startup
 
 void main() {
   // CRITICAL: Initialize binding FIRST, before anything else
@@ -99,6 +103,16 @@ Future<void> _initializeApp() async {
 
     // Initialize analytics + performance monitoring
     await AnalyticsService.initialize();
+
+    // Read version from pubspec.yaml (single source of truth)
+    try {
+      final packageInfo = await PackageInfo.fromPlatform();
+      appVersion = packageInfo.version;
+      appBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
+      debugPrint('📱 App version: v$appVersion+$appBuildNumber');
+    } catch (e) {
+      debugPrint('⚠️ Could not read package info: $e');
+    }
 
     // Initialize Remote Config with defaults
     String merchantUpiId = '';
@@ -185,6 +199,7 @@ Future<void> _initializeApp() async {
       _safeInit('Connectivity', ConnectivityService.initialize),
       _safeInit('AppHealth', AppHealthService.initialize),
       _safeInit('WindowsNotification', WindowsNotificationService.init),
+      _safeInit('UserMetrics', UserMetricsService.initialize),
     ]);
 
     // Launch the main app
@@ -197,6 +212,14 @@ Future<void> _initializeApp() async {
     unawaited(AndroidUpdateService.checkForUpdate());
     // Layer 4 dialog: triggered from app.dart (needs BuildContext)
     // Layer 5 force update: handled above via Remote Config
+
+    // ─── Data Retention ───
+    // Auto-cleanup expired data if due (every 7 days)
+    unawaited(_runAutoCleanupIfDue());
+
+    // ─── User Metrics ───
+    // Track user activity for admin dashboard
+    unawaited(UserMetricsService.trackActivity());
   } catch (error, stack) {
     // Show error screen with retry option
     debugPrint('❌ App initialization failed: $error');
@@ -230,6 +253,26 @@ Future<void> _safeInit(String name, Future<void> Function() init) async {
     await init();
   } catch (e) {
     debugPrint('⚠️ $name init failed (non-fatal): $e');
+  }
+}
+
+/// Run auto-cleanup if due (every 7 days)
+/// Runs in background, non-blocking, safe to fail
+Future<void> _runAutoCleanupIfDue() async {
+  try {
+    if (!DataRetentionService.isCleanupDue()) return;
+
+    // Use default 90-day retention (settings not available outside provider scope)
+    final service = DataRetentionService(RetentionPeriod.days90);
+    final result = await service.cleanupExpiredData();
+    if (result.totalDeleted > 0) {
+      debugPrint(
+        '🧹 Auto-cleanup: ${result.billsDeleted} bills, '
+        '${result.expensesDeleted} expenses deleted',
+      );
+    }
+  } catch (e) {
+    debugPrint('⚠️ Auto-cleanup failed (non-fatal): $e');
   }
 }
 

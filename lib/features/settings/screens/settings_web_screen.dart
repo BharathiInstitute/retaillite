@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -12,6 +13,7 @@ import 'package:retaillite/models/theme_settings_model.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/router/app_router.dart';
@@ -40,6 +42,15 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _emailController;
   late TextEditingController _upiIdController;
 
+  // WiFi printer state (Windows only)
+  late TextEditingController _wifiIpController;
+  late TextEditingController _wifiPortController;
+  bool _isWifiConnecting = false;
+
+  // USB printer state (Windows only)
+  List<String> _windowsPrinters = [];
+  bool _isLoadingUsbPrinters = false;
+
   @override
   void initState() {
     super.initState();
@@ -51,6 +62,25 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _emailController = TextEditingController(text: user?.email ?? '');
     _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
     _upiIdController.addListener(_onUpiIdChanged);
+
+    // WiFi/USB printer controllers (Windows only)
+    _wifiIpController = TextEditingController(
+      text: (!kIsWeb && Platform.isWindows)
+          ? WifiPrinterService.getSavedIp()
+          : '',
+    );
+    _wifiPortController = TextEditingController(
+      text: (!kIsWeb && Platform.isWindows)
+          ? WifiPrinterService.getSavedPort().toString()
+          : '9100',
+    );
+
+    // Load USB printers on Windows
+    if (!kIsWeb && Platform.isWindows && UsbPrinterService.isAvailable) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_loadWindowsPrinters());
+      });
+    }
   }
 
   void _onUpiIdChanged() {
@@ -67,6 +97,8 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _shopAddressController.dispose();
     _emailController.dispose();
     _upiIdController.dispose();
+    _wifiIpController.dispose();
+    _wifiPortController.dispose();
     super.dispose();
   }
 
@@ -90,6 +122,81 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   bool _isSyncing = false;
   bool _isUploadingLogo = false;
   bool _isUploadingProfileImage = false;
+
+  // ─── WiFi Printer Methods (Windows) ───
+
+  Future<void> _connectWifiPrinter() async {
+    final ip = _wifiIpController.text.trim();
+    final port = int.tryParse(_wifiPortController.text.trim()) ?? 9100;
+
+    if (ip.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a printer IP address')),
+      );
+      return;
+    }
+
+    setState(() => _isWifiConnecting = true);
+
+    final success = await WifiPrinterService.connect(ip, port);
+
+    if (success) {
+      await WifiPrinterService.saveWifiPrinter(ip, port);
+      ref
+          .read(printerProvider.notifier)
+          .connectPrinter('WiFi Printer', '$ip:$port');
+    }
+
+    if (mounted) {
+      setState(() => _isWifiConnecting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Connected to $ip:$port'
+                : 'Failed to connect to $ip:$port',
+          ),
+          backgroundColor: success ? AppColors.success : AppColors.error,
+        ),
+      );
+    }
+  }
+
+  Future<void> _disconnectWifiPrinter() async {
+    await WifiPrinterService.disconnect();
+    await ref.read(printerProvider.notifier).disconnectPrinter();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('WiFi printer disconnected')),
+      );
+    }
+  }
+
+  // ─── USB Printer Methods (Windows) ───
+
+  Future<void> _loadWindowsPrinters() async {
+    setState(() => _isLoadingUsbPrinters = true);
+    final printers = await UsbPrinterService.getWindowsPrinters();
+    if (mounted) {
+      setState(() {
+        _windowsPrinters = printers;
+        _isLoadingUsbPrinters = false;
+      });
+    }
+  }
+
+  Future<void> _selectUsbPrinter(String name) async {
+    await UsbPrinterService.saveUsbPrinter(name);
+    ref.read(printerProvider.notifier).connectPrinter('USB: $name', name);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Selected USB printer: $name'),
+          backgroundColor: AppColors.success,
+        ),
+      );
+    }
+  }
 
   bool get _isMobileView =>
       ResponsiveHelper.isMobile(context) || ResponsiveHelper.isTablet(context);
@@ -1440,29 +1547,249 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               // Printer type info
               _buildFieldLabel('Printer Type'),
               const SizedBox(height: 8),
-              Text(
-                printerState.printerType.label,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  fontSize: 15,
+              if (!kIsWeb && Platform.isWindows) ...[
+                // On Windows desktop: show selectable printer type options
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _buildToggleChip(
+                      '🖥️ System',
+                      printerState.printerType == PrinterTypeOption.system,
+                      onTap: () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.system),
+                    ),
+                    _buildToggleChip(
+                      '📶 WiFi',
+                      printerState.printerType == PrinterTypeOption.wifi,
+                      onTap: () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.wifi),
+                    ),
+                    _buildToggleChip(
+                      '🔌 USB',
+                      printerState.printerType == PrinterTypeOption.usb,
+                      onTap: () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.usb),
+                    ),
+                  ],
                 ),
-              ),
-              Text(
-                printerState.printerType.description,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textMuted,
+                const SizedBox(height: 4),
+                Text(
+                  printerState.printerType.description,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Tip: Change printer type on the mobile app or desktop. Web uses the browser print dialog.',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.info.withValues(alpha: 0.8),
-                  fontStyle: FontStyle.italic,
+
+                // WiFi Printer Configuration
+                if (printerState.printerType == PrinterTypeOption.wifi) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.wifi,
+                        color: WifiPrinterService.isConnected
+                            ? AppColors.success
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        WifiPrinterService.isConnected
+                            ? 'Connected: ${WifiPrinterService.connectedAddress}'
+                            : 'Enter printer IP and port',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                          color: WifiPrinterService.isConnected
+                              ? AppColors.success
+                              : AppColors.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: _wifiIpController,
+                          decoration: const InputDecoration(
+                            labelText: 'IP Address',
+                            hintText: '192.168.1.100',
+                            isDense: true,
+                            prefixIcon: Icon(Icons.router, size: 20),
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _wifiPortController,
+                          decoration: const InputDecoration(
+                            labelText: 'Port',
+                            hintText: '9100',
+                            isDense: true,
+                          ),
+                          keyboardType: TextInputType.number,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: _isWifiConnecting
+                              ? null
+                              : _connectWifiPrinter,
+                          icon: _isWifiConnecting
+                              ? const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.link),
+                          label: Text(
+                            _isWifiConnecting ? 'Connecting...' : 'Connect',
+                          ),
+                        ),
+                      ),
+                      if (WifiPrinterService.isConnected) ...[
+                        const SizedBox(width: 12),
+                        OutlinedButton.icon(
+                          onPressed: _disconnectWifiPrinter,
+                          icon: const Icon(Icons.link_off),
+                          label: const Text('Disconnect'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.error,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ],
+
+                // USB Printer Configuration
+                if (printerState.printerType == PrinterTypeOption.usb) ...[
+                  const SizedBox(height: 16),
+                  const Divider(),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.usb,
+                        color:
+                            UsbPrinterService.getSavedPrinterName().isNotEmpty
+                            ? AppColors.success
+                            : Colors.grey,
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          UsbPrinterService.getSavedPrinterName().isNotEmpty
+                              ? 'Selected: ${UsbPrinterService.getSavedPrinterName()}'
+                              : 'Select a printer from the list',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                            color:
+                                UsbPrinterService.getSavedPrinterName()
+                                    .isNotEmpty
+                                ? AppColors.success
+                                : AppColors.textMuted,
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        icon: _isLoadingUsbPrinters
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.refresh),
+                        onPressed: _isLoadingUsbPrinters
+                            ? null
+                            : _loadWindowsPrinters,
+                        tooltip: 'Refresh printer list',
+                      ),
+                    ],
+                  ),
+                  if (_windowsPrinters.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    ..._windowsPrinters.map((name) {
+                      final savedName = UsbPrinterService.getSavedPrinterName();
+                      return ListTile(
+                        leading: Icon(
+                          Icons.print,
+                          color: name == savedName ? AppColors.success : null,
+                        ),
+                        title: Text(name, style: const TextStyle(fontSize: 13)),
+                        trailing: name == savedName
+                            ? const Icon(
+                                Icons.check_circle,
+                                color: AppColors.success,
+                              )
+                            : TextButton(
+                                onPressed: () => _selectUsbPrinter(name),
+                                child: const Text('Select'),
+                              ),
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                      );
+                    }),
+                  ] else if (!_isLoadingUsbPrinters) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      'No printers found. Click refresh to scan.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppColors.textMuted,
+                      ),
+                    ),
+                  ],
+                ],
+              ] else ...[
+                // On web: show read-only printer type
+                Text(
+                  printerState.printerType.label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                  ),
                 ),
-              ),
+                Text(
+                  printerState.printerType.description,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: AppColors.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Tip: Change printer type on the mobile app or desktop. Web uses the browser print dialog.',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: AppColors.info.withValues(alpha: 0.8),
+                    fontStyle: FontStyle.italic,
+                  ),
+                ),
+              ],
               const SizedBox(height: 20),
               _responsiveFields([
                 Column(

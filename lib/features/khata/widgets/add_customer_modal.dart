@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/validators.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
@@ -79,8 +80,10 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
         await service.addCustomer(customer);
       }
 
-      // Refresh the customers list
+      // Refresh the customers list, sorted list, and stats
       ref.invalidate(customersProvider);
+      ref.invalidate(sortedCustomersProvider);
+      ref.invalidate(khataStatsProvider);
       if (_isEditMode) {
         ref.invalidate(customerProvider(customer.id));
       }

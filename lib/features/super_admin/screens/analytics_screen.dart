@@ -261,8 +261,8 @@ class AnalyticsScreen extends ConsumerWidget {
       'billing': {'name': 'Billing', 'color': Colors.green},
       'products': {'name': 'Products', 'color': Colors.blue},
       'khata': {'name': 'Customers (Khata)', 'color': Colors.orange},
-      'reports': {'name': 'Reports', 'color': Colors.purple},
-      'settings': {'name': 'Settings', 'color': Colors.grey},
+      'reports': {'name': '~Reports (est.)', 'color': Colors.purple},
+      'settings': {'name': '~Settings (est.)', 'color': Colors.grey},
     };
 
     return Card(
@@ -300,7 +300,7 @@ class AnalyticsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              'Based on actual user activity data',
+              'Billing, Products, Khata from data · Reports & Settings estimated',
               style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
             ),
             const SizedBox(height: 20),

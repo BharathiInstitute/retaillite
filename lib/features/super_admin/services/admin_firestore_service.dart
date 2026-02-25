@@ -329,11 +329,10 @@ class AdminFirestoreService {
         'billing': usersWithBills / totalUsers,
         'products': usersWithProducts / totalUsers,
         'khata': usersWithCustomers / totalUsers,
-        'reports':
-            usersWithBills *
-            0.5 /
-            totalUsers, // Estimate: 50% of billing users check reports
-        'settings': 0.3, // Static estimate: ~30% users customize settings
+        // NOTE: reports & settings don't have real usage tracking yet.
+        // These are estimates shown with '~' prefix in the analytics UI.
+        'reports': usersWithBills * 0.5 / totalUsers, // ~50% of billing users
+        'settings': 0.3, // ~30% estimated
       };
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to get feature usage stats: $e');

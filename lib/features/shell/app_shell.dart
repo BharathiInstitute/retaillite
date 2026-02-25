@@ -8,7 +8,10 @@ import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/color_utils.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
+import 'package:retaillite/shared/widgets/offline_banner.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
+import 'package:retaillite/features/notifications/widgets/notification_bell.dart';
+import 'package:retaillite/shared/widgets/global_sync_indicator.dart';
 import 'package:retaillite/features/shell/web_shell.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/user_model.dart';
@@ -96,17 +99,8 @@ class AppShell extends ConsumerWidget {
                 ],
               ),
               actions: [
-                IconButton(
-                  icon: const Icon(Icons.notifications_outlined, size: 22),
-                  onPressed: () {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('No new notifications'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    );
-                  },
-                ),
+                const GlobalSyncIndicator(),
+                const NotificationBell(),
                 IconButton(
                   icon: _buildProfileAvatar(user?.profileImagePath, 16),
                   onPressed: () => _showProfileSheet(context, ref),
@@ -121,8 +115,7 @@ class AppShell extends ConsumerWidget {
         children: [
           // Demo mode banner
           const DemoModeBanner(),
-
-          // Main content with navigation
+          const OfflineBanner(),
           Expanded(
             child: Row(
               children: [

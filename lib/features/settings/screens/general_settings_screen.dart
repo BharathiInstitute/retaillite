@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/models/theme_settings_model.dart';
 
@@ -256,6 +257,45 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
             ),
           ),
           const SizedBox(height: 24),
+
+          // Language & Region Section
+          _buildSectionHeader(theme, 'Language & Region'),
+          Card(
+            child: Column(
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.language),
+                  title: const Text('Language'),
+                  subtitle: Text(
+                    AppLanguage.fromCode(
+                      ref.watch(settingsProvider).languageCode,
+                    ).displayName,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: theme.colorScheme.outline,
+                    ),
+                  ),
+                  trailing: DropdownButton<AppLanguage>(
+                    value: AppLanguage.fromCode(
+                      ref.watch(settingsProvider).languageCode,
+                    ),
+                    underline: const SizedBox(),
+                    onChanged: (v) {
+                      if (v != null) {
+                        ref.read(settingsProvider.notifier).setLanguage(v.code);
+                      }
+                    },
+                    items: AppLanguage.values.map((lang) {
+                      return DropdownMenuItem(
+                        value: lang,
+                        child: Text(lang.displayName),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+          ),
 
           // Notification Preferences Section
           _buildSectionHeader(theme, 'Notification Preferences'),

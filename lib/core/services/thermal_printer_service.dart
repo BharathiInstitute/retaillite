@@ -363,13 +363,38 @@ class ThermalPrinterService {
   }
 
   static Future<bool> printTestPage() async {
-    if (!await isConnected) return false;
+    if (!await _ensureConnected()) return false;
     try {
       return await PrintBluetoothThermal.writeBytes(
         EscPosBuilder.buildTestPage(),
       );
     } catch (e) {
       debugPrint('BT print error: $e');
+      return false;
+    }
+  }
+
+  /// Auto-reconnect to saved printer if disconnected
+  static Future<bool> _ensureConnected() async {
+    if (await isConnected) return true;
+
+    // Try to reconnect using saved printer
+    final saved = getSavedPrinter();
+    if (saved == null) return false;
+
+    debugPrint('🔄 BT: Auto-reconnecting to ${saved.name}...');
+    try {
+      final ok = await connect(
+        saved,
+      ).timeout(const Duration(seconds: 3), onTimeout: () => false);
+      if (ok) {
+        debugPrint('✅ BT: Auto-reconnected');
+      } else {
+        debugPrint('❌ BT: Auto-reconnect failed');
+      }
+      return ok;
+    } catch (e) {
+      debugPrint('❌ BT: Auto-reconnect error: $e');
       return false;
     }
   }
@@ -382,7 +407,7 @@ class ThermalPrinterService {
     String? gstNumber,
     String? receiptFooter,
   }) async {
-    if (!await isConnected) return false;
+    if (!await _ensureConnected()) return false;
     try {
       return await PrintBluetoothThermal.writeBytes(
         EscPosBuilder.buildReceipt(

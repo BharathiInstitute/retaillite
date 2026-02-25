@@ -58,94 +58,104 @@ final billsFilterProvider = StateProvider<BillsFilter>((ref) {
   return const BillsFilter();
 });
 
-/// Filtered expenses provider
-final filteredExpensesProvider = FutureProvider<List<ExpenseModel>>((
+/// Filtered expenses provider — real-time stream from Firestore
+final filteredExpensesProvider = StreamProvider.autoDispose<List<ExpenseModel>>(
+  (ref) {
+    final filter = ref.watch(billsFilterProvider);
+    final isDemoMode = ref.watch(authNotifierProvider).isDemoMode;
+
+    Stream<List<ExpenseModel>> source;
+    if (isDemoMode) {
+      source = Stream.value(List.of(DemoDataService.getExpenses()));
+    } else {
+      source = OfflineStorageService.expensesStream();
+    }
+
+    return source.map((expenses) {
+      var result = List<ExpenseModel>.from(expenses);
+
+      // Sort by date descending
+      result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+
+      // Apply search filter
+      if (filter.searchQuery.isNotEmpty) {
+        final query = filter.searchQuery.toLowerCase();
+        result = result.where((exp) {
+          final desc = (exp.description ?? '').toLowerCase();
+          final cat = exp.category.displayName.toLowerCase();
+          return desc.contains(query) || cat.contains(query);
+        }).toList();
+      }
+
+      // Apply date range filter
+      if (filter.dateRange != null) {
+        result = result.where((exp) {
+          return exp.createdAt.isAfter(filter.dateRange!.start) &&
+              exp.createdAt.isBefore(
+                filter.dateRange!.end.add(const Duration(days: 1)),
+              );
+        }).toList();
+      }
+
+      // Apply payment method filter
+      if (filter.paymentMethod != null) {
+        result = result
+            .where((exp) => exp.paymentMethod == filter.paymentMethod)
+            .toList();
+      }
+
+      return result;
+    });
+  },
+);
+
+/// Filtered bills provider — real-time stream from Firestore
+final filteredBillsProvider = StreamProvider.autoDispose<List<BillModel>>((
   ref,
-) async {
+) {
   final filter = ref.watch(billsFilterProvider);
   final isDemoMode = ref.watch(authNotifierProvider).isDemoMode;
 
-  List<ExpenseModel> expenses;
+  Stream<List<BillModel>> source;
   if (isDemoMode) {
-    expenses = List.of(DemoDataService.getExpenses());
+    source = Stream.value(List.of(DemoDataService.getBills()));
   } else {
-    expenses = await OfflineStorageService.getCachedExpensesAsync();
+    source = OfflineStorageService.billsStream();
   }
 
-  // Sort by date descending
-  expenses.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return source.map((bills) {
+    var result = List<BillModel>.from(bills);
 
-  // Apply search filter
-  if (filter.searchQuery.isNotEmpty) {
-    final query = filter.searchQuery.toLowerCase();
-    expenses = expenses.where((exp) {
-      final desc = (exp.description ?? '').toLowerCase();
-      final cat = exp.category.displayName.toLowerCase();
-      return desc.contains(query) || cat.contains(query);
-    }).toList();
-  }
+    // Sort by date descending (newest first)
+    result.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
-  // Apply date range filter
-  if (filter.dateRange != null) {
-    expenses = expenses.where((exp) {
-      return exp.createdAt.isAfter(filter.dateRange!.start) &&
-          exp.createdAt.isBefore(
-            filter.dateRange!.end.add(const Duration(days: 1)),
-          );
-    }).toList();
-  }
+    // Apply search filter
+    if (filter.searchQuery.isNotEmpty) {
+      final query = filter.searchQuery.toLowerCase();
+      result = result.where((bill) {
+        final billNo = '#INV-${bill.billNumber}'.toLowerCase();
+        final customerName = (bill.customerName ?? 'Walk-in').toLowerCase();
+        return billNo.contains(query) || customerName.contains(query);
+      }).toList();
+    }
 
-  // Apply payment method filter
-  if (filter.paymentMethod != null) {
-    expenses = expenses
-        .where((exp) => exp.paymentMethod == filter.paymentMethod)
-        .toList();
-  }
+    // Apply date range filter
+    if (filter.dateRange != null) {
+      result = result.where((bill) {
+        return bill.createdAt.isAfter(filter.dateRange!.start) &&
+            bill.createdAt.isBefore(
+              filter.dateRange!.end.add(const Duration(days: 1)),
+            );
+      }).toList();
+    }
 
-  return expenses;
-});
+    // Apply payment method filter
+    if (filter.paymentMethod != null) {
+      result = result
+          .where((bill) => bill.paymentMethod == filter.paymentMethod)
+          .toList();
+    }
 
-/// Filtered bills provider
-final filteredBillsProvider = FutureProvider<List<BillModel>>((ref) async {
-  final filter = ref.watch(billsFilterProvider);
-  final isDemoMode = ref.watch(authNotifierProvider).isDemoMode;
-
-  List<BillModel> bills;
-  if (isDemoMode) {
-    bills = List.of(DemoDataService.getBills());
-  } else {
-    bills = await OfflineStorageService.getCachedBillsAsync();
-  }
-
-  // Sort by date descending (newest first)
-  bills.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
-  // Apply search filter
-  if (filter.searchQuery.isNotEmpty) {
-    final query = filter.searchQuery.toLowerCase();
-    bills = bills.where((bill) {
-      final billNo = '#INV-${bill.billNumber}'.toLowerCase();
-      final customerName = (bill.customerName ?? 'Walk-in').toLowerCase();
-      return billNo.contains(query) || customerName.contains(query);
-    }).toList();
-  }
-
-  // Apply date range filter
-  if (filter.dateRange != null) {
-    bills = bills.where((bill) {
-      return bill.createdAt.isAfter(filter.dateRange!.start) &&
-          bill.createdAt.isBefore(
-            filter.dateRange!.end.add(const Duration(days: 1)),
-          );
-    }).toList();
-  }
-
-  // Apply payment method filter
-  if (filter.paymentMethod != null) {
-    bills = bills
-        .where((bill) => bill.paymentMethod == filter.paymentMethod)
-        .toList();
-  }
-
-  return bills;
+    return result;
+  });
 });

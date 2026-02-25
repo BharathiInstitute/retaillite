@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/main.dart';
 
 /// App health metrics
@@ -161,7 +162,7 @@ class AppHealthService {
       final snapshot = await _firestore
           .collection('app_health')
           .orderBy('timestamp', descending: true)
-          .limit(100)
+          .limit(AppConstants.queryLimitAdminAnalytics)
           .get();
 
       final platformTimes = <String, List<int>>{};

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:retaillite/features/notifications/widgets/notification_bell.dart';
+import 'package:retaillite/shared/widgets/global_sync_indicator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -8,6 +9,7 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
+import 'package:retaillite/shared/widgets/offline_banner.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// User-toggled sidebar collapse state. null = auto (follow screen width)
@@ -37,6 +39,7 @@ class WebShell extends ConsumerWidget {
         children: [
           // Demo mode banner at the very top if active
           const DemoModeBanner(),
+          const OfflineBanner(),
 
           Expanded(
             child: Row(
@@ -558,7 +561,9 @@ class _WebHeader extends StatelessWidget {
             ),
           ),
 
-          // Header Actions — real notification bell
+          // Header Actions — sync indicator and notification bell
+          const GlobalSyncIndicator(),
+          const SizedBox(width: 8),
           const NotificationBell(),
         ],
       ),

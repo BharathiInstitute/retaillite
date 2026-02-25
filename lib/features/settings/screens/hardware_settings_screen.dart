@@ -109,7 +109,7 @@ class _HardwareSettingsScreenState
     final success = await ThermalPrinterService.connect(device);
     if (success) {
       await ThermalPrinterService.savePrinter(device);
-      ref
+      await ref
           .read(printerProvider.notifier)
           .connectPrinter(device.name, device.address);
       if (mounted) {
@@ -273,7 +273,7 @@ class _HardwareSettingsScreenState
 
   Future<void> _selectUsbPrinter(String name) async {
     await UsbPrinterService.saveUsbPrinter(name);
-    ref.read(printerProvider.notifier).connectPrinter('USB: $name', name);
+    await ref.read(printerProvider.notifier).connectPrinter('USB: $name', name);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -370,26 +370,6 @@ class _HardwareSettingsScreenState
                       return DropdownMenuItem(
                         value: interval,
                         child: Text(interval.displayName),
-                      );
-                    }).toList(),
-                  ),
-                ),
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.language),
-                  title: Text(l10n.language),
-                  trailing: DropdownButton<AppLanguage>(
-                    value: AppLanguage.fromCode(settings.languageCode),
-                    underline: const SizedBox(),
-                    onChanged: (v) {
-                      if (v != null) {
-                        ref.read(settingsProvider.notifier).setLanguage(v.code);
-                      }
-                    },
-                    items: AppLanguage.values.map((lang) {
-                      return DropdownMenuItem(
-                        value: lang,
-                        child: Text(lang.displayName),
                       );
                     }).toList(),
                   ),

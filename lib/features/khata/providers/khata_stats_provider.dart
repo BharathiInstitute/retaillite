@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 
@@ -32,17 +33,14 @@ class KhataStats {
   );
 }
 
-/// Provider for khata statistics - supports demo mode
+/// Provider for khata statistics — derives from customers stream
 final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
   final isDemoMode = ref.watch(isDemoModeProvider);
   debugPrint('📊 khataStatsProvider: isDemoMode=$isDemoMode');
 
-  List<CustomerModel> customers;
-  if (isDemoMode) {
-    customers = DemoDataService.getCustomers().toList();
-  } else {
-    customers = await OfflineStorageService.getCachedCustomersAsync();
-  }
+  // Watch the customers stream — this auto-updates when customers change
+  final customersAsync = ref.watch(customersProvider);
+  final customers = customersAsync.valueOrNull ?? [];
 
   // Calculate total outstanding (sum of positive balances)
   final totalOutstanding = customers.fold<double>(
@@ -53,26 +51,24 @@ final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
   // Count customers with due
   final customersWithDue = customers.where((c) => c.balance > 0).length;
 
-  // Calculate collected today
+  // Calculate collected today — single query instead of N+1 per customer
   double collectedToday = 0;
-  final today = DateTime.now();
-  final startOfDay = DateTime(today.year, today.month, today.day);
-
-  for (final customer in customers) {
-    List<TransactionModel> transactions;
-    if (isDemoMode) {
-      transactions = DemoDataService.getCustomerTransactions(customer.id);
-    } else {
-      transactions = await OfflineStorageService.getCustomerTransactions(
-        customer.id,
-      );
-    }
-    for (final tx in transactions) {
-      if (tx.type == TransactionType.payment &&
-          tx.createdAt.isAfter(startOfDay)) {
-        collectedToday += tx.amount;
+  if (isDemoMode) {
+    // Demo mode: iterate in-memory (no Firestore cost)
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    for (final customer in customers) {
+      final transactions = DemoDataService.getCustomerTransactions(customer.id);
+      for (final tx in transactions) {
+        if (tx.type == TransactionType.payment &&
+            tx.createdAt.isAfter(startOfDay)) {
+          collectedToday += tx.amount;
+        }
       }
     }
+  } else {
+    // Production: single Firestore query (was N+1 before)
+    collectedToday = await OfflineStorageService.getTodayPaymentTotal();
   }
 
   debugPrint(
@@ -97,48 +93,42 @@ final customerSortProvider = StateProvider<CustomerSortOption>(
   (ref) => CustomerSortOption.highestDebt,
 );
 
-/// Sorted and filtered customers provider - supports demo mode
-final sortedCustomersProvider = FutureProvider<List<CustomerModel>>((
+/// Sorted and filtered customers provider — derives from customers stream
+final sortedCustomersProvider = Provider<AsyncValue<List<CustomerModel>>>((
   ref,
-) async {
-  final isDemoMode = ref.watch(isDemoModeProvider);
-  debugPrint('📋 sortedCustomersProvider: isDemoMode=$isDemoMode');
-
-  List<CustomerModel> customers;
-  if (isDemoMode) {
-    customers = DemoDataService.getCustomers().toList();
-    debugPrint('📋 Got ${customers.length} demo customers');
-  } else {
-    customers = await OfflineStorageService.getCachedCustomersAsync();
-  }
-
+) {
+  final customersAsync = ref.watch(customersProvider);
   final sortOption = ref.watch(customerSortProvider);
-  final sorted = List<CustomerModel>.from(customers);
 
-  switch (sortOption) {
-    case CustomerSortOption.highestDebt:
-      sorted.sort((a, b) => b.balance.compareTo(a.balance));
-      break;
-    case CustomerSortOption.recentlyActive:
-      sorted.sort((a, b) {
-        final aDate = a.lastTransactionAt ?? DateTime(1970);
-        final bDate = b.lastTransactionAt ?? DateTime(1970);
-        return bDate.compareTo(aDate);
-      });
-      break;
-    case CustomerSortOption.alphabetical:
-      sorted.sort(
-        (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-      );
-      break;
-    case CustomerSortOption.oldestDue:
-      sorted.sort((a, b) {
-        final aDate = a.lastTransactionAt ?? DateTime.now();
-        final bDate = b.lastTransactionAt ?? DateTime.now();
-        return aDate.compareTo(bDate);
-      });
-      break;
-  }
+  return customersAsync.whenData((customers) {
+    debugPrint('📋 sortedCustomersProvider: ${customers.length} customers');
+    final sorted = List<CustomerModel>.from(customers);
 
-  return sorted;
+    switch (sortOption) {
+      case CustomerSortOption.highestDebt:
+        sorted.sort((a, b) => b.balance.compareTo(a.balance));
+        break;
+      case CustomerSortOption.recentlyActive:
+        sorted.sort((a, b) {
+          final aDate = a.lastTransactionAt ?? DateTime(1970);
+          final bDate = b.lastTransactionAt ?? DateTime(1970);
+          return bDate.compareTo(aDate);
+        });
+        break;
+      case CustomerSortOption.alphabetical:
+        sorted.sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
+        break;
+      case CustomerSortOption.oldestDue:
+        sorted.sort((a, b) {
+          final aDate = a.lastTransactionAt ?? DateTime.now();
+          final bDate = b.lastTransactionAt ?? DateTime.now();
+          return aDate.compareTo(bDate);
+        });
+        break;
+    }
+
+    return sorted;
+  });
 });

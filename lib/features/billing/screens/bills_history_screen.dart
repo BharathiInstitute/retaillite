@@ -5,9 +5,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/data_export_service.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
+import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/models/bill_model.dart';
@@ -477,11 +479,7 @@ class BillsHistoryScreen extends ConsumerWidget {
         ),
         const SizedBox(width: 12),
         ElevatedButton.icon(
-          onPressed: () {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Excel export coming soon!')),
-            );
-          },
+          onPressed: () => _showExportDialog(context),
           icon: const Icon(Icons.download, size: 18),
           label: const Text('Export'),
           style: ElevatedButton.styleFrom(
@@ -916,6 +914,168 @@ class BillsHistoryScreen extends ConsumerWidget {
           fontWeight: FontWeight.w600,
           color: Theme.of(context).colorScheme.onSurfaceVariant,
           letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  /// Show export dialog with date range presets and format selection
+  void _showExportDialog(BuildContext context) {
+    ExportRange selectedRange = ExportRange.last30Days;
+    ExportFormat selectedFormat = ExportFormat.csv;
+    bool isExporting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Row(
+            children: [
+              Icon(Icons.download, size: 22),
+              SizedBox(width: 8),
+              Text('Export Bills'),
+            ],
+          ),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Date Range',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: ExportRange.values.map((range) {
+                    final isSelected = range == selectedRange;
+                    return ChoiceChip(
+                      label: Text(range.label),
+                      selected: isSelected,
+                      onSelected: (_) => setState(() => selectedRange = range),
+                      selectedColor: AppColors.primary.withValues(alpha: 0.15),
+                      labelStyle: TextStyle(
+                        color: isSelected
+                            ? AppColors.primary
+                            : Theme.of(ctx).colorScheme.onSurface,
+                        fontWeight: isSelected
+                            ? FontWeight.w600
+                            : FontWeight.normal,
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 20),
+                Text(
+                  'Format',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: ExportFormat.values.map((format) {
+                    final isSelected = format == selectedFormat;
+                    return Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: ChoiceChip(
+                        label: Text(format.label),
+                        selected: isSelected,
+                        onSelected: (_) =>
+                            setState(() => selectedFormat = format),
+                        selectedColor: AppColors.primary.withValues(
+                          alpha: 0.15,
+                        ),
+                        labelStyle: TextStyle(
+                          color: isSelected
+                              ? AppColors.primary
+                              : Theme.of(ctx).colorScheme.onSurface,
+                          fontWeight: isSelected
+                              ? FontWeight.w600
+                              : FontWeight.normal,
+                        ),
+                      ),
+                    );
+                  }).toList(),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  selectedFormat.description,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: isExporting ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: isExporting
+                  ? null
+                  : () async {
+                      setState(() => isExporting = true);
+                      final service = DataExportService();
+                      final ExportResult result;
+
+                      if (selectedFormat == ExportFormat.csv) {
+                        result = await service.exportBillsToCSV(
+                          range: selectedRange,
+                        );
+                      } else {
+                        result = await service.exportBillsToJSON(
+                          range: selectedRange,
+                        );
+                      }
+
+                      if (!ctx.mounted) return;
+                      Navigator.pop(ctx);
+
+                      if (result.success) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              '✅ Exported ${result.recordCount} bills to ${result.filePath}',
+                            ),
+                            duration: const Duration(seconds: 4),
+                          ),
+                        );
+                      } else {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('❌ ${result.error}'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    },
+              icon: isExporting
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.download, size: 18),
+              label: Text(isExporting ? 'Exporting...' : 'Export'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -1388,7 +1548,7 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
     try {
       final amount = double.parse(_amountController.text);
       final expense = ExpenseModel(
-        id: 'exp_${DateTime.now().millisecondsSinceEpoch}',
+        id: generateSafeId('exp'),
         amount: amount,
         category: _selectedCategory,
         description: _descriptionController.text.isEmpty
@@ -1407,10 +1567,12 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
         await OfflineStorageService.saveExpense(expense);
       }
 
-      // Refresh the expenses list and dashboard
+      // Refresh the expenses list, dashboard, and reports
       ref.invalidate(filteredExpensesProvider);
       ref.invalidate(salesSummaryProvider);
       ref.invalidate(periodBillsProvider);
+      ref.invalidate(dashboardBillsProvider);
+      ref.invalidate(topProductsProvider);
 
       if (mounted) {
         Navigator.of(context).pop();

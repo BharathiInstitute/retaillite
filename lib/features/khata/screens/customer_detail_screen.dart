@@ -10,6 +10,7 @@ import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
 import 'package:retaillite/features/khata/widgets/give_udhaar_modal.dart';
 import 'package:retaillite/features/khata/widgets/record_payment_modal.dart';
@@ -753,6 +754,8 @@ class CustomerDetailScreen extends ConsumerWidget {
                     .deleteCustomer(customer.id);
 
                 ref.invalidate(customersProvider);
+                ref.invalidate(sortedCustomersProvider);
+                ref.invalidate(khataStatsProvider);
 
                 navigator.pop(); // Go back to list
                 scaffoldMessenger.showSnackBar(

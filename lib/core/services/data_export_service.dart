@@ -3,6 +3,8 @@ library;
 
 import 'dart:io';
 
+import 'package:csv/csv.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
@@ -100,33 +102,34 @@ class DataExportService {
         );
       }
 
-      // Generate CSV content
-      final csvContent = StringBuffer();
+      // Generate CSV content using csv package for proper escaping
+      final rows = <List<dynamic>>[
+        // Header row
+        [
+          'Bill Number',
+          'Date',
+          'Time',
+          'Items',
+          'Total',
+          'Payment Method',
+          'Customer',
+          'Received Amount',
+        ],
+        // Data rows
+        for (final bill in bills)
+          [
+            bill.billNumber,
+            bill.date,
+            '${bill.createdAt.hour.toString().padLeft(2, '0')}:${bill.createdAt.minute.toString().padLeft(2, '0')}',
+            bill.items.map((i) => '${i.name} x${i.quantity}').join('; '),
+            bill.total.toStringAsFixed(2),
+            bill.paymentMethod.name,
+            bill.customerName ?? '',
+            bill.receivedAmount?.toStringAsFixed(2) ?? '',
+          ],
+      ];
 
-      // Header row
-      csvContent.writeln(
-        'Bill Number,Date,Time,Items,Total,Payment Method,Customer,Received Amount',
-      );
-
-      // Data rows
-      for (final bill in bills) {
-        final itemNames = bill.items
-            .map((i) => '${i.name} x${i.quantity}')
-            .join('; ');
-        final time =
-            '${bill.createdAt.hour.toString().padLeft(2, '0')}:${bill.createdAt.minute.toString().padLeft(2, '0')}';
-
-        csvContent.writeln(
-          '${bill.billNumber},'
-          '${bill.date},'
-          '$time,'
-          '"$itemNames",'
-          '${bill.total.toStringAsFixed(2)},'
-          '${bill.paymentMethod.name},'
-          '"${bill.customerName ?? ''}",'
-          '${bill.receivedAmount?.toStringAsFixed(2) ?? ''}',
-        );
-      }
+      final csvContent = const ListToCsvConverter().convert(rows);
 
       // Save file
       final fileName =
@@ -136,7 +139,7 @@ class DataExportService {
       final filePath = await _saveFile(
         fileName,
         ExportFormat.csv.extension,
-        csvContent.toString(),
+        csvContent,
       );
 
       // Update last export time

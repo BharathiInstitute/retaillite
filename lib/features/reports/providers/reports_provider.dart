@@ -33,19 +33,21 @@ DateRange getEffectiveDateRange(
   return period.getDateRange(offset: offset);
 }
 
-/// Helper to get bills for a date range (supports demo mode)
-Future<List<BillModel>> _getBillsForRange(
+/// Helper to get bills stream for a date range (supports demo mode)
+Stream<List<BillModel>> _getBillsStreamForRange(
   DateRange range,
   bool isDemoMode,
-) async {
+) {
   if (isDemoMode) {
-    return DemoDataService.getBillsInRange(range.start, range.end);
+    return Stream.value(
+      DemoDataService.getBillsInRange(range.start, range.end),
+    );
   }
-  return OfflineStorageService.getCachedBillsInRange(range.start, range.end);
+  return OfflineStorageService.billsInRangeStream(range.start, range.end);
 }
 
-/// Sales summary provider for the selected period - supports demo mode
-final salesSummaryProvider = FutureProvider<SalesSummary>((ref) async {
+/// Sales summary provider — real-time stream from Firestore
+final salesSummaryProvider = StreamProvider.autoDispose<SalesSummary>((ref) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   final period = ref.watch(selectedPeriodProvider);
   final offset = ref.watch(periodOffsetProvider);
@@ -53,118 +55,119 @@ final salesSummaryProvider = FutureProvider<SalesSummary>((ref) async {
 
   // Get effective date range based on period, offset, and custom range
   final range = getEffectiveDateRange(period, offset, customRange);
-  final bills = await _getBillsForRange(range, isDemoMode);
+  final billsStream = _getBillsStreamForRange(range, isDemoMode);
 
-  double totalSales = 0;
-  double cashAmount = 0;
-  double upiAmount = 0;
-  double udharAmount = 0;
+  // Combine bills stream with on-demand expenses fetch
+  return billsStream.asyncMap((bills) async {
+    double totalSales = 0;
+    double cashAmount = 0;
+    double upiAmount = 0;
+    double udharAmount = 0;
 
-  for (final bill in bills) {
-    totalSales += bill.total;
-    switch (bill.paymentMethod) {
-      case PaymentMethod.cash:
-        cashAmount += bill.total;
-        break;
-      case PaymentMethod.upi:
-        upiAmount += bill.total;
-        break;
-      case PaymentMethod.udhar:
-        udharAmount += bill.total;
-        break;
-      case PaymentMethod.unknown:
-        break;
-    }
-  }
-
-  // Compute expenses for the same period
-  double totalExpenses = 0;
-  try {
-    List<ExpenseModel> expenses;
-    if (isDemoMode) {
-      expenses = DemoDataService.getExpenses();
-    } else {
-      expenses = await OfflineStorageService.getCachedExpensesAsync();
-    }
-    for (final expense in expenses) {
-      if (!expense.createdAt.isBefore(range.start) &&
-          !expense.createdAt.isAfter(range.end)) {
-        totalExpenses += expense.amount;
+    for (final bill in bills) {
+      totalSales += bill.total;
+      switch (bill.paymentMethod) {
+        case PaymentMethod.cash:
+          cashAmount += bill.total;
+          break;
+        case PaymentMethod.upi:
+          upiAmount += bill.total;
+          break;
+        case PaymentMethod.udhar:
+          udharAmount += bill.total;
+          break;
+        case PaymentMethod.unknown:
+          break;
       }
     }
-  } catch (_) {
-    // Expense fetch failure shouldn't break the summary
-  }
 
-  return SalesSummary(
-    totalSales: totalSales,
-    billCount: bills.length,
-    cashAmount: cashAmount,
-    upiAmount: upiAmount,
-    udharAmount: udharAmount,
-    avgBillValue: bills.isNotEmpty ? totalSales / bills.length : 0,
-    totalExpenses: totalExpenses,
-    startDate: range.start,
-    endDate: range.end,
-  );
-});
-
-/// Bills for the selected period - supports demo mode
-final periodBillsProvider = FutureProvider<List<BillModel>>((ref) async {
-  final isDemoMode = ref.watch(isDemoModeProvider);
-  final period = ref.watch(selectedPeriodProvider);
-  final offset = ref.watch(periodOffsetProvider);
-  final customRange = ref.watch(customDateRangeProvider);
-
-  final range = getEffectiveDateRange(period, offset, customRange);
-  return _getBillsForRange(range, isDemoMode);
-});
-
-/// Top products for the selected period - supports demo mode
-final topProductsProvider = FutureProvider<List<ProductSale>>((ref) async {
-  final isDemoMode = ref.watch(isDemoModeProvider);
-  final period = ref.watch(selectedPeriodProvider);
-  final offset = ref.watch(periodOffsetProvider);
-  final customRange = ref.watch(customDateRangeProvider);
-
-  final range = getEffectiveDateRange(period, offset, customRange);
-  final bills = await _getBillsForRange(range, isDemoMode);
-
-  // Aggregate product sales
-  final Map<String, ProductSale> productSales = {};
-  for (final bill in bills) {
-    for (final item in bill.items) {
-      if (productSales.containsKey(item.productId)) {
-        final existing = productSales[item.productId]!;
-        productSales[item.productId] = ProductSale(
-          productId: item.productId,
-          productName: item.name,
-          quantitySold: existing.quantitySold + item.quantity,
-          revenue: existing.revenue + (item.price * item.quantity),
-        );
+    // Compute expenses for the same period
+    double totalExpenses = 0;
+    try {
+      List<ExpenseModel> expenses;
+      if (isDemoMode) {
+        expenses = DemoDataService.getExpenses();
       } else {
-        productSales[item.productId] = ProductSale(
-          productId: item.productId,
-          productName: item.name,
-          quantitySold: item.quantity,
-          revenue: item.price * item.quantity,
-        );
+        expenses = await OfflineStorageService.getCachedExpensesAsync();
       }
+      for (final expense in expenses) {
+        if (!expense.createdAt.isBefore(range.start) &&
+            !expense.createdAt.isAfter(range.end)) {
+          totalExpenses += expense.amount;
+        }
+      }
+    } catch (_) {
+      // Expense fetch failure shouldn't break the summary
     }
-  }
 
-  // Sort by quantity and return top 10
-  final sorted = productSales.values.toList()
-    ..sort((a, b) => b.quantitySold.compareTo(a.quantitySold));
-
-  return sorted.take(10).toList();
+    return SalesSummary(
+      totalSales: totalSales,
+      billCount: bills.length,
+      cashAmount: cashAmount,
+      upiAmount: upiAmount,
+      udharAmount: udharAmount,
+      avgBillValue: bills.isNotEmpty ? totalSales / bills.length : 0,
+      totalExpenses: totalExpenses,
+      startDate: range.start,
+      endDate: range.end,
+    );
+  });
 });
 
-/// Dashboard bills provider - fetches last 7 days of bills for recent activity
-final dashboardBillsProvider = FutureProvider<List<BillModel>>((ref) async {
+/// Bills for the selected period — real-time stream from Firestore
+final periodBillsProvider = StreamProvider.autoDispose<List<BillModel>>((ref) {
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  final period = ref.watch(selectedPeriodProvider);
+  final offset = ref.watch(periodOffsetProvider);
+  final customRange = ref.watch(customDateRangeProvider);
+
+  final range = getEffectiveDateRange(period, offset, customRange);
+  return _getBillsStreamForRange(range, isDemoMode);
+});
+
+/// Top products for the selected period — derives from period bills stream
+final topProductsProvider = Provider<AsyncValue<List<ProductSale>>>((ref) {
+  final periodBillsAsync = ref.watch(periodBillsProvider);
+
+  return periodBillsAsync.whenData((bills) {
+    // Aggregate product sales
+    final Map<String, ProductSale> productSales = {};
+    for (final bill in bills) {
+      for (final item in bill.items) {
+        if (productSales.containsKey(item.productId)) {
+          final existing = productSales[item.productId]!;
+          productSales[item.productId] = ProductSale(
+            productId: item.productId,
+            productName: item.name,
+            quantitySold: existing.quantitySold + item.quantity,
+            revenue: existing.revenue + (item.price * item.quantity),
+          );
+        } else {
+          productSales[item.productId] = ProductSale(
+            productId: item.productId,
+            productName: item.name,
+            quantitySold: item.quantity,
+            revenue: item.price * item.quantity,
+          );
+        }
+      }
+    }
+
+    // Sort by quantity and return top 10
+    final sorted = productSales.values.toList()
+      ..sort((a, b) => b.quantitySold.compareTo(a.quantitySold));
+
+    return sorted.take(10).toList();
+  });
+});
+
+/// Dashboard bills provider — real-time stream for last 7 days
+final dashboardBillsProvider = StreamProvider.autoDispose<List<BillModel>>((
+  ref,
+) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   final now = DateTime.now();
   final end = now;
   final start = now.subtract(const Duration(days: 7));
-  return _getBillsForRange(DateRange(start: start, end: end), isDemoMode);
+  return _getBillsStreamForRange(DateRange(start: start, end: end), isDemoMode);
 });

@@ -2,16 +2,19 @@
 /// Supports demo mode with local in-memory data
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
+import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 
-/// Customers list provider - reads from demo data or Firestore
-final customersProvider = FutureProvider<List<CustomerModel>>((ref) async {
+/// Customers list provider — real-time stream from Firestore
+final customersProvider = StreamProvider<List<CustomerModel>>((ref) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   debugPrint(
     '🧾 customersProvider: isDemoMode=$isDemoMode, DemoDataService.isLoaded=${DemoDataService.isLoaded}',
@@ -20,46 +23,38 @@ final customersProvider = FutureProvider<List<CustomerModel>>((ref) async {
   if (isDemoMode) {
     final customers = DemoDataService.getCustomers().toList();
     debugPrint('🧾 Returning ${customers.length} demo customers');
-    return customers;
+    return Stream.value(customers);
   }
 
-  final customers = await OfflineStorageService.getCachedCustomersAsync();
-  return customers;
+  return OfflineStorageService.customersStream();
 });
 
-/// Single customer provider - reads from demo data or Firestore
-final customerProvider = FutureProvider.family<CustomerModel?, String>((
+/// Single customer provider — real-time stream from Firestore
+final customerProvider = StreamProvider.family<CustomerModel?, String>((
   ref,
   customerId,
-) async {
+) {
   final isDemoMode = ref.watch(isDemoModeProvider);
 
   if (isDemoMode) {
-    return DemoDataService.getCustomer(customerId);
+    return Stream.value(DemoDataService.getCustomer(customerId));
   }
 
-  final customer = await OfflineStorageService.getCachedCustomerAsync(
-    customerId,
-  );
-  return customer;
+  return OfflineStorageService.customerStream(customerId);
 });
 
-/// Customer transactions provider - reads from demo data or Firestore
+/// Customer transactions provider — real-time stream from Firestore
 final customerTransactionsProvider =
-    FutureProvider.family<List<TransactionModel>, String>((
-      ref,
-      customerId,
-    ) async {
+    StreamProvider.family<List<TransactionModel>, String>((ref, customerId) {
       final isDemoMode = ref.watch(isDemoModeProvider);
 
       if (isDemoMode) {
-        return DemoDataService.getCustomerTransactions(customerId);
+        return Stream.value(
+          DemoDataService.getCustomerTransactions(customerId),
+        );
       }
 
-      final transactions = await OfflineStorageService.getCustomerTransactions(
-        customerId,
-      );
-      return transactions;
+      return OfflineStorageService.customerTransactionsStream(customerId);
     });
 
 /// Khata service for CRUD operations
@@ -75,7 +70,7 @@ class KhataService {
       return DemoDataService.addCustomer(customer);
     }
 
-    final id = 'customer_${DateTime.now().millisecondsSinceEpoch}';
+    final id = generateSafeId('customer');
     final newCustomer = CustomerModel(
       id: id,
       name: customer.name,
@@ -85,6 +80,7 @@ class KhataService {
       createdAt: DateTime.now(),
     );
     await OfflineStorageService.saveCustomer(newCustomer);
+    unawaited(UserMetricsService.trackCustomerAdded());
     return id;
   }
 

@@ -422,13 +422,11 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
     // Save to storage
     await PrinterStorage.savePrinter(name, address);
 
-    state = PrinterState(
+    state = state.copyWith(
       isConnected: true,
       printerName: name,
       printerAddress: address,
-      paperSizeIndex: state.paperSizeIndex,
-      fontSizeIndex: state.fontSizeIndex,
-      customWidth: state.customWidth,
+      isScanning: false,
     );
 
     return true;

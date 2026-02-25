@@ -2,11 +2,16 @@
 /// Supports demo mode with local in-memory data
 library;
 
+import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
+import 'package:retaillite/core/utils/id_generator.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
+import 'package:retaillite/core/services/sync_status_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/product_model.dart';
 
@@ -38,12 +43,22 @@ final productsProvider = StreamProvider.autoDispose<List<ProductModel>>((ref) {
   return _firestore
       .collection(_productsPath)
       .orderBy('name')
-      .limit(2000)
+      .limit(AppConstants.queryLimitProducts)
       .snapshots()
       .map((snapshot) {
         final products = snapshot.docs
             .map((doc) => ProductModel.fromFirestore(doc))
             .toList();
+        // Report sync status
+        final pendingCount = snapshot.docs
+            .where((d) => d.metadata.hasPendingWrites)
+            .length;
+        SyncStatusService.updateCollection(
+          'products',
+          totalDocs: products.length,
+          unsyncedDocs: pendingCount,
+          hasPendingWrites: snapshot.metadata.hasPendingWrites,
+        );
         if (products.length >= 1000) {
           debugPrint(
             '⚠️ productsProvider: Large inventory (${products.length} products) — '
@@ -81,7 +96,7 @@ class ProductsService {
       return DemoDataService.addProduct(product);
     }
 
-    final id = 'product_${DateTime.now().millisecondsSinceEpoch}';
+    final id = generateSafeId('product');
     final newProduct = ProductModel(
       id: id,
       name: product.name,
@@ -94,6 +109,7 @@ class ProductsService {
       createdAt: DateTime.now(),
     );
     await _collection!.doc(id).set(newProduct.toFirestore());
+    unawaited(UserMetricsService.trackProductAdded());
     return id;
   }
 
@@ -113,6 +129,7 @@ class ProductsService {
       return;
     }
     await _collection!.doc(productId).delete();
+    unawaited(UserMetricsService.trackProductDeleted());
   }
 
   /// Update stock

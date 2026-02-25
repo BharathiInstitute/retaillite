@@ -124,23 +124,37 @@ class ReceiptService {
     final createdAt = bill.createdAt;
 
     return pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
-        // Shop header
+        // Shop header (centered)
         pw.Text(
           shopName,
           style: pw.TextStyle(fontSize: 16, fontWeight: pw.FontWeight.bold),
+          textAlign: pw.TextAlign.center,
         ),
         if (shopAddress != null) ...[
           pw.SizedBox(height: 2),
-          pw.Text(shopAddress, style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+            shopAddress,
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: pw.TextAlign.center,
+          ),
         ],
         if (shopPhone != null) ...[
           pw.SizedBox(height: 2),
-          pw.Text('Ph: $shopPhone', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+            'Ph: $shopPhone',
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: pw.TextAlign.center,
+          ),
         ],
         if (gstNumber != null) ...[
           pw.SizedBox(height: 2),
-          pw.Text('GSTIN: $gstNumber', style: const pw.TextStyle(fontSize: 8)),
+          pw.Text(
+            'GSTIN: $gstNumber',
+            style: const pw.TextStyle(fontSize: 8),
+            textAlign: pw.TextAlign.center,
+          ),
         ],
 
         pw.SizedBox(height: 8),
@@ -358,12 +372,18 @@ class ReceiptService {
         pw.Text(
           receiptFooter,
           style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+          textAlign: pw.TextAlign.center,
         ),
-        pw.Text('धन्यवाद! फिर आइए।', style: const pw.TextStyle(fontSize: 8)),
+        pw.Text(
+          'धन्यवाद! फिर आइए।',
+          style: const pw.TextStyle(fontSize: 8),
+          textAlign: pw.TextAlign.center,
+        ),
         pw.SizedBox(height: 4),
         pw.Text(
           'Powered by Tulasi Stores',
           style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
+          textAlign: pw.TextAlign.center,
         ),
         pw.SizedBox(height: 20), // Space for tear
       ],

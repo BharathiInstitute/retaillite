@@ -1,4 +1,6 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/formatters.dart';
@@ -14,6 +16,7 @@ import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/features/reports/providers/reports_provider.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
@@ -685,13 +688,27 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
     setState(() => _isLoading = true);
 
     try {
+      // Check bill limit before creating
+      final allowed = await UserMetricsService.trackBillCreated();
+      if (!allowed) {
+        if (mounted) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Monthly bill limit reached. Upgrade your plan.'),
+            ),
+          );
+        }
+        return;
+      }
+
       final now = DateTime.now();
       final dateStr =
           '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
       final bill = BillModel(
-        id: 'bill_${now.millisecondsSinceEpoch}',
-        billNumber: now.millisecondsSinceEpoch % 10000,
+        id: generateSafeId('bill'),
+        billNumber: await OfflineStorageService.getNextBillNumber(),
         items: cart.items,
         total: cart.total,
         paymentMethod: _selectedPayment,
@@ -736,10 +753,11 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
         ref.read(cartProvider.notifier).clearCart();
 
-        // Auto-print if enabled
+        // Auto-print if enabled — call directly, widget stays mounted
         final printerState = ref.read(printerProvider);
         if (printerState.autoPrint) {
-          _autoPrintReceipt(bill);
+          final messenger = ScaffoldMessenger.of(context);
+          unawaited(_printReceipt(bill, messenger));
         }
 
         // Show success/receipt dialog
@@ -831,7 +849,13 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
       if (directSuccess == false) {
         scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text('Print failed: Printer not connected')),
+          SnackBar(
+            content: const Text('Print failed: Printer not connected'),
+            action: SnackBarAction(
+              label: 'Retry',
+              onPressed: () => _printReceipt(bill, scaffoldMessenger),
+            ),
+          ),
         );
       } else if (directSuccess == null) {
         await ReceiptService.printReceipt(
@@ -848,15 +872,6 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
         SnackBar(content: Text('Print failed: $e')),
       );
     }
-  }
-
-  /// Auto-print receipt silently
-  void _autoPrintReceipt(BillModel bill) {
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (!mounted) return;
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
-      await _printReceipt(bill, scaffoldMessenger);
-    });
   }
 
   void _showBillCompleteDialog(BillModel bill) {

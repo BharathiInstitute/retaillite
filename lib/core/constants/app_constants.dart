@@ -37,4 +37,13 @@ class AppConstants {
   static const Duration animFast = Duration(milliseconds: 200);
   static const Duration animNormal = Duration(milliseconds: 300);
   static const Duration animSlow = Duration(milliseconds: 500);
+
+  // Firestore Query Limits
+  static const int queryLimitBills = 500;
+  static const int queryLimitExpenses = 500;
+  static const int queryLimitProducts = 500;
+  static const int queryLimitCustomers = 500;
+  static const int queryLimitTransactions = 100;
+  static const int queryLimitNotifications = 50;
+  static const int queryLimitAdminAnalytics = 200;
 }
