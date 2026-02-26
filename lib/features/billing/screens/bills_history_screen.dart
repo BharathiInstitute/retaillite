@@ -1050,7 +1050,6 @@ class BillsHistoryScreen extends ConsumerWidget {
                             content: Text(
                               '✅ Exported ${result.recordCount} bills to ${result.filePath}',
                             ),
-                            duration: const Duration(seconds: 4),
                           ),
                         );
                       } else {

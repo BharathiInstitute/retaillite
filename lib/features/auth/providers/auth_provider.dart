@@ -170,7 +170,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       final doc = await _firestore
           .collection('users')
           .doc(firebaseUser.uid)
-          .get();
+          .get()
+          .timeout(const Duration(seconds: 10));
 
       // Google sign-in users are always email-verified
       final isGoogleUser = firebaseUser.providerData.any(
@@ -267,6 +268,10 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     try {
       if (kIsWeb) {
         return await _googleSignInWeb();
+      } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        // Windows: Google Sign-In package doesn't support Windows
+        // Open browser for Google auth, email login stays in-app
+        return await signInDesktop();
       } else {
         return await _googleSignInMobile();
       }
@@ -677,32 +682,38 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Sign out
   Future<void> signOut() async {
     try {
-      // Remove FCM token before clearing everything
+      // Capture userId before clearing state
       final userId = state.firebaseUser?.uid;
-      if (userId != null) {
-        await FCMTokenService.removeToken(userId);
-      }
-      // Stop Windows notification listener
-      WindowsNotificationService.stopListening();
-      // Clear local user-specific settings so they don't leak to next user
-      await OfflineStorageService.clearUserLocalSettings();
-      // Reset theme to default light immediately
-      _ref.read(themeSettingsProvider.notifier).resetToDefault();
-      // Clear Firestore offline cache BEFORE signing out
-      // This prevents race conditions with authStateChanges listener on web
-      try {
-        await FirebaseFirestore.instance.clearPersistence();
-      } catch (e) {
-        debugPrint('🔐 clearPersistence skipped (active listeners): $e');
-      }
-      // Sign out of Google so account picker shows on next sign-in
+
+      // 1. Immediately mark as logged out to prevent re-triggers
+      state = const AuthState(isLoading: false);
+
+      // 2. Sign out of Firebase Auth first
       try {
         await GoogleSignIn().signOut();
       } catch (_) {}
       await _auth.signOut();
-      state = const AuthState(isLoading: false);
+
+      // 3. Cleanup (fire-and-forget — none of these should block logout)
+      if (userId != null) {
+        try {
+          await FCMTokenService.removeToken(userId);
+        } catch (e) {
+          debugPrint('🔐 FCM cleanup skipped: $e');
+        }
+      }
+      WindowsNotificationService.stopListening();
+      try {
+        await OfflineStorageService.clearUserLocalSettings();
+      } catch (_) {}
+      _ref.read(themeSettingsProvider.notifier).resetToDefault();
+      // Skip clearPersistence — it fails with active listeners and
+      // calling terminate() breaks Firestore for the auth state listener.
+      // Firestore cache will be replaced on next login anyway.
     } catch (e) {
       debugPrint('🔐 Error signing out: $e');
+      // Force reset state even if something failed
+      state = const AuthState(isLoading: false);
     }
   }
 

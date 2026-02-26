@@ -1,156 +1,191 @@
-ID,Category,Sub-Category,Test Name,Steps,Expected Result,Platform,Priority,Status
-AUTH-001,Authentication,Google Sign-In,Google Sign-In on Android,1. Open app on Android 2. Tap "Sign in with Google" 3. Select Google account,User lands on dashboard with shop data loaded,Android,High,
-AUTH-002,Authentication,Google Sign-In,Google Sign-In on Web,1. Open stores.tulasierp.com/app 2. Click "Sign in with Google" 3. Select Google account in popup,User lands on web dashboard,Web,High,
-AUTH-003,Authentication,Google Sign-In,Google Sign-In on Windows,1. Open Windows desktop app 2. Click "Sign in with Google" 3. Browser popup opens for auth,User authenticated and lands on dashboard,Windows,High,
-AUTH-004,Authentication,Email Registration,Email registration with OTP,1. Tap "Create Account" 2. Enter name + email 3. Click "Verify Email" 4. Enter 4-digit OTP from email 5. Set password 6. Click "Create Account",Account created with emailVerified=true and navigates to shop setup,All,High,
-AUTH-005,Authentication,Email Registration,Invalid OTP rejection,1. Start registration 2. Enter wrong OTP code,Error message shown - OTP does not match,All,Medium,
-AUTH-006,Authentication,Email Registration,OTP resend,1. Start registration 2. Click "Resend OTP" after timer expires,New OTP sent to email - old OTP invalidated,All,Medium,
-AUTH-007,Authentication,Email Login,Email + password login,1. Open app 2. Enter registered email + password 3. Tap "Login",User logged in and lands on dashboard,All,High,
-AUTH-008,Authentication,Email Login,Wrong password error,1. Open app 2. Enter email + wrong password 3. Tap "Login",Error message "Invalid credentials" shown,All,Medium,
-AUTH-009,Authentication,Demo Mode,Enter demo mode,1. Open app 2. Tap "Try Demo",App opens with sample data - no Firebase account needed,All,Medium,
-AUTH-010,Authentication,Demo Mode,Demo mode limitations,1. Enter demo mode 2. Try to save/edit data,Data changes are local only - not persisted,All,Low,
-AUTH-011,Authentication,Logout,Logout and return to login,1. Go to Settings 2. Tap "Logout" 3. Confirm,User returned to login screen - session cleared,All,High,
-AUTH-012,Authentication,Shop Setup,First-time shop setup,1. Login with new account (no shop) 2. Fill shop name + owner name + phone,Shop created in Firestore - user lands on dashboard,All,High,
-AUTH-013,Authentication,Desktop Login,Desktop login page renders,1. Open stores.tulasierp.com/app on desktop browser,Desktop-optimized login page with side illustration,Web,Medium,
-BILL-001,Billing,Cart,Add product to cart from grid,1. Go to POS screen 2. Tap a product tile,Product added to cart with quantity=1,All,High,
-BILL-002,Billing,Cart,Increase quantity in cart,1. Add product to cart 2. Tap + button on cart item,Quantity increases by 1 - total updates,All,High,
-BILL-003,Billing,Cart,Decrease quantity in cart,1. Add product with qty=3 2. Tap - button,Quantity decreases by 1 - total updates,All,High,
-BILL-004,Billing,Cart,Remove item when quantity reaches 0,1. Add product with qty=1 2. Tap - button,Item removed from cart - cart total updates,All,High,
-BILL-005,Billing,Cart,Manual quantity edit,1. Add product 2. Tap quantity number 3. Enter new value,Quantity updated to entered value - total recalculated,All,Medium,
-BILL-006,Billing,Cart,Clear entire cart,1. Add multiple products 2. Tap "Clear Cart",All items removed - total=0 - customer cleared,All,Medium,
-BILL-007,Billing,Barcode,Barcode scan adds product,1. Go to POS 2. Tap barcode icon 3. Scan product barcode,Matching product added to cart,Android,Medium,
-BILL-008,Billing,Customer,Assign customer for credit sale,1. In cart tap "Select Customer" 2. Choose customer from list,Customer name shown in cart - Credit payment enabled,All,High,
-BILL-009,Billing,Customer,Search customer in selector,1. Tap "Select Customer" 2. Type customer name in search,Filtered customer list shown,All,Medium,
-BILL-010,Billing,Payment,Cash payment completes bill,1. Add items to cart 2. Select "Cash" payment 3. Enter received amount 4. Complete,Bill saved - bill number generated - receipt shown,All,High,
-BILL-011,Billing,Payment,UPI payment completes bill,1. Add items to cart 2. Select "UPI" payment 3. Complete,Bill saved with paymentMethod=upi,All,High,
-BILL-012,Billing,Payment,Credit (udhar) payment,1. Add items 2. Select customer 3. Select "Credit" 4. Complete,Bill saved - customer balance increased by bill amount,All,High,
-BILL-013,Billing,Payment,Change amount calculation,1. Cash payment 2. Enter received > total,Correct change amount displayed (received - total),All,Medium,
-BILL-014,Billing,Receipt,Share bill via WhatsApp,1. Complete a bill 2. Tap "Share" 3. Select WhatsApp,WhatsApp opens with formatted bill text,Android/Web,Medium,
-BILL-015,Billing,Receipt,Print bill preview,1. Complete a bill 2. Tap "Print",Print preview shown with correct bill layout,All,Medium,
-BILL-016,Billing,History,Bills history loads,1. Go to Bills History tab,List of recent bills shown with date - amount - payment method,All,High,
-BILL-017,Billing,History,Search bills by bill number,1. Go to Bills History 2. Search "#INV-101",Matching bill shown in results,All,Medium,
-BILL-018,Billing,History,Search bills by customer name,1. Go to Bills History 2. Search customer name,Bills for that customer shown,All,Medium,
-BILL-019,Billing,History,Filter by payment method,1. Go to Bills History 2. Filter by "Cash",Only cash bills shown,All,Medium,
-BILL-020,Billing,History,Filter by date range,1. Go to Bills History 2. Set date range,Only bills within range shown,All,Medium,
-BILL-021,Billing,History,Bills vs Expenses toggle,1. Go to Bills History 2. Toggle between Bills/Expenses/All,Correct records shown per selection,All,Medium,
-BILL-022,Billing,Expense,Add expense with category,1. Go to Bills History 2. Tap "Add Expense" 3. Select category + amount + description,Expense saved with correct category and amount,All,High,
-BILL-023,Billing,Expense,Expense shows in history,1. Add an expense 2. Check Bills History with "All" filter,Expense appears in list with category icon,All,Medium,
-PROD-001,Products,Add,Add product with all fields,1. Go to Products 2. Tap "Add Product" 3. Fill name + price + stock + unit + purchase price + low stock alert + barcode,Product saved to Firestore and appears in list,All,High,
-PROD-002,Products,Add,Validation - empty required fields,1. Tap "Add Product" 2. Leave name empty 3. Tap Save,Validation error shown for required fields,All,Medium,
-PROD-003,Products,Add,Validation - invalid price,1. Enter 0 or negative price,Validation error "Price must be greater than 0",All,Medium,
-PROD-004,Products,Edit,Edit product details,1. Go to product detail 2. Tap Edit 3. Change price 4. Save,Product updated in Firestore and list refreshes,All,High,
-PROD-005,Products,Delete,Delete product,1. Go to product detail 2. Tap Delete 3. Confirm,Product removed from list and Firestore,All,High,
-PROD-006,Products,Stock,Low stock indicator,1. Set product stock below lowStockAlert threshold,Orange/red low stock badge visible on product tile,All,Medium,
-PROD-007,Products,Stock,Out of stock indicator,1. Set product stock to 0,Out of stock badge visible - greyed out appearance,All,Medium,
-PROD-008,Products,Search,Search products by name,1. Go to Products 2. Type product name in search bar,Filtered list shows matching products,All,Medium,
-PROD-009,Products,Import,CSV import products,1. Go to Products 2. Tap Import 3. Select CSV file,Products imported with correct fields - duplicates handled,All,Medium,
-PROD-010,Products,Catalog,Catalog browser modal,1. Open catalog browser from POS or Products,Modal shows searchable product catalog with add-to-cart,All,Medium,
-PROD-011,Products,Profit,Profit calculation display,1. Add product with price=100 and purchasePrice=70,Profit shown as ₹30 (42.86%),All,Low,
-KHAT-001,Khata,Customer,Add new customer,1. Go to Khata 2. Tap "Add Customer" 3. Enter name + phone + address,Customer saved and appears in list,All,High,
-KHAT-002,Khata,Customer,Customer list shows balance,1. Go to Khata customer list,Each customer shows current balance (red if due),All,High,
-KHAT-003,Khata,Customer,Customer detail transactions,1. Tap customer in list,Detail screen shows all transactions (purchases + payments),All,High,
-KHAT-004,Khata,Payment,Record payment reduces balance,1. Open customer detail 2. Tap "Record Payment" 3. Enter amount 4. Save,Balance decreased by payment amount - transaction added,All,High,
-KHAT-005,Khata,Payment,Partial payment,1. Customer has ₹1000 due 2. Record payment of ₹500,Balance shows ₹500 remaining,All,Medium,
-KHAT-006,Khata,Payment,Full payment clears balance,1. Record payment equal to full balance,Balance shows ₹0 - hasDue=false,All,Medium,
-KHAT-007,Khata,WhatsApp,WhatsApp reminder with payment link,1. Open customer detail 2. Tap WhatsApp icon,WhatsApp opens with Hindi message containing clickable payment URL,Android/Web,High,
-KHAT-008,Khata,WhatsApp,Payment link format is clean,1. Send WhatsApp reminder 2. Check URL in message,URL is https://stores.tulasierp.com/pay?pa=...@upi&am=...&pn=... (no %40),All,Medium,
-KHAT-009,Khata,Overdue,Overdue customer highlighting,1. Customer with balance > 0 and no transaction for 30+ days,Customer shown with overdue indicator/badge,All,Medium,
-KHAT-010,Khata,Edit,Edit customer details,1. Open customer detail 2. Tap Edit 3. Change phone/address 4. Save,Customer details updated in Firestore,All,Medium,
-UPI-001,UPI Payment,Mobile Redirect,Instant UPI app open on Android,1. Open payment link on Android phone (from WhatsApp),UPI app chooser opens INSTANTLY - no web page flash,Android,High,
-UPI-002,UPI Payment,Mobile Redirect,Correct UPI amount pre-filled,1. Open payment link with am=500 on phone 2. Select GPay/PhonePe,UPI app shows ₹500 pre-filled,Android,High,
-UPI-003,UPI Payment,QR Code,QR code shows on desktop,1. Open payment link on PC browser,QR code displayed with correct payment info,Web/Windows,High,
-UPI-004,UPI Payment,QR Code,QR code scans correctly,1. Open on PC 2. Scan QR with any UPI app,UPI app shows correct amount and payee name,Web/Windows,High,
-UPI-005,UPI Payment,Deep Links,GPay deep link works,1. Open payment link on Android 2. Tap GPay button,GPay opens with correct payment details,Android,Medium,
-UPI-006,UPI Payment,Deep Links,PhonePe deep link works,1. Open payment link on Android 2. Tap PhonePe button,PhonePe opens with correct payment details,Android,Medium,
-UPI-007,UPI Payment,Deep Links,Paytm deep link works,1. Open payment link on Android 2. Tap Paytm button,Paytm opens with correct payment details,Android,Medium,
-UPI-008,UPI Payment,Fallback,Pay Now button fallback,1. Open payment link 2. If auto-redirect fails tap "Pay Now",UPI app opens with payment details,Android,Medium,
-UPI-009,UPI Payment,Display,Correct shop name and amount shown,1. Open payment link with pn=Tulasi+Stores&am=500,Page shows "Pay ₹500 to Tulasi Stores",All,Medium,
-UPI-010,UPI Payment,Edge Case,Payment page with no amount,1. Open /pay?pa=shop@upi (no am parameter),Page shows with ₹0 amount - QR still works,All,Low,
-REPT-001,Reports,Dashboard,Today's sales total,1. Open dashboard after making sales,Today's sales total matches sum of today's bills,All,High,
-REPT-002,Reports,Dashboard,Today's bill count,1. Open dashboard after making bills,Bill count matches actual bills created today,All,High,
-REPT-003,Reports,Dashboard,Low stock products count,1. Dashboard shows low stock count,Count matches products below lowStockAlert threshold,All,Medium,
-REPT-004,Reports,Sales,Daily sales report,1. Go to Reports 2. Select "Daily",Chart shows daily sales for current week,All,Medium,
-REPT-005,Reports,Sales,Weekly sales report,1. Go to Reports 2. Select "Weekly",Chart shows weekly sales for current month,All,Medium,
-REPT-006,Reports,Sales,Monthly sales report,1. Go to Reports 2. Select "Monthly",Chart shows monthly sales for current year,All,Medium,
-REPT-007,Reports,Expense,Expense summary by category,1. Go to Reports,Pie chart/breakdown shows expenses grouped by category,All,Medium,
-SETT-001,Settings,Shop,Change shop name,1. Go to Settings 2. Edit shop name 3. Save,Shop name updated across all screens (header/receipts),All,High,
-SETT-002,Settings,Shop,Update UPI ID,1. Go to Settings 2. Enter UPI ID (e.g. shop@ybl) 3. Save,UPI ID saved - used in WhatsApp payment links,All,High,
-SETT-003,Settings,Shop,Invalid UPI ID rejected,1. Go to Settings 2. Enter invalid UPI (no @) 3. Save,Validation error shown,All,Medium,
-SETT-004,Settings,Shop,Update GST number,1. Go to Settings 2. Enter GST number 3. Save,GST number shown on receipts,All,Medium,
-SETT-005,Settings,Theme,Change primary color,1. Go to Settings > Theme 2. Select different color preset,App theme color changes across all screens,All,Medium,
-SETT-006,Settings,Theme,Toggle dark mode,1. Go to Settings > Theme 2. Toggle dark mode,App switches to dark theme - persists on restart,All,Medium,
-SETT-007,Settings,Theme,Change font family,1. Go to Settings > Theme 2. Select different font,App font changes across all screens,All,Low,
-SETT-008,Settings,Theme,Font size scaling,1. Go to Settings > Theme 2. Adjust font size slider,Text size increases/decreases proportionally,All,Low,
-SETT-009,Settings,Billing,Toggle GST on/off,1. Go to Settings 2. Toggle GST enabled,Bills show/hide GST line based on setting,All,Medium,
-SETT-010,Settings,Billing,Change tax rate,1. Go to Settings 2. Change tax rate to 12%,New bills calculate GST at 12% rate,All,Medium,
-SETT-011,Settings,Billing,Change bill size (58mm/80mm),1. Go to Settings 2. Select bill size,Print preview matches selected bill size format,All,Low,
-SETT-012,Settings,Billing,Custom receipt footer,1. Go to Settings 2. Edit receipt footer text 3. Save,New footer text shown on printed receipts,All,Low,
-SETT-013,Settings,Notifications,Toggle low stock alerts,1. Go to Settings 2. Toggle "Low stock alerts",Notification toggle saved - alerts enabled/disabled,Android/Web,Medium,
-SETT-014,Settings,Notifications,Toggle subscription expiry reminders,1. Go to Settings 2. Toggle "Subscription expiry",Reminder toggle saved,Android/Web,Medium,
-SETT-015,Settings,Notifications,Toggle daily sales summary,1. Go to Settings 2. Toggle "Daily sales summary",Daily summary notification enabled/disabled,Android/Web,Medium,
-NOTF-001,Notifications,Low Stock,Low stock notification appears,1. Product stock goes below alert threshold,"Low stock alert for [Product]" notification generated,Android/Web,Medium,
-NOTF-002,Notifications,Subscription,Subscription expiry reminder,1. Subscription nearing expiry date,Reminder notification shown with days remaining,Android/Web,Medium,
-NOTF-003,Notifications,List,Notification list screen,1. Tap notification bell icon,All notifications listed with timestamp and read/unread,All,Medium,
-NOTF-004,Notifications,List,Mark notification as read,1. Open notification list 2. Tap a notification,Notification marked as read - styling changes,All,Low,
-RESP-001,Responsive,Mobile,Mobile layout < 600px,1. Open app on phone or narrow browser window,Bottom navigation - single column - full-width cards,Android/Web,High,
-RESP-002,Responsive,Tablet,Tablet layout 600-1024px,1. Open app on tablet or resize browser to ~800px,Side navigation - 2-column layout where applicable,Web,Medium,
-RESP-003,Responsive,Desktop,Desktop layout > 1024px,1. Open app on desktop browser full screen,Full sidebar - multi-column product grid - wide tables,Web/Windows,High,
-RESP-004,Responsive,POS,POS grid adapts columns,1. Resize browser window from narrow to wide,Product grid changes from 2 → 3 → 4 → 6 columns,Web,Medium,
-RESP-005,Responsive,Bills,Bills history responsive view,1. View bills history on narrow screen vs wide screen,"Card view on <900px - table view on >900px",All,Medium,
-RESP-006,Responsive,Navigation,Bottom nav on mobile,1. Open on mobile-sized screen,Bottom navigation bar with 4-5 tabs visible,Android/Web,High,
-RESP-007,Responsive,Navigation,Side nav on desktop,1. Open on desktop-sized screen,Expandable sidebar navigation with all menu items,Web/Windows,High,
-WINUP-001,Windows Update,Check,Version check on app start,1. Open Windows desktop app,App checks current version against Remote Config,Windows,Medium,
-WINUP-002,Windows Update,Optional,Update notification for optional update,1. Set Remote Config version higher than installed,Banner shows "Update available" with download button,Windows,Medium,
-WINUP-003,Windows Update,Critical,Force update blocks app,1. Set Remote Config critical version higher than installed,Full-screen update required dialog - app blocked,Windows,High,
-WINUP-004,Windows Update,Download,Download and install update,1. Click "Download Update" in banner,MSIX/EXE downloaded and install prompt shown,Windows,Medium,
-ADMIN-001,Super Admin,Login,Admin login to admin panel,1. Login with admin email,Admin dashboard shown with user management,Web,High,
-ADMIN-002,Super Admin,Users,View all users list,1. Go to Admin > Users,List of all registered users with shop details,Web,High,
-ADMIN-003,Super Admin,Users,View user analytics,1. Click a user in admin panel,User's bills count - products count - last active shown,Web,Medium,
-ADMIN-004,Super Admin,Config,Remote Config management,1. Go to Admin > Config,View and update Remote Config values,Web,Medium,
-ADMIN-005,Super Admin,Subscription,Manage user subscriptions,1. Go to Admin > Subscriptions,View/change user subscription plan and status,Web,High,
-DEPLOY-001,Deploy,Script,Smart deploy full cycle,1. Run .\smart-deploy.ps1 2. Answer questions 3. Wait for completion,All selected platforms deployed successfully,Windows,High,
-DEPLOY-002,Deploy,Web,Web app loads correctly,1. Open stores.tulasierp.com/app after deploy,Latest version loads with all features working,Web,High,
-DEPLOY-003,Deploy,Website,Marketing site loads,1. Open stores.tulasierp.com after deploy,Landing page loads with correct content,Web,Medium,
-DEPLOY-004,Deploy,Payment,Payment page accessible,1. Open stores.tulasierp.com/pay?pa=test@upi&am=100,Payment page loads with QR code,Web,High,
-DEPLOY-005,Deploy,Download,Download page versions correct,1. Open download page after deploy,Correct version numbers shown for Windows/Android,Web,Medium,
-DEPLOY-006,Deploy,Cache,Service worker cache cleared,1. Deploy new version 2. Hard refresh (Ctrl+Shift+R),New version loads - no stale cache,Web,Medium,
-XPLAT-001,Cross-Platform,Auth - Google,Google Sign-In uses signInWithPopup on Web,1. Open web app 2. Click Google Sign-In 3. Observe auth method,Browser popup opens (not redirect) - signInWithPopup used,Web,High,
-XPLAT-002,Cross-Platform,Auth - Google,Google Sign-In uses native provider on Android,1. Open Android app 2. Tap Google Sign-In,Native Google account picker shown (not browser popup),Android,High,
-XPLAT-003,Cross-Platform,Auth - Google,Google Sign-In uses popup on Windows desktop,1. Open Windows app 2. Click Google Sign-In,Browser popup opens for Google auth - returns to app,Windows,High,
-XPLAT-004,Cross-Platform,Auth - Layout,Login screen shows web-specific UI on Web,1. Open login screen on web,Web-only elements visible (e.g. download app links),Web,Medium,
-XPLAT-005,Cross-Platform,Auth - Layout,Auth layout desktop illustration,1. Open login page on wide screen (web/desktop),Side illustration panel shown on desktop layout - hidden on mobile,Web/Windows,Medium,
-XPLAT-006,Cross-Platform,Auth - Shop Setup,Shop setup detects Windows desktop layout,1. Login with new account on Windows app,Shop setup screen uses desktop-optimized wide layout,Windows,Medium,
-XPLAT-007,Cross-Platform,Billing - Print,Print button hidden on web POS,1. Go to payment modal on Web,Print/thermal printer button NOT shown on web,Web,Medium,
-XPLAT-008,Cross-Platform,Billing - Print,Print button visible on Android,1. Go to payment modal on Android,Print button shown for thermal printer,Android,Medium,
-XPLAT-009,Cross-Platform,Billing - Print,Thermal printer only on Android,1. Try to connect thermal printer,Thermal printer service only activates on Android - returns false on web/windows,Android,Medium,
-XPLAT-010,Cross-Platform,Image Upload,Shop logo upload uses bytes on Web,1. Go to Settings on Web 2. Upload shop logo,File picker opens - image uploaded using bytes (not file path),Web,Medium,
-XPLAT-011,Cross-Platform,Image Upload,Shop logo upload uses file path on Android/Windows,1. Go to Settings on Android 2. Upload shop logo,File picker opens - image uploaded using file path,Android/Windows,Medium,
-XPLAT-012,Cross-Platform,Image Upload,Shop logo displays correctly cross-platform,1. Upload logo on Web 2. Check it shows on Android/Windows and vice versa,Logo stored in Firestore Storage - loads on all platforms,All,Medium,
-XPLAT-013,Cross-Platform,Notifications - FCM,FCM push notifications on Android,1. Trigger low stock alert on Android,Push notification received via Firebase Cloud Messaging,Android,High,
-XPLAT-014,Cross-Platform,Notifications - FCM,FCM token registration on Web,1. Open web app 2. Accept notification permission,FCM token registered for web push notifications,Web,Medium,
-XPLAT-015,Cross-Platform,Notifications - Windows,Windows notification service on desktop,1. Open Windows app 2. Trigger notification event,Windows native notification/toast shown (not FCM),Windows,Medium,
-XPLAT-016,Cross-Platform,Notifications - Skip,Notification service skips unsupported platforms,1. Check notification init on Windows,FCM token service skips on Windows (uses Windows notification service instead),Windows,Low,
-XPLAT-017,Cross-Platform,Update - Windows,Windows update check runs on Windows only,1. Open Windows app,Version check runs against Remote Config,Windows,Medium,
-XPLAT-018,Cross-Platform,Update - Windows,Windows update skipped on Web,1. Open web app,No Windows update check runs - no update banner,Web,Medium,
-XPLAT-019,Cross-Platform,Update - Android,Android in-app update on Android only,1. Open Android app with update available,In-app update prompt shown (Play Store),Android,Medium,
-XPLAT-020,Cross-Platform,Update - Android,Android update skipped on Web/Windows,1. Open web/Windows app,No Android update check - no Play Store prompt,Web/Windows,Low,
-XPLAT-021,Cross-Platform,Update - Force,Force update screen platform-specific,1. Set critical version in Remote Config higher than installed,Force update screen shown with platform-appropriate download link,Android/Windows,High,
-XPLAT-022,Cross-Platform,Data Export,Data export uses platform file save,1. Go to export data,Android: uses share/save to downloads | Windows: uses file save dialog | Web: triggers browser download,All,Medium,
-XPLAT-023,Cross-Platform,Settings Sync,Settings sync uses web storage on Web,1. Change settings on Web 2. Close and reopen tab,Settings persisted via web local storage (not SharedPreferences),Web,Medium,
-XPLAT-024,Cross-Platform,Settings Sync,Settings sync uses SharedPreferences on native,1. Change settings on Android/Windows 2. Close and reopen app,Settings persisted via SharedPreferences,Android/Windows,Medium,
-XPLAT-025,Cross-Platform,Navigation,Web shell layout on web,1. Open web app on desktop,Web shell with sidebar navigation - URL routing works,Web,High,
-XPLAT-026,Cross-Platform,Navigation,Mobile shell on Android,1. Open Android app,Bottom navigation bar with tabs,Android,High,
-XPLAT-027,Cross-Platform,Navigation,Desktop shell on Windows,1. Open Windows app,Sidebar navigation similar to web shell,Windows,High,
-XPLAT-028,Cross-Platform,Performance,Performance tracking platform detection,1. Open app on each platform,Performance service reports correct platform: 'web' / 'android' / 'windows',All,Low,
-XPLAT-029,Cross-Platform,Error Logging,Error logging includes platform info,1. Trigger an error on each platform,Error log includes platform tag for debugging,All,Low,
-XPLAT-030,Cross-Platform,Metrics,User metrics records platform,1. Login on different platforms,Firestore user activity doc records correct platform field,All,Low,
-PRNT-001,Printing,WiFi,WiFi printer connect,1. Go to Hardware Settings 2. Select WiFi printer type 3. Enter IP 192.168.1.100 port 9100 4. Tap Connect,Status shows Connected with IP:port — green indicator,Windows/Android,High,
-PRNT-002,Printing,WiFi,WiFi printer disconnect,1. Connect WiFi printer 2. Tap Disconnect,Status shows disconnected — grey indicator — fields editable,Windows/Android,Medium,
-PRNT-003,Printing,WiFi,WiFi test print,1. Connect WiFi printer 2. Tap Test Print,Test page prints on WiFi thermal printer with paper size and font info,Windows/Android,High,
-PRNT-004,Printing,WiFi,WiFi receipt print from POS,1. Set printer type to WiFi 2. Connect printer 3. Complete a bill,Receipt prints on WiFi thermal printer with correct items and total,Windows/Android,High,
-PRNT-005,Printing,WiFi,WiFi printer invalid IP,1. Enter invalid IP (e.g. 999.999.999) 2. Tap Connect,Error snackbar shown — not connected,Windows/Android,Medium,
-PRNT-006,Printing,USB,USB printer list loads on Windows,1. Go to Hardware Settings on Windows 2. Select USB printer type 3. Tap Refresh,List of installed Windows printers appears,Windows,High,
-PRNT-007,Printing,USB,USB printer selection,1. Load USB printer list 2. Tap Select on a printer,Printer shown as selected with green checkmark — name saved,Windows,High,
-PRNT-008,Printing,USB,USB test print,1. Select USB printer 2. Tap Test Print,Test page prints on USB thermal printer,Windows,High,
-PRNT-009,Printing,USB,USB receipt print from POS,1. Set printer type to USB 2. Select printer 3. Complete a bill,Receipt prints on USB thermal printer with correct items and total,Windows,High,
-PRNT-010,Printing,Type Switch,Printer type fallback to system,1. Set WiFi type but don't connect 2. Complete a bill,System print dialog opens as fallback,All,Medium,
+﻿ID,Category,Sub-Category,Test Name,Steps,Expected Result,Platform,Priority
+AUTH-001,1. Authentication,Google Sign-In,Google Sign-In on Android,1. Open app 2. Tap "Sign in with Google" 3. Select account,User lands on dashboard with shop data,Android,High
+AUTH-002,1. Authentication,Google Sign-In,Google Sign-In on Web,1. Open web app 2. Click "Sign in with Google" 3. Select account in popup,User lands on web dashboard,Web,High
+AUTH-003,1. Authentication,Google Sign-In,Google Sign-In on Windows,1. Open desktop app 2. Click "Sign in with Google" 3. Browser popup opens,User authenticated and lands on dashboard,Windows,High
+AUTH-004,1. Authentication,Email,Email registration with OTP,1. Tap "Create Account" 2. Enter name + email 3. Verify Email 4. Enter OTP 5. Set password 6. Create Account,Account created with emailVerified=true → shop setup,All,High
+AUTH-005,1. Authentication,Email,Invalid OTP rejection,1. Start registration 2. Enter wrong OTP code,Error: OTP does not match,All,Medium
+AUTH-006,1. Authentication,Email,OTP resend,1. Start registration 2. Click "Resend OTP" after timer,New OTP sent — old one invalidated,All,Medium
+AUTH-007,1. Authentication,Email,Email + password login,1. Enter registered email + password 2. Tap Login,User logged in → dashboard,All,High
+AUTH-008,1. Authentication,Email,Wrong password error,1. Enter email + wrong password 2. Tap Login,Error: Invalid credentials,All,Medium
+AUTH-009,1. Authentication,Demo Mode,Enter demo mode,1. Tap "Try Demo",App opens with sample data — no Firebase needed,All,Medium
+AUTH-010,1. Authentication,Demo Mode,Demo mode data is local only,1. Enter demo 2. Edit data 3. Restart app,Changes not persisted after restart,All,Low
+AUTH-011,1. Authentication,Logout,Logout and return to login,1. Settings → Logout → Confirm,User returned to login — session cleared,All,High
+AUTH-012,1. Authentication,Shop Setup,First-time shop setup,1. Login new account 2. Fill shop name + owner + phone,Shop created in Firestore → dashboard,All,High
+AUTH-013,1. Authentication,Desktop,Desktop login page renders,1. Open web app on desktop browser,Desktop-optimized login page with side illustration,Web,Medium
+AUTH-014,1. Authentication,Forgot Password,Reset email sent,1. Tap "Forgot Password" 2. Enter email 3. Send,Reset email sent — success message shown,All,High
+AUTH-015,1. Authentication,Forgot Password,Invalid email rejected,1. Forgot Password → enter unregistered email,Error: No account found,All,Medium
+AUTH-016,1. Authentication,Session,Session persists after restart,1. Login 2. Close app 3. Reopen,Auto-logged in → dashboard (not login),All,High
+AUTH-017,1. Authentication,Session,Expired session handled,1. Login 2. Leave idle for long time 3. Resume,Gracefully re-authenticates or shows login,All,Medium
+BILL-001,2. Billing (POS),Barcode,Barcode scan adds product,1. POS → barcode icon → scan product barcode,Product added to cart,Android,Medium
+BILL-002,2. Billing (POS),Customer,Search customer in selector,1. Tap "Select Customer" 2. Type name,Filtered customer list shown,All,Medium
+BILL-003,2. Billing (POS),Receipt,Share bill via WhatsApp,1. Complete a bill 2. Tap Share → WhatsApp,WhatsApp opens with formatted bill text,Android/Web,Medium
+BILL-004,2. Billing (POS),Receipt,Print bill preview,1. Complete a bill 2. Tap Print,Print preview shown with correct layout,All,Medium
+BILL-005,2. Billing (POS),Voice,Voice search adds product,1. POS → mic icon → say product name,Product found and added to cart,Android,Medium
+BILL-006,2. Billing (POS),Voice,Voice search on bills history,1. Bills History → mic icon → say customer name,Bills filtered by spoken query,Android,Medium
+BILL-007,2. Billing (POS),Edge Case,Bill with 50+ items,1. Add 50+ products to cart 2. Complete bill,Bill saves — receipt shows all items — no overflow,All,Medium
+BILL-008,2. Billing (POS),Edge Case,Bill with large amount (₹99999+),1. Create bill totaling ₹99999+,Amount displays correctly — payment works,All,Medium
+PROD-001,3. Products,Add,Add product with all fields,1. Products → Add Product → fill all fields → Save,Product saved to Firestore and appears in list,All,High
+PROD-002,3. Products,Validation,Empty required fields rejected,1. Add Product → leave name empty → Save,Validation error for required fields,All,Medium
+PROD-003,3. Products,Validation,Invalid price rejected,1. Enter 0 or negative price,Error: Price must be greater than 0,All,Medium
+PROD-004,3. Products,Edit,Edit product details,1. Product detail → Edit → change price → Save,Product updated — list refreshes,All,High
+PROD-005,3. Products,Delete,Delete product,1. Product detail → Delete → Confirm,Product removed from list and Firestore,All,High
+PROD-006,3. Products,Search,Search products by name,1. Products → type name in search bar,Filtered list shows matching products,All,Medium
+PROD-007,3. Products,Import,CSV import products,1. Products → Import → select CSV file,Products imported — duplicates handled,All,Medium
+PROD-008,3. Products,Catalog,Catalog browser modal,1. Open catalog from POS or Products,Modal shows searchable catalog with add-to-cart,All,Medium
+PROD-009,3. Products,Image,Upload product image,1. Product detail → Add Image → select photo,Image uploaded to Storage — shown on product tile,Android,Medium
+PROD-010,3. Products,Image,Remove product image,1. Product with image → remove/change image,Old image deleted — placeholder shown,All,Low
+PROD-011,3. Products,Edge Case,Very long product name (100+ chars),1. Add product with 100+ character name,Name truncated in list — full in detail,All,Low
+PROD-012,3. Products,Edge Case,1000+ products performance,1. Import 1000+ products via CSV 2. Navigate list,List loads smoothly — search works — no lag,All,Medium
+KHAT-001,4. Khata (Credit),Customer,Add new customer,1. Khata → Add Customer → name + phone + address → Save,Customer saved and appears in list,All,High
+KHAT-002,4. Khata (Credit),Customer,Customer list shows balance,1. Go to Khata customer list,Each customer shows balance (red if due),All,High
+KHAT-003,4. Khata (Credit),Customer,Customer detail transactions,1. Tap customer in list,Detail shows all transactions (purchases + payments),All,High
+KHAT-004,4. Khata (Credit),Customer,Edit customer details,1. Customer detail → Edit → change phone → Save,Customer updated in Firestore,All,Medium
+KHAT-005,4. Khata (Credit),WhatsApp,WhatsApp reminder with payment link,1. Customer detail → WhatsApp icon,WhatsApp opens with Hindi message + payment URL,Android/Web,High
+KHAT-006,4. Khata (Credit),WhatsApp,Payment link format is clean,1. Send WhatsApp reminder 2. Check URL,URL: https://stores.tulasierp.com/pay?pa=...&am=...&pn=...,All,Medium
+KHAT-007,4. Khata (Credit),Overdue,Overdue customer highlighting,1. Customer with balance > 0 and 30+ days since last transaction,Overdue indicator/badge shown,All,Medium
+KHAT-008,4. Khata (Credit),Voice,Voice search customers,1. Khata → mic icon → say customer name,Customer list filtered by spoken name,Android,Medium
+KHAT-009,4. Khata (Credit),Edge Case,Customer with ₹0 balance,1. View customer with zero balance,₹0 shown — no payment option — green status,All,Low
+UPI-001,5. UPI Payment Page,Mobile,Instant UPI app open on Android,1. Open payment link on Android (from WhatsApp),UPI app chooser opens instantly — no web page flash,Android,High
+UPI-002,5. UPI Payment Page,Mobile,Correct amount pre-filled,1. Open payment link with am=500 on phone,UPI app shows ₹500 pre-filled,Android,High
+UPI-003,5. UPI Payment Page,QR Code,QR code shows on desktop,1. Open payment link on PC browser,QR code displayed with correct payment info,Web/Windows,High
+UPI-004,5. UPI Payment Page,QR Code,QR code scans correctly,1. Open on PC 2. Scan QR with UPI app,UPI app shows correct amount and payee,Web/Windows,High
+UPI-005,5. UPI Payment Page,Fallback,Pay Now button fallback,1. Open payment link 2. Tap "Pay Now",UPI app opens with payment details,Android,Medium
+UPI-006,5. UPI Payment Page,Edge Case,Payment page with no amount,1. Open /pay?pa=shop@upi (no am parameter),Page shows ₹0 amount — QR still works,All,Low
+REPT-001,6. Reports & Dashboard,Dashboard,Today's sales total,1. Open dashboard after making sales,Sales total matches sum of today's bills,All,High
+REPT-002,6. Reports & Dashboard,Dashboard,Today's bill count,1. Open dashboard after making bills,Bill count matches actual bills today,All,High
+REPT-003,6. Reports & Dashboard,Dashboard,Low stock products count,1. Dashboard shows low stock count,Count matches products below alert threshold,All,Medium
+REPT-004,6. Reports & Dashboard,Charts,Daily sales report,1. Reports → Daily,Chart shows daily sales for current week,All,Medium
+REPT-005,6. Reports & Dashboard,Charts,Weekly sales report,1. Reports → Weekly,Chart shows weekly sales for current month,All,Medium
+REPT-006,6. Reports & Dashboard,Charts,Monthly sales report,1. Reports → Monthly,Chart shows monthly sales for current year,All,Medium
+REPT-007,6. Reports & Dashboard,Charts,Expense summary by category,1. Go to Reports,Pie chart shows expenses grouped by category,All,Medium
+SETT-001,7. Settings,Shop,Change shop name,1. Settings → edit shop name → Save,Shop name updated across all screens,All,High
+SETT-002,7. Settings,Shop,Update UPI ID,1. Settings → enter UPI ID → Save,UPI ID saved — used in payment links,All,High
+SETT-003,7. Settings,Shop,Invalid UPI ID rejected,1. Settings → enter UPI without @ → Save,Validation error shown,All,Medium
+SETT-004,7. Settings,Shop,Update GST number,1. Settings → enter GST number → Save,GST number shown on receipts,All,Medium
+SETT-005,7. Settings,Shop,Upload shop logo,1. Settings → tap logo area → select image,Logo uploaded — shown in header and receipts,All,Medium
+SETT-006,7. Settings,Theme,Change primary color,1. Settings → Theme → select color,Theme color changes across all screens,All,Medium
+SETT-007,7. Settings,Theme,Toggle dark mode,1. Settings → Theme → toggle dark mode,Dark theme — persists on restart,All,Medium
+SETT-008,7. Settings,Theme,Change font family,1. Settings → Theme → select font,Font changes across all screens,All,Low
+SETT-009,7. Settings,Theme,Font size scaling,1. Settings → Theme → adjust font size slider,Text size changes proportionally,All,Low
+SETT-010,7. Settings,Billing,Toggle GST on/off,1. Settings → toggle GST enabled,Bills show/hide GST line,All,Medium
+SETT-011,7. Settings,Billing,Change tax rate,1. Settings → change tax rate to 12%,New bills calculate GST at 12%,All,Medium
+SETT-012,7. Settings,Billing,Change bill size (58mm/80mm),1. Settings → select bill size,Print preview matches selected size,All,Low
+SETT-013,7. Settings,Billing,Custom receipt footer,1. Settings → edit footer text → Save,Footer shown on printed receipts,All,Low
+SETT-014,7. Settings,Notifications,Toggle low stock alerts,1. Settings → toggle "Low stock alerts",Toggle saved — alerts enabled/disabled,Android/Web,Medium
+SETT-015,7. Settings,Notifications,Toggle subscription expiry reminders,1. Settings → toggle "Subscription expiry",Toggle saved,Android/Web,Medium
+SETT-016,7. Settings,Notifications,Toggle daily sales summary,1. Settings → toggle "Daily sales summary",Summary notification enabled/disabled,Android/Web,Medium
+NOTF-001,8. Notifications,Low Stock,Low stock notification appears,1. Product stock goes below alert threshold,Notification: "Low stock alert for [Product]",Android/Web,Medium
+NOTF-002,8. Notifications,Subscription,Subscription expiry reminder,1. Subscription nearing expiry,Reminder with days remaining,Android/Web,Medium
+NOTF-003,8. Notifications,List,Notification list screen,1. Tap notification bell icon,All notifications with timestamp and read/unread,All,Medium
+NOTF-004,8. Notifications,List,Mark notification as read,1. Open notification list 2. Tap notification,Marked as read — styling changes,All,Low
+PRNT-001,9. Printing,WiFi,WiFi printer connect,1. Hardware Settings → WiFi → enter IP:port → Connect,Status: Connected — green indicator,Windows/Android,High
+PRNT-002,9. Printing,WiFi,WiFi printer disconnect,1. Connect WiFi printer → Disconnect,Status: disconnected — grey indicator,Windows/Android,Medium
+PRNT-003,9. Printing,WiFi,WiFi test print,1. Connect WiFi printer → Test Print,Test page prints with paper size info,Windows/Android,High
+PRNT-004,9. Printing,WiFi,WiFi receipt print from POS,1. WiFi printer connected → complete bill,Receipt prints with correct items/total,Windows/Android,High
+PRNT-005,9. Printing,WiFi,WiFi invalid IP rejected,1. Enter invalid IP → Connect,Error snackbar — not connected,Windows/Android,Medium
+PRNT-006,9. Printing,USB,USB printer list loads,1. Hardware Settings on Windows → USB → Refresh,List of installed printers appears,Windows,High
+PRNT-007,9. Printing,USB,USB printer selection,1. Load list → Select a printer,Printer shown with green checkmark,Windows,High
+PRNT-008,9. Printing,USB,USB test print,1. Select USB printer → Test Print,Test page prints on USB printer,Windows,High
+PRNT-009,9. Printing,USB,USB receipt print from POS,1. USB printer selected → complete bill,Receipt prints with correct items/total,Windows,High
+PRNT-010,9. Printing,Fallback,Fallback to system print dialog,1. Set WiFi but don't connect → complete bill,System print dialog opens as fallback,All,Medium
+SYNC-001,10. Offline & Sync,Offline,App works offline after first load,1. Login and load data 2. Turn off WiFi 3. Create bill,Bill saved locally — sync badge shows pending,Android/Windows,High
+SYNC-002,10. Offline & Sync,Offline,Offline changes sync when online,1. Create bill offline 2. Turn on WiFi 3. Wait,Bill synced to Firestore — badge clears,Android/Windows,High
+SYNC-003,10. Offline & Sync,Status,Sync indicator shows pending count,1. Make 3 changes offline 2. Check badge,Badge shows 3 — decreases as items sync,All,Medium
+SYNC-004,10. Offline & Sync,Status,Sync details sheet per collection,1. Tap sync indicator,Sheet shows status per collection,All,Medium
+SYNC-005,10. Offline & Sync,Settings,Sync frequency setting,1. Settings → change sync interval,Sync runs at new frequency,All,Low
+SYNC-006,10. Offline & Sync,Banner,Offline banner appears,1. Turn off internet while using app,Red banner at top of screen,All,Medium
+SYNC-007,10. Offline & Sync,Banner,Offline banner disappears on reconnect,1. With banner showing → turn on internet,Banner disappears — sync starts,All,Medium
+EXPRT-001,11. Data Export & Import,CSV Export,Export bills as CSV,1. Settings/Reports → Export → CSV → date range,CSV file with correct bill data,All,Medium
+EXPRT-002,11. Data Export & Import,CSV Export,Export products as CSV,1. Products → Export,CSV with all products,All,Medium
+EXPRT-003,11. Data Export & Import,CSV Export,Export with date range filter,1. Export with Last 30 days,Only last 30 days data in export,All,Medium
+EXPRT-004,11. Data Export & Import,PDF Export,Export report as PDF,1. Reports → Export PDF,PDF with formatted report and charts,All,Low
+RETN-001,11. Data Export & Import,Retention,Data retention cleanup runs,1. Settings → retention 30 days → cleanup,Old data deleted — count shown,All,Low
+RETN-002,11. Data Export & Import,Retention,Retention set to forever,1. Set retention to Keep forever,No data deleted — storage warning,All,Low
+RAZOR-001,12. Subscription,Purchase,Subscription purchase via Razorpay,1. Settings → Upgrade → complete Razorpay payment,Status: Pro/Business — limits increased,All,High
+RAZOR-002,12. Subscription,Limits,Free tier limits enforced,1. Free plan → exceed limits,Warning + upgrade prompt,All,High
+RAZOR-003,12. Subscription,Expiry,Subscription expiry downgrade,1. Let subscription expire,Status: expired — limits revert to free,All,Medium
+RESP-001,13. Responsive & Navigation,Mobile,Bottom nav on mobile,1. Open on mobile-sized screen,Bottom nav bar with tabs,Android/Web,High
+RESP-002,13. Responsive & Navigation,Desktop,Side nav on desktop,1. Open on desktop-sized screen,Sidebar with all menu items,Web/Windows,High
+RESP-003,13. Responsive & Navigation,Browser,Browser back button,1. Navigate POS → Products → Khata → browser back,Navigates back correctly,Web,Medium
+XPLAT-001,14. Cross-Platform,Auth,Google Sign-In uses popup on Web,1. Web app → Google Sign-In,Browser popup (not redirect),Web,High
+XPLAT-002,14. Cross-Platform,Auth,Google Sign-In native on Android,1. Android app → Google Sign-In,Native account picker,Android,High
+XPLAT-003,14. Cross-Platform,Auth,Google Sign-In popup on Windows,1. Windows app → Google Sign-In,Browser popup → returns to app,Windows,High
+XPLAT-004,14. Cross-Platform,Layout,Login shows web-specific UI on Web,1. Open login on web,Web-only elements visible,Web,Medium
+XPLAT-005,14. Cross-Platform,Layout,Desktop auth illustration,1. Open login on wide screen,Side illustration on desktop — hidden on mobile,Web/Windows,Medium
+XPLAT-006,14. Cross-Platform,Layout,Shop setup detects desktop layout,1. New account on Windows,Desktop-optimized wide layout,Windows,Medium
+XPLAT-007,14. Cross-Platform,Printing,Print button hidden on web,1. Payment modal on Web,Print button NOT shown,Web,Medium
+XPLAT-008,14. Cross-Platform,Printing,Print button visible on Android,1. Payment modal on Android,Print button shown,Android,Medium
+XPLAT-009,14. Cross-Platform,Printing,Thermal printer only on Android,1. Try thermal printer,Only activates on Android,Android,Medium
+XPLAT-010,14. Cross-Platform,Images,Logo upload uses bytes on Web,1. Settings on Web → upload logo,File picker → uploaded using bytes,Web,Medium
+XPLAT-011,14. Cross-Platform,Images,Logo upload uses file path on native,1. Settings on Android → upload logo,File picker → uploaded using file path,Android/Windows,Medium
+XPLAT-012,14. Cross-Platform,Images,Logo displays cross-platform,1. Upload logo on Web 2. Check on Android,Logo loads on all platforms,All,Medium
+XPLAT-013,14. Cross-Platform,Notifications,FCM push on Android,1. Trigger low stock on Android,Push notification received,Android,High
+XPLAT-014,14. Cross-Platform,Notifications,FCM token on Web,1. Web app → accept notification permission,FCM token registered,Web,Medium
+XPLAT-015,14. Cross-Platform,Notifications,Windows native notification,1. Windows app → trigger notification,Windows toast shown,Windows,Medium
+XPLAT-016,14. Cross-Platform,Notifications,Notification service skips unsupported,1. Check notification init on Windows,FCM skipped — uses Windows notification,Windows,Low
+XPLAT-017,14. Cross-Platform,Updates,Windows update check runs,1. Open Windows app,Version check against Remote Config,Windows,Medium
+XPLAT-018,14. Cross-Platform,Updates,Update skipped on Web,1. Open web app,No Windows update check,Web,Medium
+XPLAT-019,14. Cross-Platform,Updates,Android in-app update,1. Android app with update available,Play Store in-app update prompt,Android,Medium
+XPLAT-020,14. Cross-Platform,Updates,Android update skipped on Web/Windows,1. Open web/Windows app,No Play Store prompt,Web/Windows,Low
+XPLAT-021,14. Cross-Platform,Updates,Force update platform-specific,1. Set critical version higher in Remote Config,Platform-appropriate download link,Android/Windows,High
+XPLAT-022,14. Cross-Platform,Export,Export uses platform file save,1. Export data,Android: share | Windows: save dialog | Web: download,All,Medium
+XPLAT-023,14. Cross-Platform,Storage,Web uses local storage,1. Web → change settings → close → reopen tab,Settings persisted via web local storage,Web,Medium
+XPLAT-024,14. Cross-Platform,Storage,Native uses SharedPreferences,1. Android → change settings → close → reopen,Settings persisted via SharedPreferences,Android/Windows,Medium
+XPLAT-025,14. Cross-Platform,Navigation,Web shell layout,1. Open web app on desktop,Sidebar navigation — URL routing works,Web,High
+XPLAT-026,14. Cross-Platform,Navigation,Mobile shell on Android,1. Open Android app,Bottom navigation tabs,Android,High
+XPLAT-027,14. Cross-Platform,Navigation,Desktop shell on Windows,1. Open Windows app,Sidebar navigation,Windows,High
+XPLAT-028,14. Cross-Platform,Logging,Performance tracking platform detection,1. Open on each platform,Reports correct platform tag,All,Low
+XPLAT-029,14. Cross-Platform,Logging,Error logging includes platform,1. Trigger error on each platform,Error log includes platform tag,All,Low
+XPLAT-030,14. Cross-Platform,Logging,User metrics records platform,1. Login on different platforms,Activity doc records platform field,All,Low
+WINUP-001,15. Windows Updates,Check,Version check on app start,1. Open Windows app,Checks version against Remote Config,Windows,Medium
+WINUP-002,15. Windows Updates,Optional,Optional update banner,1. Set Remote Config version higher,Banner: "Update available" with download,Windows,Medium
+WINUP-003,15. Windows Updates,Critical,Force update blocks app,1. Set critical version higher,"Full-screen dialog — can't dismiss",Windows,High
+WINUP-004,15. Windows Updates,Download,Download and install update,1. Click "Download Update",MSIX downloaded — install prompt,Windows,Medium
+ADMIN-001,16. Super Admin,Login,Admin login to panel,1. Login with admin email,Admin dashboard shown,Web,High
+ADMIN-002,16. Super Admin,Users,View all users list,1. Admin → Users,All registered users with shop details,Web,High
+ADMIN-003,16. Super Admin,Users,View user analytics,1. Click user in admin panel,Bills/products count — last active shown,Web,Medium
+ADMIN-004,16. Super Admin,Config,Remote Config management,1. Admin → Config,View/update Remote Config values,Web,Medium
+ADMIN-005,16. Super Admin,Subscription,Manage user subscriptions,1. Admin → Subscriptions,View/change plan and status,Web,High
+DEPLOY-001,17. Deployment,Script,Smart deploy full cycle,1. Run smart-deploy.ps1 2. Answer questions 3. Wait,All platforms deployed successfully,Windows,High
+DEPLOY-002,17. Deployment,Web,Web app loads after deploy,1. Open stores.tulasierp.com/app,Latest version loads and works,Web,High
+DEPLOY-003,17. Deployment,Website,Marketing site loads,1. Open stores.tulasierp.com,Landing page with correct content,Web,Medium
+DEPLOY-004,17. Deployment,Payment,Payment page accessible,1. Open /pay?pa=test@upi&am=100,Payment page with QR code,Web,High
+DEPLOY-005,17. Deployment,Download,Download page versions correct,1. Open download page,Correct version numbers shown,Web,Medium
+DEPLOY-006,17. Deployment,Cache,Service worker cache cleared,1. Deploy new version → hard refresh,New version loads — no stale cache,Web,Medium
+RMCFG-001,18. Remote Config,Announcement,Announcement banner,1. Set announcement in Remote Config 2. Open app,Banner at top of dashboard,All,Medium
+RMCFG-002,18. Remote Config,Version,New version banner,1. Set latestVersion higher,Update available banner shown,All,Medium
+CONN-001,19. Connectivity,Detection,App detects connectivity change,1. Toggle airplane mode,App detects change — updates UI,All,Medium
+CONN-002,19. Connectivity,Status,Status accurate per connection type,1. Check indicator: WiFi vs mobile vs offline,Correct status for each type,Android,Low
+BRCDE-001,19. Connectivity,Barcode,Barcode lookup finds product,1. Add product with barcode 2. Scan on different device,Product found and added to cart,Android,Medium
+BRCDE-002,19. Connectivity,Barcode,Unknown barcode prompts add,1. Scan unknown barcode,Option to add new product with barcode pre-filled,Android,Medium
+RCPT-001,20. Receipts & PDF,PDF,Receipt PDF renders correctly,1. Complete bill → view PDF,Shows shop name/logo/items/total/payment/footer,All,Medium
+RCPT-002,20. Receipts & PDF,Format,Receipt matches bill size,1. Set 58mm → view receipt,Formatted for 58mm width,All,Low
+RCPT-003,20. Receipts & PDF,Logo,Shop logo on receipt,1. Upload logo → complete bill → view receipt,Logo at top of receipt,All,Low
+CATLOG-001,20. Receipts & PDF,Catalog,Catalog browser loads,1. Open catalog from POS,Products organized by category,All,Medium
+CATLOG-002,20. Receipts & PDF,Catalog,Catalog search by name,1. Open catalog → type name,Filtered results in real-time,All,Medium
+ANLYT-001,21. Analytics,Events,Analytics events fire,1. Complete bill → check Firebase Analytics,billCreated event logged,All,Low
+ANLYT-002,21. Analytics,Screen,Screen tracking works,1. Navigate POS/Products/Khata/Settings,Screen views logged in Firebase,All,Low
+HLTH-001,22. App Health,Startup,App starts without crash,1. Cold start on Android/Web/Windows,Loads to login or dashboard — no crash,All,High
+HLTH-002,22. App Health,Memory,Responsive after long use,1. Use app 30+ min with navigation,No lag or memory issues,All,Medium
+HLTH-003,22. App Health,Version,Version shown in Settings,1. Settings → check version,Correct version matching pubspec,All,Low
+HLTH-004,22. App Health,Startup,All services initialize,1. Cold start app,Firebase/Auth/Sync/Analytics init — no late errors,All,High
+MULTI-001,23. Multi-Device,Sync,Same account on two devices,1. Login on phone + tablet 2. Add product on phone,Product appears on tablet within seconds,Android,High
+MULTI-002,23. Multi-Device,Conflict,Simultaneous edits same product,1. Edit product on two devices 2. Save both,"Last write wins — no crash or corruption",All,Medium
+MULTI-003,23. Multi-Device,Billing,Bill visible on second device,1. Create bill on phone 2. Check history on tablet,Bill appears on second device,All,High
+EDGE-001,24. Edge Cases,Network,Slow network (3G/2G),1. Throttle to 3G → create bill,Bill saves — loading shown — no timeout crash,All,Medium
+A11Y-001,25. Accessibility,Screen Reader,TalkBack compatibility,1. Enable TalkBack → navigate POS,Buttons and fields announced correctly,Android,Low
+A11Y-002,25. Accessibility,Touch,Large touch targets,1. Use with accessibility mode,All buttons ≥ 48x48dp — easy to tap,All,Low
+WDGT-001,26. Shared Widgets,Sync,Sync badge on nav icon,1. Make changes offline → check nav,Badge with count on sync icon,All,Medium
+WDGT-002,26. Shared Widgets,Sync,Sync details sheet,1. Tap sync badge/icon,Sheet with per-collection status,All,Medium
+WDGT-003,26. Shared Widgets,Sync,Sync indicator shows progress,1. Reconnect after offline changes,Spinning indicator — stops when done,All,Medium
+WDGT-004,26. Shared Widgets,Banner,Offline banner,1. Turn off internet,Red banner at top — auto-hides on reconnect,All,Medium
+WDGT-005,26. Shared Widgets,Banner,Update banner for new version,1. Set newer version in Remote Config,Update banner with Download button,Windows,Medium
+WDGT-006,26. Shared Widgets,Dialog,Force update dialog,1. Set critical version higher,Full-screen — cannot dismiss — must update,Windows,High
+WDGT-007,26. Shared Widgets,Dialog,Logout confirmation dialog,1. Tap Logout in Settings,Confirm dialog — Cancel returns,All,Medium
+WDGT-008,26. Shared Widgets,Logo,Shop logo in header,1. Upload logo → check dashboard,Logo displays with fallback placeholder,All,Low
+WDGT-009,26. Shared Widgets,Banner,Announcement banner,1. Set announcement in Remote Config,Admin message at top of dashboard,All,Medium
+DSGN-001,27. Design System,Colors,Theme colors consistent,1. Change color → navigate all screens,All accents use new color,All,Medium
+DSGN-002,27. Design System,Typography,Fonts render correctly,1. Change font → check all screens,Selected font used — no fallback,All,Low
+DSGN-003,27. Design System,Sizes,Responsive sizes adapt,1. Resize browser 400px → 1920px,UI scales per breakpoint,Web,Medium
+WEBPR-001,27. Design System,Web Storage,Settings persist across tabs,1. Web → change settings → new tab,Settings carried over,Web,Low
+APPFR-001,27. Design System,Localization,Correct locale loads,1. System language = Hindi → open app,UI in correct language (if supported),All,Low

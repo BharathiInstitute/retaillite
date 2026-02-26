@@ -1,7 +1,7 @@
 {
-    "buildNumber":  25,
-    "forceUpdate":  true,
-    "version":  "4.0.0",
+    "buildNumber":  26,
+    "forceUpdate":  false,
+    "version":  "4.0.1",
     "downloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2FTulasiStores.apk?alt=media",
     "changelog":  "Bug fixes and improvements"
 }

@@ -1755,7 +1755,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     }),
                   ] else if (!_isLoadingUsbPrinters) ...[
                     const SizedBox(height: 8),
-                    Text(
+                    const Text(
                       'No printers found. Click refresh to scan.',
                       style: TextStyle(
                         fontSize: 12,

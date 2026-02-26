@@ -8,7 +8,12 @@ extension ColorOpacity on Color {
   /// Returns a color with the specified opacity (0.0 to 1.0)
   /// This is a replacement for the deprecated withOpacity method
   Color withAlpha8(double opacity) {
-    return Color.fromRGBO(r.toInt(), g.toInt(), b.toInt(), opacity);
+    return Color.fromRGBO(
+      (r * 255).round(),
+      (g * 255).round(),
+      (b * 255).round(),
+      opacity,
+    );
   }
 }
 
