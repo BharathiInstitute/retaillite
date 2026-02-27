@@ -55,9 +55,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => _handleImportCsv(),
-                      icon: const Icon(Icons.file_upload_outlined, size: 18),
-                      label: const Text('Import CSV'),
+                      onPressed: () => _handleExportCsv(),
+                      icon: const Icon(Icons.file_download_outlined, size: 18),
+                      label: const Text('Export'),
                       style: OutlinedButton.styleFrom(
                         backgroundColor: Theme.of(context).cardColor,
                         side: BorderSide(color: Theme.of(context).dividerColor),
@@ -65,7 +65,20 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _handleImportCsv(),
+                      icon: const Icon(Icons.file_upload_outlined, size: 18),
+                      label: const Text('Import'),
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Theme.of(context).cardColor,
+                        side: BorderSide(color: Theme.of(context).dividerColor),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: ElevatedButton.icon(
                       onPressed: () => _showAddProductModal(),
@@ -109,6 +122,16 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                   const Spacer(),
 
                   // Actions
+                  OutlinedButton.icon(
+                    onPressed: () => _handleExportCsv(),
+                    icon: const Icon(Icons.file_download_outlined),
+                    label: const Text('Export CSV'),
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: Theme.of(context).cardColor,
+                      side: BorderSide(color: Theme.of(context).dividerColor),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
                   OutlinedButton.icon(
                     onPressed: () => _handleImportCsv(),
                     icon: const Icon(Icons.file_upload_outlined),
@@ -554,6 +577,42 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
       backgroundColor: Colors.transparent,
       builder: (context) => AddProductModal(product: product),
     );
+  }
+
+  Future<void> _handleExportCsv() async {
+    final productsAsync = ref.read(productsProvider);
+    final products = productsAsync.valueOrNull;
+    if (products == null || products.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('No products to export'),
+            backgroundColor: AppColors.warning,
+          ),
+        );
+      }
+      return;
+    }
+    try {
+      final path = await ProductCsvService.exportToDownloads(products);
+      if (mounted && path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('✅ Exported ${products.length} products to CSV'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _handleImportCsv() async {

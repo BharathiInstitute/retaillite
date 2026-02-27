@@ -2257,6 +2257,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                         DropdownMenuItem(value: 90, child: Text('90 days')),
                         DropdownMenuItem(value: 180, child: Text('180 days')),
                         DropdownMenuItem(value: 365, child: Text('1 year')),
+                        DropdownMenuItem(
+                          value: -1,
+                          child: Text('Keep forever'),
+                        ),
                       ],
                       onChanged: (value) {
                         if (value != null) {
