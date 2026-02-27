@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/auth/screens/desktop_login_bridge_screen.dart';
 import 'package:retaillite/features/auth/screens/login_screen.dart';
 import 'package:retaillite/features/auth/screens/register_screen.dart';
 import 'package:retaillite/features/auth/screens/forgot_password_screen.dart';
@@ -161,7 +162,8 @@ final routerProvider = Provider<GoRouter>((ref) {
           currentPath == AppRoutes.login ||
           currentPath == AppRoutes.register ||
           currentPath == AppRoutes.forgotPassword ||
-          currentPath == AppRoutes.superAdminLogin;
+          currentPath == AppRoutes.superAdminLogin ||
+          currentPath == '/desktop-login';
       final isShopSetupRoute = currentPath == AppRoutes.shopSetup;
       final isSuperAdminRoute = currentPath.startsWith('/super-admin');
       final isGoingToSuperAdmin = fullUri.startsWith('/super-admin');
@@ -231,6 +233,14 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.forgotPassword,
         builder: (context, state) => const ForgotPasswordScreen(),
+      ),
+      // Desktop login bridge — used by Windows app for Google Sign-In
+      GoRoute(
+        path: '/desktop-login',
+        builder: (context, state) {
+          final code = state.uri.queryParameters['code'];
+          return DesktopLoginBridgeScreen(linkCode: code);
+        },
       ),
       GoRoute(
         path: AppRoutes.shopSetup,

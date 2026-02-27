@@ -263,14 +263,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Sign in with Google — multi-layer approach for maximum reliability
   /// Web: signInWithPopup → GoogleSignIn package → signInWithRedirect
   /// Mobile: GoogleSignIn package directly
-  /// Desktop: Use signInDesktop() instead (opens web app in browser)
+  /// Desktop: Try GoogleSignIn package, fall back to helpful message
   Future<bool> signInWithGoogle() async {
     try {
       if (kIsWeb) {
         return await _googleSignInWeb();
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
-        // Windows: Google Sign-In package doesn't support Windows
-        // Open browser for Google auth, email login stays in-app
+        // Windows: open browser to /desktop-login bridge page for Google auth
         return await signInDesktop();
       } else {
         return await _googleSignInMobile();

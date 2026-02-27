@@ -5,6 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
@@ -35,13 +37,18 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
   @override
   void initState() {
     super.initState();
+    final user = ref.read(currentUserProvider);
+    final settings = user?.settings;
     _invoiceTitleController = TextEditingController(text: 'Tax Invoice');
-    _taxRateController = TextEditingController(text: '18');
+    _taxRateController = TextEditingController(
+      text: (settings?.taxRate ?? 5.0).toStringAsFixed(0),
+    );
     _termsController = TextEditingController(
-      text: 'Thank you for your business!',
+      text: settings?.receiptFooter ?? 'Thank you for your business!',
     );
     _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
     _upiIdController.addListener(_validateUpiId);
+    _taxEnabled = settings?.gstEnabled ?? true;
   }
 
   void _validateUpiId() {
@@ -578,17 +585,41 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
   }
 
   void _saveSettings() async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+
     // Save UPI ID if valid
     final upiId = _upiIdController.text.trim();
     if (upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId)) {
       PaymentLinkService.setUpiId(upiId);
-      // Persist to Firestore so it survives app restarts
+    }
+
+    // Save all billing settings to Firestore
+    if (uid != null) {
       try {
-        await ref
-            .read(authNotifierProvider.notifier)
-            .updateShopInfo(upiId: upiId);
+        final taxRate = double.tryParse(_taxRateController.text.trim()) ?? 5.0;
+        final footer = _termsController.text.trim();
+
+        await FirebaseFirestore.instance.collection('users').doc(uid).update({
+          if (upiId.isNotEmpty) 'upiId': upiId,
+          'settings.gstEnabled': _taxEnabled,
+          'settings.taxRate': taxRate,
+          'settings.receiptFooter': footer,
+        });
+
+        // Update local state instantly
+        final authNotifier = ref.read(authNotifierProvider.notifier);
+        final currentUser = ref.read(currentUserProvider);
+        if (currentUser != null) {
+          authNotifier.updateLocalUserSettings(
+            currentUser.settings.copyWith(
+              gstEnabled: _taxEnabled,
+              taxRate: taxRate,
+              receiptFooter: footer,
+            ),
+          );
+        }
       } catch (_) {
-        // Non-fatal: UPI ID is saved locally even if cloud sync fails
+        // Non-fatal: settings saved locally
       }
     }
 

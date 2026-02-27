@@ -41,6 +41,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _shopAddressController;
   late TextEditingController _emailController;
   late TextEditingController _upiIdController;
+  late TextEditingController _billingFooterController;
 
   // WiFi printer state (Windows only)
   late TextEditingController _wifiIpController;
@@ -62,6 +63,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _emailController = TextEditingController(text: user?.email ?? '');
     _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
     _upiIdController.addListener(_onUpiIdChanged);
+    _billingFooterController = TextEditingController(
+      text: user?.settings.receiptFooter ?? 'Thank you for shopping!',
+    );
 
     // WiFi/USB printer controllers (Windows only)
     _wifiIpController = TextEditingController(
@@ -97,6 +101,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _shopAddressController.dispose();
     _emailController.dispose();
     _upiIdController.dispose();
+    _billingFooterController.dispose();
     _wifiIpController.dispose();
     _wifiPortController.dispose();
     super.dispose();
@@ -117,6 +122,41 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
 
   void _navigateToTab(SettingsTab tab) {
     context.go('/settings/${tab.name}');
+  }
+
+  /// Instantly update a user setting in Firestore + local state
+  Future<void> _updateUserSetting(String key, dynamic value) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('users').doc(uid).update({
+        'settings.$key': value,
+      });
+      final authNotifier = ref.read(authNotifierProvider.notifier);
+      final currentUser = ref.read(currentUserProvider);
+      if (currentUser != null) {
+        final newSettings = switch (key) {
+          'gstEnabled' => currentUser.settings.copyWith(
+            gstEnabled: value as bool,
+          ),
+          'taxRate' => currentUser.settings.copyWith(taxRate: value as double),
+          'receiptFooter' => currentUser.settings.copyWith(
+            receiptFooter: value as String,
+          ),
+          _ => currentUser.settings,
+        };
+        authNotifier.updateLocalUserSettings(newSettings);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
+    }
   }
 
   bool _isSyncing = false;
@@ -2406,7 +2446,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     Switch(
                       value: user?.settings.gstEnabled ?? true,
                       onChanged: (v) {
-                        // Save to user settings (not yet implemented)
+                        _updateUserSetting('gstEnabled', v);
                       },
                       activeThumbColor: AppColors.primary,
                     ),
@@ -2429,18 +2469,44 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Default Tax Rate'),
-                    _buildDropdown(
-                      '${(user?.settings.taxRate ?? 5.0).toStringAsFixed(0)}%',
-                      ['5%', '12%', '18%', '28%'],
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: AppShadows.small,
+                      ),
+                      child: DropdownButton<double>(
+                        value: user?.settings.taxRate ?? 5.0,
+                        isExpanded: true,
+                        underline: const SizedBox(),
+                        items: const [
+                          DropdownMenuItem(value: 5.0, child: Text('5%')),
+                          DropdownMenuItem(value: 12.0, child: Text('12%')),
+                          DropdownMenuItem(value: 18.0, child: Text('18%')),
+                          DropdownMenuItem(value: 28.0, child: Text('28%')),
+                        ],
+                        onChanged: (v) {
+                          if (v != null) _updateUserSetting('taxRate', v);
+                        },
+                      ),
                     ),
                   ],
                 ),
               ]),
               const SizedBox(height: 16),
-              Row(
+              const Row(
                 children: [
-                  Checkbox(value: false, onChanged: (v) {}),
-                  const Text('Prices are inclusive of tax'),
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: AppColors.textMuted,
+                  ),
+                  SizedBox(width: 4),
+                  Text(
+                    'Tax is calculated on the bill subtotal',
+                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                  ),
                 ],
               ),
             ],
@@ -2463,10 +2529,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   hintText: 'Enter terms and conditions...',
                   filled: true,
                 ),
-                controller: TextEditingController(
-                  text:
-                      '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.',
-                ),
+                controller: _billingFooterController,
+                onChanged: (v) {
+                  _updateUserSetting('receiptFooter', v);
+                },
               ),
               const SizedBox(height: 8),
               const Row(

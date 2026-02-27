@@ -13,14 +13,12 @@
             var p = new URLSearchParams(window.location.search);
             var pa = p.get('pa');
             if (!pa) return;
-            var am = p.get('am') || '0';
+            var am = p.get('am') || '';
             var pn = p.get('pn') || 'Store';
             var tn = p.get('tn') || 'Payment';
-            var upi = 'upi://pay?pa=' + encodeURIComponent(pa)
-                + '&am=' + encodeURIComponent(am)
-                + '&cu=INR'
-                + '&pn=' + encodeURIComponent(pn)
-                + '&tn=' + encodeURIComponent(tn);
+            var upi = 'upi://pay?pa=' + encodeURIComponent(pa);
+            if (am && parseFloat(am) > 0) upi += '&am=' + encodeURIComponent(am);
+            upi += '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
             window.location.href = upi; // Opens UPI app chooser INSTANTLY
         })();
     </script>
@@ -317,7 +315,7 @@
 
         <!-- MOBILE: Pay button -->
         <a id="payBtn" class="pay-btn" href="#">
-            ⚡ Pay ₹<span id="payAmount">0</span> Now
+            ⚡ Pay <span id="payAmountPrefix">₹</span><span id="payAmount">0</span> Now
         </a>
 
         <!-- MOBILE: App-specific buttons -->
@@ -355,26 +353,25 @@
         // --- Read URL params ---
         var params = new URLSearchParams(window.location.search);
         var pa = params.get('pa') || '';
-        var am = params.get('am') || '0';
+        var am = params.get('am') || '';
         var pn = params.get('pn') || 'Store';
         var tn = params.get('tn') || 'Payment';
-        var amInt = parseFloat(am).toFixed(0);
+        var hasAmount = am && parseFloat(am) > 0;
+        var amInt = hasAmount ? parseFloat(am).toFixed(0) : '0';
 
         // --- Populate page ---
         document.getElementById('shopName').textContent = pn;
-        document.getElementById('amount').textContent = '\u20B9' + amInt;
-        document.getElementById('payAmount').textContent = amInt;
+        document.getElementById('amount').textContent = hasAmount ? '\u20B9' + amInt : 'Enter in app';
+        document.getElementById('payAmount').textContent = hasAmount ? amInt : '';
         document.getElementById('upiId').textContent = pa;
         document.getElementById('upiIdManual').textContent = pa;
-        document.getElementById('amountManual').textContent = '\u20B9' + amInt;
-        document.title = 'Pay \u20B9' + amInt + ' to ' + pn;
+        document.getElementById('amountManual').textContent = hasAmount ? '\u20B9' + amInt : 'Any amount';
+        document.title = hasAmount ? 'Pay \u20B9' + amInt + ' to ' + pn : 'Pay ' + pn;
 
-        // --- Build UPI deep link ---
-        var upiLink = 'upi://pay?pa=' + encodeURIComponent(pa)
-            + '&am=' + encodeURIComponent(am)
-            + '&cu=INR'
-            + '&pn=' + encodeURIComponent(pn)
-            + '&tn=' + encodeURIComponent(tn);
+        // --- Build UPI deep link (omit am if no amount → UPI app prompts user) ---
+        var upiLink = 'upi://pay?pa=' + encodeURIComponent(pa);
+        if (hasAmount) upiLink += '&am=' + encodeURIComponent(am);
+        upiLink += '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
 
         // --- Detect mobile ---
         var isMobile = /Android|iPhone|iPad|iPod|webOS|BlackBerry/i.test(navigator.userAgent);
@@ -386,10 +383,11 @@
             document.getElementById('payBtn').href = upiLink;
             document.getElementById('appsSection').style.display = 'block';
 
-            // App-specific deep links
-            document.getElementById('gpayBtn').href = 'tez://upi/pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
-            document.getElementById('phonepeBtn').href = 'phonepe://pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
-            document.getElementById('paytmBtn').href = 'paytmmp://pay?pa=' + encodeURIComponent(pa) + '&am=' + am + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+            // App-specific deep links (omit am if no amount)
+            var amPart = hasAmount ? '&am=' + am : '';
+            document.getElementById('gpayBtn').href = 'tez://upi/pay?pa=' + encodeURIComponent(pa) + amPart + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+            document.getElementById('phonepeBtn').href = 'phonepe://pay?pa=' + encodeURIComponent(pa) + amPart + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
+            document.getElementById('paytmBtn').href = 'paytmmp://pay?pa=' + encodeURIComponent(pa) + amPart + '&cu=INR&pn=' + encodeURIComponent(pn) + '&tn=' + encodeURIComponent(tn);
 
             // Show status on button click (fallback if user manually taps Pay)
             document.getElementById('payBtn').addEventListener('click', function () {

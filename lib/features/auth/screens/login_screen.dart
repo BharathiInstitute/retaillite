@@ -2,7 +2,7 @@
 /// with smart sign-in method detection (Option C)
 library;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:retaillite/core/utils/website_url.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -27,8 +27,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   bool _isLoading = false;
   bool _isGoogleLoading = false;
   bool _obscurePassword = true;
-  bool _showEmailForm = false;
+  late bool _showEmailForm;
   bool _isCheckingEmail = false;
+
+  // Windows desktop needs special handling for Google Sign-In
+  bool get _isWindowsDesktop =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
+
+  @override
+  void initState() {
+    super.initState();
+    // On Windows, auto-expand email form since it's the primary login method
+    // Google button is still shown but opens browser
+    _showEmailForm = _isWindowsDesktop;
+  }
 
   @override
   void dispose() {
