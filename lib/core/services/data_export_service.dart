@@ -4,10 +4,11 @@ library;
 import 'dart:io';
 
 import 'package:csv/csv.dart';
-
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 
@@ -288,6 +289,11 @@ class DataExportService {
 
   /// Save file to downloads/documents folder
   Future<String> _saveFile(String name, String ext, String content) async {
+    // Web: use browser download (handled separately)
+    if (kIsWeb) {
+      return _webDownload(name, ext, content);
+    }
+
     Directory directory;
 
     if (Platform.isAndroid) {
@@ -299,7 +305,7 @@ class DataExportService {
     } else if (Platform.isIOS) {
       directory = await getApplicationDocumentsDirectory();
     } else {
-      // Desktop/Web
+      // Desktop
       directory = await getApplicationDocumentsDirectory();
     }
 
@@ -313,6 +319,91 @@ class DataExportService {
     await file.writeAsString(content);
 
     return file.path;
+  }
+
+  /// Web: trigger browser download via FilePicker saveFile with bytes
+  Future<String> _webDownload(String name, String ext, String content) async {
+    try {
+      final bytes = Uint8List.fromList(content.codeUnits);
+      await FilePicker.platform.saveFile(
+        dialogTitle: 'Save Export',
+        fileName: '$name.$ext',
+        bytes: bytes,
+      );
+      debugPrint('📥 Web export download triggered: $name.$ext');
+      return 'web_export://$name.$ext';
+    } catch (e) {
+      debugPrint('❌ Web download error: $e');
+      return 'web_export://$name.$ext';
+    }
+  }
+
+  /// Platform-specific post-export action
+  /// Android/iOS: opens share sheet (WhatsApp, email, etc.)
+  /// Windows/Desktop: opens the containing folder in Explorer
+  /// Web: share_plus handles web sharing/download
+  static Future<void> shareExportedFile(String filePath) async {
+    if (kIsWeb) {
+      debugPrint('📤 Web: Use share_plus shareXFiles for web sharing');
+      return;
+    }
+
+    if (Platform.isAndroid || Platform.isIOS) {
+      // Use share_plus to show system share sheet
+      try {
+        await Share.shareXFiles([XFile(filePath)]);
+        debugPrint('📤 Share sheet opened for: $filePath');
+      } catch (e) {
+        debugPrint('❌ Share failed: $e');
+      }
+    } else if (Platform.isWindows) {
+      // Open containing folder in Explorer
+      await openExportFolder(filePath);
+    } else {
+      debugPrint('ℹ️ No platform-specific share action for this platform');
+    }
+  }
+
+  /// Windows: Open the containing folder in Explorer and select the file
+  static Future<void> openExportFolder(String filePath) async {
+    if (!Platform.isWindows) return;
+
+    try {
+      await Process.run('explorer', ['/select,', filePath]);
+      debugPrint('📂 Opened folder for: $filePath');
+    } catch (e) {
+      // Fallback: open the folder itself
+      try {
+        final folder = File(filePath).parent.path;
+        await Process.run('explorer', [folder]);
+      } catch (e2) {
+        debugPrint('❌ Failed to open folder: $e2');
+      }
+    }
+  }
+
+  /// Convenience: handle export result with platform-appropriate action
+  /// Returns a user-friendly message
+  static Future<String> handleExportResult(ExportResult result) async {
+    if (!result.success) {
+      return result.error ?? 'Export failed';
+    }
+
+    final filePath = result.filePath;
+    if (filePath == null) return 'Export completed';
+
+    if (kIsWeb) {
+      return '✅ ${result.recordCount} records exported — download started';
+    }
+
+    // Share on Android/iOS, open folder on Windows
+    await shareExportedFile(filePath);
+
+    if (!kIsWeb && Platform.isWindows) {
+      return '✅ ${result.recordCount} records exported to:\n$filePath';
+    }
+
+    return '✅ ${result.recordCount} records exported';
   }
 
   String _prettyPrintJson(List<Map<String, dynamic>> data) {

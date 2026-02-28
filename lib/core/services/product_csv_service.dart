@@ -64,11 +64,29 @@ class ProductCsvService {
   static Future<String?> exportToDownloads(List<ProductModel> products) async {
     try {
       final csvData = _productsToCsv(products);
+      final fileName = 'products_${DateTime.now().millisecondsSinceEpoch}.csv';
 
-      // Let user pick save location
+      if (kIsWeb) {
+        // On web, FilePicker.saveFile requires bytes
+        final bytes = Uint8List.fromList(csvData.codeUnits);
+        final result = await FilePicker.platform.saveFile(
+          dialogTitle: 'Save Products CSV',
+          fileName: fileName,
+          type: FileType.custom,
+          allowedExtensions: ['csv'],
+          bytes: bytes,
+        );
+        if (result != null) {
+          debugPrint('✅ Web CSV download triggered: $fileName');
+          return fileName;
+        }
+        return null;
+      }
+
+      // Native: let user pick save location then write file
       final result = await FilePicker.platform.saveFile(
         dialogTitle: 'Save Products CSV',
-        fileName: 'products_${DateTime.now().millisecondsSinceEpoch}.csv',
+        fileName: fileName,
         type: FileType.custom,
         allowedExtensions: ['csv'],
       );

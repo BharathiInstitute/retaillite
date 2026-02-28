@@ -16,6 +16,7 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/features/notifications/services/fcm_token_service.dart';
+import 'package:retaillite/features/notifications/services/notification_service.dart';
 import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
 import 'package:retaillite/models/user_model.dart';
 
@@ -222,6 +223,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         // Save FCM token for push notifications (non-blocking)
         // ignore: unawaited_futures
         FCMTokenService.initAndSaveToken(firebaseUser.uid);
+        // Start FCM foreground message listener (Android/Web only)
+        NotificationService.initMessageListeners();
         // Start Windows desktop notification listener
         WindowsNotificationService.startListening(firebaseUser.uid);
         // Load UPI ID from user document into PaymentLinkService

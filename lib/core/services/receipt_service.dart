@@ -1,6 +1,10 @@
 /// Receipt PDF generator for thermal printers
 library;
 
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
@@ -34,12 +38,19 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    String? shopLogoPath,
     int? paperSizeIndex,
   }) async {
     final pdf = pw.Document();
     final effectivePaperSize =
         paperSizeIndex ?? PrinterStorage.getSavedPaperSize();
     final pageFormat = _getPageFormat(effectivePaperSize);
+
+    // Load logo image bytes (if available)
+    pw.MemoryImage? logoImage;
+    if (shopLogoPath != null && shopLogoPath.isNotEmpty) {
+      logoImage = await _loadLogoImage(shopLogoPath);
+    }
 
     pdf.addPage(
       pw.Page(
@@ -51,6 +62,7 @@ class ReceiptService {
           shopPhone: shopPhone,
           gstNumber: gstNumber,
           receiptFooter: receiptFooter ?? 'Thank you for shopping!',
+          logoImage: logoImage,
         ),
       ),
     );
@@ -66,6 +78,7 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    String? shopLogoPath,
     int? paperSizeIndex,
   }) async {
     final effectivePaperSize =
@@ -77,6 +90,7 @@ class ReceiptService {
       shopPhone: shopPhone,
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
+      shopLogoPath: shopLogoPath,
       paperSizeIndex: effectivePaperSize,
     );
 
@@ -95,6 +109,7 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     String? receiptFooter,
+    String? shopLogoPath,
     int? paperSizeIndex,
   }) async {
     final pdf = await generateReceipt(
@@ -104,6 +119,7 @@ class ReceiptService {
       shopPhone: shopPhone,
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
+      shopLogoPath: shopLogoPath,
       paperSizeIndex: paperSizeIndex,
     );
 
@@ -113,6 +129,30 @@ class ReceiptService {
     );
   }
 
+  /// Load logo image bytes from URL or local file
+  static Future<pw.MemoryImage?> _loadLogoImage(String path) async {
+    try {
+      Uint8List? bytes;
+      if (path.startsWith('http')) {
+        final response = await http.get(Uri.parse(path));
+        if (response.statusCode == 200) {
+          bytes = response.bodyBytes;
+        }
+      } else if (!kIsWeb) {
+        final file = File(path);
+        if (await file.exists()) {
+          bytes = await file.readAsBytes();
+        }
+      }
+      if (bytes != null && bytes.isNotEmpty) {
+        return pw.MemoryImage(bytes);
+      }
+    } catch (e) {
+      debugPrint('⚠️ Failed to load logo for receipt: $e');
+    }
+    return null;
+  }
+
   static pw.Widget _buildReceipt({
     required BillModel bill,
     required String shopName,
@@ -120,12 +160,18 @@ class ReceiptService {
     String? shopPhone,
     String? gstNumber,
     required String receiptFooter,
+    pw.MemoryImage? logoImage,
   }) {
     final createdAt = bill.createdAt;
 
     return pw.Column(
       crossAxisAlignment: pw.CrossAxisAlignment.stretch,
       children: [
+        // Shop logo (if available)
+        if (logoImage != null) ...[
+          pw.Center(child: pw.Image(logoImage, width: 60, height: 60)),
+          pw.SizedBox(height: 4),
+        ],
         // Shop header (centered)
         pw.Text(
           shopName,

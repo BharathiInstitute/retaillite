@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/analytics_service.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
@@ -103,6 +104,15 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
 
       // Save bill to local storage for Reports
       await OfflineStorageService.saveBillLocally(bill);
+
+      // Log analytics event (non-blocking)
+      unawaited(
+        AnalyticsService.logBillCreated(
+          amount: bill.total,
+          itemCount: bill.items.length,
+          paymentMode: bill.paymentMethod.name,
+        ),
+      );
 
       // Update customer khata balance for Udhar payments
       if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
@@ -231,6 +241,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
             shopPhone: user?.phone,
             gstNumber: user?.gstNumber,
             receiptFooter: footer,
+            shopLogoPath: user?.shopLogoPath,
           );
           return;
       }
@@ -254,6 +265,7 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           shopPhone: user?.phone,
           gstNumber: user?.gstNumber,
           receiptFooter: footer,
+          shopLogoPath: user?.shopLogoPath,
         );
       }
     } catch (e) {

@@ -1066,6 +1066,7 @@ class _HistoryCard extends StatelessWidget {
     final type = (data['type'] as String?) ?? 'system';
     final sentBy = (data['sentBy'] as String?) ?? 'unknown';
     final targetType = (data['targetType'] as String?) ?? 'all';
+    final recipientCount = data['recipientCount'] as int?;
     final createdAt = data['createdAt'];
     String dateStr = 'Unknown date';
     if (createdAt != null) {
@@ -1112,6 +1113,30 @@ class _HistoryCard extends StatelessWidget {
                 Text(
                   sentBy,
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+                const SizedBox(width: 12),
+                // Recipient count
+                Icon(
+                  Icons.group,
+                  size: 14,
+                  color: recipientCount != null && recipientCount > 0
+                      ? Colors.green.shade400
+                      : Colors.grey.shade500,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  recipientCount != null
+                      ? 'Sent to $recipientCount user${recipientCount == 1 ? '' : 's'}'
+                      : 'Processing…',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: recipientCount != null && recipientCount > 0
+                        ? Colors.green.shade400
+                        : Colors.grey.shade500,
+                    fontWeight: recipientCount != null && recipientCount > 0
+                        ? FontWeight.w600
+                        : FontWeight.normal,
+                  ),
                 ),
                 const Spacer(),
                 Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),

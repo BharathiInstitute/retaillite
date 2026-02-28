@@ -147,6 +147,13 @@ class NotificationFirestoreService {
       if (count % 450 != 0) {
         await batch.commit();
       }
+
+      // Update global doc with recipient count
+      await globalRef.update({
+        'recipientCount': count,
+        'sentAt': FieldValue.serverTimestamp(),
+      });
+
       debugPrint('✅ Notification sent to $count users');
       return count;
     } catch (e, st) {
@@ -196,6 +203,13 @@ class NotificationFirestoreService {
       if (count % 450 != 0) {
         await batch.commit();
       }
+
+      // Update global doc with recipient count
+      await globalRef.update({
+        'recipientCount': count,
+        'sentAt': FieldValue.serverTimestamp(),
+      });
+
       debugPrint('✅ Notification sent to $count $plan users');
       return count;
     } catch (e, st) {
@@ -240,6 +254,13 @@ class NotificationFirestoreService {
       if (count % 450 != 0) {
         await batch.commit();
       }
+
+      // Update global doc with recipient count
+      await globalRef.update({
+        'recipientCount': count,
+        'sentAt': FieldValue.serverTimestamp(),
+      });
+
       debugPrint('✅ Notification sent to $count selected users');
       return count;
     } catch (e, st) {

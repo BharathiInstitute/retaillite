@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:retaillite/core/services/analytics_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/screens/desktop_login_bridge_screen.dart';
 import 'package:retaillite/features/auth/screens/login_screen.dart';
@@ -413,6 +414,8 @@ class _ErrorRouteObserver extends NavigatorObserver {
     final name = route.settings.name;
     if (name != null && name.isNotEmpty) {
       ErrorLoggingService.setCurrentScreen(name);
+      // Log screen view to Firebase Analytics
+      AnalyticsService.logScreenView(name);
     }
   }
 }

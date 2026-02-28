@@ -878,6 +878,7 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
             shopPhone: user?.phone,
             gstNumber: user?.gstNumber,
             receiptFooter: footer,
+            shopLogoPath: user?.shopLogoPath,
           );
           return;
       }
@@ -900,6 +901,7 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
           shopPhone: user?.phone,
           gstNumber: user?.gstNumber,
           receiptFooter: footer,
+          shopLogoPath: user?.shopLogoPath,
         );
       }
     } catch (e) {

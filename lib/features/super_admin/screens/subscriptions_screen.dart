@@ -3,9 +3,11 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:intl/intl.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
+import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
 
 class SubscriptionsScreen extends ConsumerWidget {
   const SubscriptionsScreen({super.key});
@@ -82,6 +84,11 @@ class SubscriptionsScreen extends ConsumerWidget {
               loading: () => const SizedBox(),
               error: (e, _) => const SizedBox(),
             ),
+
+            const SizedBox(height: 24),
+
+            // Manage Subscriptions — full user list
+            _buildManageSection(ref),
           ],
         ),
       ),
@@ -395,6 +402,334 @@ class SubscriptionsScreen extends ConsumerWidget {
       case SubscriptionPlan.business:
         return Colors.purple;
     }
+  }
+
+  Color _getStatusColor(SubscriptionStatus status) {
+    switch (status) {
+      case SubscriptionStatus.active:
+        return Colors.green;
+      case SubscriptionStatus.trial:
+        return Colors.orange;
+      case SubscriptionStatus.expired:
+        return Colors.red;
+      case SubscriptionStatus.cancelled:
+        return Colors.grey;
+    }
+  }
+
+  /// Manage Subscriptions section with user list and edit buttons
+  Widget _buildManageSection(WidgetRef ref) {
+    final usersAsync = ref.watch(usersListProvider);
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.manage_accounts, color: Colors.deepPurple),
+                const SizedBox(width: 8),
+                const Text(
+                  'Manage Subscriptions',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                IconButton(
+                  icon: const Icon(Icons.refresh),
+                  tooltip: 'Refresh',
+                  onPressed: () => ref.invalidate(usersListProvider),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            usersAsync.when(
+              data: (users) {
+                if (users.isEmpty) {
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(24),
+                      child: Text('No users found'),
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: users.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (context, index) {
+                    final user = users[index];
+                    return _buildUserTile(context, ref, user);
+                  },
+                );
+              },
+              loading: () => const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(24),
+                  child: CircularProgressIndicator(),
+                ),
+              ),
+              error: (e, _) => Text('Error: $e'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUserTile(BuildContext context, WidgetRef ref, AdminUser user) {
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: _getPlanColor(user.subscription.plan),
+        child: Text(
+          user.shopName.isNotEmpty ? user.shopName[0].toUpperCase() : '?',
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+      ),
+      title: Text(
+        user.shopName,
+        style: const TextStyle(fontWeight: FontWeight.w600),
+      ),
+      subtitle: Text('${user.email} • ${user.ownerName}'),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Plan badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getPlanColor(
+                user.subscription.plan,
+              ).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              user.subscription.planDisplayName,
+              style: TextStyle(
+                color: _getPlanColor(user.subscription.plan),
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Status badge
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: _getStatusColor(
+                user.subscription.status,
+              ).withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              user.subscription.status.name.toUpperCase(),
+              style: TextStyle(
+                color: _getStatusColor(user.subscription.status),
+                fontWeight: FontWeight.bold,
+                fontSize: 11,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          // Edit button
+          IconButton(
+            icon: const Icon(Icons.edit, size: 20),
+            tooltip: 'Edit subscription',
+            onPressed: () => _showEditDialog(context, ref, user),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showEditDialog(BuildContext context, WidgetRef ref, AdminUser user) {
+    var selectedPlan = user.subscription.plan;
+    var selectedStatus = user.subscription.status;
+    var expiresAt = user.subscription.expiresAt;
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            return AlertDialog(
+              title: Text('Edit: ${user.shopName}'),
+              content: SizedBox(
+                width: 400,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Owner: ${user.ownerName}',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                    Text(
+                      'Email: ${user.email}',
+                      style: TextStyle(color: Colors.grey.shade600),
+                    ),
+                    const SizedBox(height: 20),
+
+                    // Plan selector
+                    const Text(
+                      'Plan',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    SegmentedButton<SubscriptionPlan>(
+                      segments: SubscriptionPlan.values.map((p) {
+                        return ButtonSegment(
+                          value: p,
+                          label: Text(
+                            p.name[0].toUpperCase() + p.name.substring(1),
+                          ),
+                        );
+                      }).toList(),
+                      selected: {selectedPlan},
+                      onSelectionChanged: (val) {
+                        setDialogState(() => selectedPlan = val.first);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Status selector
+                    const Text(
+                      'Status',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<SubscriptionStatus>(
+                      value: selectedStatus,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: SubscriptionStatus.values.map((s) {
+                        return DropdownMenuItem(
+                          value: s,
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.circle,
+                                size: 10,
+                                color: _getStatusColor(s),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                s.name[0].toUpperCase() + s.name.substring(1),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) {
+                        if (val != null)
+                          setDialogState(() => selectedStatus = val);
+                      },
+                    ),
+                    const SizedBox(height: 16),
+
+                    // Expiry date
+                    const Text(
+                      'Expires At',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    InkWell(
+                      onTap: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate:
+                              expiresAt ??
+                              DateTime.now().add(const Duration(days: 30)),
+                          firstDate: DateTime(2024),
+                          lastDate: DateTime(2030),
+                        );
+                        if (picked != null) {
+                          setDialogState(() => expiresAt = picked);
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: Colors.grey.shade400),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(Icons.calendar_today, size: 18),
+                            const SizedBox(width: 8),
+                            Text(
+                              expiresAt != null
+                                  ? DateFormat('dd MMM yyyy').format(expiresAt!)
+                                  : 'No expiry (Free plan)',
+                            ),
+                            const Spacer(),
+                            if (expiresAt != null)
+                              InkWell(
+                                onTap: () =>
+                                    setDialogState(() => expiresAt = null),
+                                child: const Icon(Icons.clear, size: 18),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final newSub = UserSubscription(
+                      plan: selectedPlan,
+                      status: selectedStatus,
+                      startedAt: user.subscription.startedAt ?? DateTime.now(),
+                      expiresAt: expiresAt,
+                      razorpaySubscriptionId:
+                          user.subscription.razorpaySubscriptionId,
+                    );
+                    await AdminFirestoreService.updateUserSubscription(
+                      user.id,
+                      newSub,
+                    );
+                    // Refresh providers
+                    ref.invalidate(usersListProvider);
+                    ref.invalidate(adminStatsProvider);
+                    ref.invalidate(expiringSubscriptionsProvider);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            'Updated ${user.shopName} to ${selectedPlan.name} / ${selectedStatus.name}',
+                          ),
+                          backgroundColor: Colors.green,
+                        ),
+                      );
+                    }
+                  },
+                  child: const Text('Save'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 }
 
