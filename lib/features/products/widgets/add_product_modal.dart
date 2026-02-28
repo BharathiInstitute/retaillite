@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/services/barcode_scanner_service.dart';
 import 'package:retaillite/core/services/barcode_lookup_service.dart';
 import 'package:retaillite/core/utils/validators.dart';
@@ -34,7 +35,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
   late ProductUnit _selectedUnit;
   bool _isLoading = false;
   bool _isLookingUp = false;
+  bool _isUploadingImage = false;
   BarcodeProduct? _lookedUpProduct;
+  String? _imageUrl;
 
   bool get _isEditing => widget.product != null;
 
@@ -54,6 +57,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     _barcodeController = TextEditingController(text: p?.barcode ?? '');
     _categoryController = TextEditingController(text: p?.category ?? '');
     _selectedUnit = p?.unit ?? ProductUnit.piece;
+    _imageUrl = p?.imageUrl;
   }
 
   @override
@@ -132,6 +136,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
         category: _categoryController.text.trim().isEmpty
             ? null
             : _categoryController.text.trim(),
+        imageUrl: _imageUrl,
         createdAt: widget.product?.createdAt ?? DateTime.now(),
       );
 
@@ -361,9 +366,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                               ? VisualDensity.compact
                               : null,
                           padding: isMobile
-                              ? const EdgeInsets.symmetric(
-                                  horizontal: 4,
-                                )
+                              ? const EdgeInsets.symmetric(horizontal: 4)
                               : null,
                           onSelected: (selected) {
                             if (selected) {
@@ -444,6 +447,105 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                       ),
                     ],
+                    SizedBox(height: fieldSpacing),
+
+                    // Product Image
+                    Text(
+                      'Product Image',
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        fontSize: isMobile ? 12 : 14,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      height: 120,
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).cardColor,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: Theme.of(context).dividerColor,
+                        ),
+                      ),
+                      child: _isUploadingImage
+                          ? const Center(child: CircularProgressIndicator())
+                          : _imageUrl != null && _imageUrl!.isNotEmpty
+                          ? Stack(
+                              children: [
+                                Center(
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(12),
+                                    child: Image.network(
+                                      _imageUrl!,
+                                      height: 120,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, __, stackTrace) =>
+                                          const Icon(
+                                            Icons.broken_image,
+                                            size: 40,
+                                          ),
+                                    ),
+                                  ),
+                                ),
+                                Positioned(
+                                  top: 4,
+                                  right: 4,
+                                  child: IconButton.filled(
+                                    onPressed: () {
+                                      setState(() => _imageUrl = null);
+                                    },
+                                    icon: const Icon(Icons.close, size: 16),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: Colors.black54,
+                                      foregroundColor: Colors.white,
+                                      padding: const EdgeInsets.all(4),
+                                      minimumSize: const Size(28, 28),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : InkWell(
+                              onTap: () async {
+                                setState(() => _isUploadingImage = true);
+                                try {
+                                  final url =
+                                      await ImageService.pickAndUploadLogo();
+                                  if (url != null && mounted) {
+                                    setState(() => _imageUrl = url);
+                                  }
+                                } finally {
+                                  if (mounted) {
+                                    setState(() => _isUploadingImage = false);
+                                  }
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(12),
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_a_photo_outlined,
+                                    size: 32,
+                                    color: Theme.of(
+                                      context,
+                                    ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    'Tap to upload image',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                    ),
+
                     SizedBox(height: isMobile ? 16 : 32),
 
                     // Submit button

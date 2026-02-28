@@ -171,3 +171,10 @@ final khataServiceProvider = Provider<KhataService>((ref) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   return KhataService(isDemoMode: isDemoMode);
 });
+
+/// Per-customer sync status — maps customer ID → hasPendingWrites
+final customersSyncStatusProvider = StreamProvider<Map<String, bool>>((ref) {
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  if (isDemoMode) return Stream.value({});
+  return OfflineStorageService.customersSyncStream();
+});

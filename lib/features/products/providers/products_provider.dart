@@ -70,6 +70,25 @@ final productsProvider = StreamProvider.autoDispose<List<ProductModel>>((ref) {
       });
 });
 
+/// Per-product sync status — maps product ID → hasPendingWrites
+final productsSyncStatusProvider =
+    StreamProvider.autoDispose<Map<String, bool>>((ref) {
+      final isDemoMode = ref.watch(isDemoModeProvider);
+      if (isDemoMode) return Stream.value({});
+
+      return _firestore
+          .collection(_productsPath)
+          .orderBy('name')
+          .limit(AppConstants.queryLimitProducts)
+          .snapshots()
+          .map(
+            (snapshot) => {
+              for (final doc in snapshot.docs)
+                doc.id: doc.metadata.hasPendingWrites,
+            },
+          );
+    });
+
 /// Low stock products provider
 final lowStockProductsProvider = Provider<List<ProductModel>>((ref) {
   final products = ref.watch(productsProvider);

@@ -8,6 +8,7 @@ import 'package:retaillite/features/products/widgets/add_product_modal.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
+import 'package:retaillite/shared/widgets/sync_badge.dart';
 
 class ProductsWebScreen extends ConsumerStatefulWidget {
   const ProductsWebScreen({super.key});
@@ -23,6 +24,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
   Widget build(BuildContext context) {
     final l10n = context.l10n;
     final productsAsync = ref.watch(productsProvider);
+    final syncStatus = ref.watch(productsSyncStatusProvider).valueOrNull ?? {};
     final isMobile = ResponsiveHelper.isMobile(context);
     final isTablet = ResponsiveHelper.isTablet(context);
 
@@ -187,6 +189,8 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 final product = filtered[index];
                                 return _MobileProductCard(
                                   product: product,
+                                  hasPendingWrites:
+                                      syncStatus[product.id] ?? false,
                                   onEdit: () =>
                                       _showAddProductModal(product: product),
                                 );
@@ -388,6 +392,12 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                                   overflow:
                                                       TextOverflow.ellipsis,
                                                 ),
+                                              ),
+                                              const SizedBox(width: 4),
+                                              SyncBadge(
+                                                hasPendingWrites:
+                                                    syncStatus[product.id] ??
+                                                    false,
                                               ),
                                             ],
                                           ),
@@ -668,9 +678,14 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
 /// Mobile-friendly product card for list display
 class _MobileProductCard extends StatelessWidget {
   final ProductModel product;
+  final bool hasPendingWrites;
   final VoidCallback onEdit;
 
-  const _MobileProductCard({required this.product, required this.onEdit});
+  const _MobileProductCard({
+    required this.product,
+    this.hasPendingWrites = false,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -714,13 +729,21 @@ class _MobileProductCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    product.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    overflow: TextOverflow.ellipsis,
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          product.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 14,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      SyncBadge(hasPendingWrites: hasPendingWrites),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Row(

@@ -322,8 +322,12 @@ class _ComposeTabState extends State<_ComposeTab> {
 
     messenger.showSnackBar(
       SnackBar(
-        content: Text('✅ Notification sent to $count users'),
-        backgroundColor: Colors.green,
+        content: Text(
+          count > 0
+              ? '✅ Notification sent to $count users'
+              : '⚠️ No users found to send to',
+        ),
+        backgroundColor: count > 0 ? Colors.green : Colors.orange,
       ),
     );
 
@@ -791,10 +795,10 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
           ),
         ],
       ),
-      content: SizedBox(
-        width: 500,
-        height: 400,
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 500, maxHeight: 400),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             // Search bar
             TextField(
@@ -829,7 +833,7 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
             ),
             const Divider(height: 1),
             // User list
-            Expanded(
+            Flexible(
               child: _loading
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredUsers.isEmpty

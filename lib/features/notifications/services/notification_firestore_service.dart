@@ -119,7 +119,8 @@ class NotificationFirestoreService {
 
       // Get all user IDs
       final usersSnap = await _firestore.collection('users').get();
-      final batch = _firestore.batch();
+      debugPrint('📋 Found ${usersSnap.docs.length} users in collection');
+      var batch = _firestore.batch();
       int count = 0;
 
       for (final userDoc in usersSnap.docs) {
@@ -135,18 +136,21 @@ class NotificationFirestoreService {
         });
         count++;
 
-        // Firestore batch limit is 500
+        // Firestore batch limit is 500 — create new batch after commit
         if (count % 450 == 0) {
           await batch.commit();
+          batch = _firestore.batch();
         }
       }
 
       // Commit remaining
-      await batch.commit();
+      if (count % 450 != 0) {
+        await batch.commit();
+      }
       debugPrint('✅ Notification sent to $count users');
       return count;
-    } catch (e) {
-      debugPrint('❌ Failed to send to all users: $e');
+    } catch (e, st) {
+      debugPrint('❌ Failed to send to all users: $e\n$st');
       return 0;
     }
   }
@@ -166,7 +170,8 @@ class NotificationFirestoreService {
           .where('subscription.plan', isEqualTo: plan)
           .get();
 
-      final batch = _firestore.batch();
+      debugPrint('📋 Found ${usersSnap.docs.length} users with plan: $plan');
+      var batch = _firestore.batch();
       int count = 0;
 
       for (final userDoc in usersSnap.docs) {
@@ -184,14 +189,17 @@ class NotificationFirestoreService {
 
         if (count % 450 == 0) {
           await batch.commit();
+          batch = _firestore.batch();
         }
       }
 
-      await batch.commit();
+      if (count % 450 != 0) {
+        await batch.commit();
+      }
       debugPrint('✅ Notification sent to $count $plan users');
       return count;
-    } catch (e) {
-      debugPrint('❌ Failed to send to plan users: $e');
+    } catch (e, st) {
+      debugPrint('❌ Failed to send to plan users: $e\n$st');
       return 0;
     }
   }
@@ -207,7 +215,7 @@ class NotificationFirestoreService {
           .collection('notifications')
           .add(notification.toFirestore());
 
-      final batch = _firestore.batch();
+      var batch = _firestore.batch();
       int count = 0;
 
       for (final userId in userIds) {
@@ -225,14 +233,17 @@ class NotificationFirestoreService {
 
         if (count % 450 == 0) {
           await batch.commit();
+          batch = _firestore.batch();
         }
       }
 
-      await batch.commit();
+      if (count % 450 != 0) {
+        await batch.commit();
+      }
       debugPrint('✅ Notification sent to $count selected users');
       return count;
-    } catch (e) {
-      debugPrint('❌ Failed to send to selected users: $e');
+    } catch (e, st) {
+      debugPrint('❌ Failed to send to selected users: $e\n$st');
       return 0;
     }
   }
@@ -282,11 +293,12 @@ class NotificationFirestoreService {
     int limit = 50,
   }) async {
     try {
+      // Force server fetch to ensure newly-written docs are included
       final snap = await _firestore
           .collection('notifications')
           .orderBy('createdAt', descending: true)
           .limit(limit)
-          .get();
+          .get(const GetOptions(source: Source.server));
 
       return snap.docs.map((doc) {
         final data = doc.data();
@@ -294,8 +306,22 @@ class NotificationFirestoreService {
         return data;
       }).toList();
     } catch (e) {
-      debugPrint('❌ Failed to get notification history: $e');
-      return [];
+      debugPrint('❌ Failed to get notification history from server: $e');
+      // Fallback to default (cache + server) if server-only fails
+      try {
+        final snap = await _firestore
+            .collection('notifications')
+            .orderBy('createdAt', descending: true)
+            .limit(limit)
+            .get();
+        return snap.docs.map((doc) {
+          final data = doc.data();
+          data['id'] = doc.id;
+          return data;
+        }).toList();
+      } catch (_) {
+        return [];
+      }
     }
   }
 }

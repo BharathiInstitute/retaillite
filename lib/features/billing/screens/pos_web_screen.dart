@@ -23,6 +23,8 @@ import 'package:retaillite/core/services/receipt_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
+import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
+import 'package:retaillite/features/notifications/models/notification_model.dart';
 
 class PosWebScreen extends ConsumerStatefulWidget {
   const PosWebScreen({super.key});
@@ -749,6 +751,39 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
           ref.invalidate(customersProvider);
           ref.invalidate(sortedCustomersProvider);
           ref.invalidate(khataStatsProvider);
+        }
+
+        // Check for low stock and send notifications (non-blocking)
+        final userId = ref.read(authNotifierProvider).user?.id;
+        if (userId != null) {
+          final products = ref.read(productsProvider).valueOrNull ?? [];
+          for (final item in cart.items) {
+            final product = products
+                .where((p) => p.id == item.productId)
+                .firstOrNull;
+            if (product != null && product.lowStockAlert != null) {
+              final remaining = product.stock - item.quantity;
+              if (remaining <= product.lowStockAlert! && remaining >= 0) {
+                unawaited(
+                  NotificationFirestoreService.sendToUser(
+                    userId: userId,
+                    notification: NotificationModel(
+                      id: '',
+                      title: 'Low stock alert for ${product.name}',
+                      body:
+                          'Only $remaining left in stock (threshold: ${product.lowStockAlert})',
+                      type: NotificationType.alert,
+                      targetType: NotificationTargetType.user,
+                      targetUserId: userId,
+                      createdAt: DateTime.now(),
+                      sentBy: 'system',
+                      data: {'route': '/products/${product.id}'},
+                    ),
+                  ),
+                );
+              }
+            }
+          }
         }
 
         ref.read(cartProvider.notifier).clearCart();

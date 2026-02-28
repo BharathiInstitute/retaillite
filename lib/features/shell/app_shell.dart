@@ -505,6 +505,12 @@ class AppShell extends ConsumerWidget {
             ),
           ),
 
+          // Sync indicator
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: GlobalSyncIndicator(),
+          ),
+
           // Settings at bottom
           const Divider(height: 1),
           _NavItem(

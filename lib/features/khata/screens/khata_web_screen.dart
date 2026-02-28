@@ -20,6 +20,7 @@ import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:retaillite/shared/widgets/sync_badge.dart';
 
 class KhataWebScreen extends ConsumerStatefulWidget {
   const KhataWebScreen({super.key});
@@ -38,6 +39,8 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
     final customersAsync = ref.watch(sortedCustomersProvider);
     final statsAsync = ref.watch(khataStatsProvider);
     final sortOption = ref.watch(customerSortProvider);
+    final customersSyncMap =
+        ref.watch(customersSyncStatusProvider).valueOrNull ?? {};
     final isDesktop = ResponsiveHelper.isDesktop(context);
     final isTablet = ResponsiveHelper.isTablet(context);
     final screenWidth = MediaQuery.of(context).size.width;
@@ -82,7 +85,7 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
 
                   // Mobile: List only
                   if (isMobile) {
-                    return _buildCustomerList(filtered, null);
+                    return _buildCustomerList(filtered, null, customersSyncMap);
                   }
 
                   // Tablet/Desktop: Master-Detail
@@ -95,6 +98,7 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
                         child: _buildCustomerList(
                           filtered,
                           _selectedCustomerId,
+                          customersSyncMap,
                         ),
                       ),
                       const SizedBox(width: 24),
@@ -404,7 +408,11 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
     );
   }
 
-  Widget _buildCustomerList(List<CustomerModel> customers, String? selectedId) {
+  Widget _buildCustomerList(
+    List<CustomerModel> customers,
+    String? selectedId,
+    Map<String, bool> syncMap,
+  ) {
     return Container(
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
@@ -421,6 +429,7 @@ class _KhataWebScreenState extends ConsumerState<KhataWebScreen> {
           return _CustomerCard(
             customer: customer,
             isSelected: isSelected,
+            hasPendingWrites: syncMap[customer.id] ?? false,
             onTap: () {
               if (ResponsiveHelper.isDesktop(context) ||
                   ResponsiveHelper.isTablet(context)) {
@@ -581,11 +590,13 @@ class _SummaryCard extends StatelessWidget {
 class _CustomerCard extends StatelessWidget {
   final CustomerModel customer;
   final bool isSelected;
+  final bool hasPendingWrites;
   final VoidCallback onTap;
 
   const _CustomerCard({
     required this.customer,
     required this.isSelected,
+    this.hasPendingWrites = false,
     required this.onTap,
   });
 
@@ -676,6 +687,10 @@ class _CustomerCard extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
+                  if (hasPendingWrites) ...[
+                    const SizedBox(width: 4),
+                    SyncBadge(hasPendingWrites: hasPendingWrites),
+                  ],
                   const SizedBox(height: 2),
                   Row(
                     children: [
@@ -730,6 +745,30 @@ class _CustomerCard extends StatelessWidget {
                         : AppColors.success,
                   ),
                 ),
+                if (customer.isOverdue) ...[
+                  const SizedBox(height: 4),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.error.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: const Text(
+                      'OVERDUE',
+                      style: TextStyle(
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.error,
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ],

@@ -159,3 +159,20 @@ final filteredBillsProvider = StreamProvider.autoDispose<List<BillModel>>((
     return result;
   });
 });
+
+/// Per-bill sync status — maps bill ID → hasPendingWrites
+final billsSyncStatusProvider = StreamProvider.autoDispose<Map<String, bool>>((
+  ref,
+) {
+  final isDemoMode = ref.watch(authNotifierProvider).isDemoMode;
+  if (isDemoMode) return Stream.value({});
+  return OfflineStorageService.billsSyncStream();
+});
+
+/// Per-expense sync status — maps expense ID → hasPendingWrites
+final expensesSyncStatusProvider =
+    StreamProvider.autoDispose<Map<String, bool>>((ref) {
+      final isDemoMode = ref.watch(authNotifierProvider).isDemoMode;
+      if (isDemoMode) return Stream.value({});
+      return OfflineStorageService.expensesSyncStream();
+    });

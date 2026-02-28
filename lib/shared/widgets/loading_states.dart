@@ -174,31 +174,6 @@ class ErrorState extends StatelessWidget {
   }
 }
 
-/// Offline banner widget - shows when network is unavailable
-class OfflineBanner extends StatelessWidget {
-  const OfflineBanner({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-      color: AppColors.warning,
-      child: const Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.wifi_off, color: Colors.white, size: 18),
-          SizedBox(width: 8),
-          Text(
-            'You are offline',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w500),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 /// No data state (specialized empty state)
 class NoDataState extends StatelessWidget {
   final String message;

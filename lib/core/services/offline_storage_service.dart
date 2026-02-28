@@ -681,10 +681,70 @@ class OfflineStorageService {
         .orderBy('createdAt', descending: true)
         .limit(AppConstants.queryLimitTransactions)
         .snapshots()
-        .map(
-          (snapshot) => snapshot.docs
+        .map((snapshot) {
+          final transactions = snapshot.docs
               .map((doc) => TransactionModel.fromFirestore(doc))
-              .toList(),
+              .toList();
+          // Report sync status
+          final pendingCount = snapshot.docs
+              .where((d) => d.metadata.hasPendingWrites)
+              .length;
+          SyncStatusService.updateCollection(
+            'transactions',
+            totalDocs: transactions.length,
+            unsyncedDocs: pendingCount,
+            hasPendingWrites: snapshot.metadata.hasPendingWrites,
+          );
+          return transactions;
+        });
+  }
+
+  // ==================== Sync Status Streams ====================
+
+  /// Stream of per-document sync status for bills
+  static Stream<Map<String, bool>> billsSyncStream() {
+    if (_basePath.isEmpty) return Stream.value({});
+    return _firestore
+        .collection('$_basePath/bills')
+        .orderBy('createdAt', descending: true)
+        .limit(AppConstants.queryLimitBills)
+        .snapshots()
+        .map(
+          (snapshot) => {
+            for (final doc in snapshot.docs)
+              doc.id: doc.metadata.hasPendingWrites,
+          },
+        );
+  }
+
+  /// Stream of per-document sync status for customers
+  static Stream<Map<String, bool>> customersSyncStream() {
+    if (_basePath.isEmpty) return Stream.value({});
+    return _firestore
+        .collection('$_basePath/customers')
+        .limit(AppConstants.queryLimitCustomers)
+        .snapshots()
+        .map(
+          (snapshot) => {
+            for (final doc in snapshot.docs)
+              doc.id: doc.metadata.hasPendingWrites,
+          },
+        );
+  }
+
+  /// Stream of per-document sync status for expenses
+  static Stream<Map<String, bool>> expensesSyncStream() {
+    if (_basePath.isEmpty) return Stream.value({});
+    return _firestore
+        .collection('$_basePath/expenses')
+        .orderBy('createdAt', descending: true)
+        .limit(AppConstants.queryLimitExpenses)
+        .snapshots()
+        .map(
+          (snapshot) => {
+            for (final doc in snapshot.docs)
+              doc.id: doc.metadata.hasPendingWrites,
+          },
         );
   }
 

@@ -16,6 +16,7 @@ import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/expense_model.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/features/reports/providers/reports_provider.dart';
+import 'package:retaillite/shared/widgets/sync_badge.dart';
 
 /// Bills History Screen
 class BillsHistoryScreen extends ConsumerWidget {
@@ -26,6 +27,9 @@ class BillsHistoryScreen extends ConsumerWidget {
     final filter = ref.watch(billsFilterProvider);
     final billsAsync = ref.watch(filteredBillsProvider);
     final expensesAsync = ref.watch(filteredExpensesProvider);
+    final billsSyncMap = ref.watch(billsSyncStatusProvider).valueOrNull ?? {};
+    final expensesSyncMap =
+        ref.watch(expensesSyncStatusProvider).valueOrNull ?? {};
     final now = DateTime.now();
 
     return Scaffold(
@@ -75,6 +79,14 @@ class BillsHistoryScreen extends ConsumerWidget {
                   ),
                   const SizedBox(width: 16),
 
+                  // Export CSV Button
+                  OutlinedButton.icon(
+                    onPressed: () => _showExportDialog(context),
+                    icon: const Icon(Icons.file_download_outlined, size: 18),
+                    label: const Text('Export CSV'),
+                  ),
+                  const SizedBox(width: 12),
+
                   // Print Report Button
                   OutlinedButton.icon(
                     onPressed: () {
@@ -98,6 +110,8 @@ class BillsHistoryScreen extends ConsumerWidget {
               filter,
               billsAsync,
               expensesAsync,
+              billsSyncMap,
+              expensesSyncMap,
             ),
           ),
         ],
@@ -597,6 +611,8 @@ class BillsHistoryScreen extends ConsumerWidget {
     BillsFilter filter,
     AsyncValue<List<BillModel>> billsAsync,
     AsyncValue<List<ExpenseModel>> expensesAsync,
+    Map<String, bool> billsSyncMap,
+    Map<String, bool> expensesSyncMap,
   ) {
     // Handle loading state
     if (billsAsync.isLoading || expensesAsync.isLoading) {
@@ -681,8 +697,18 @@ class BillsHistoryScreen extends ConsumerWidget {
         // Table or Cards based on screen size
         Expanded(
           child: useCardView
-              ? _buildMobileCardList(context, paginatedRecords)
-              : _buildDesktopTable(context, paginatedRecords),
+              ? _buildMobileCardList(
+                  context,
+                  paginatedRecords,
+                  billsSyncMap,
+                  expensesSyncMap,
+                )
+              : _buildDesktopTable(
+                  context,
+                  paginatedRecords,
+                  billsSyncMap,
+                  expensesSyncMap,
+                ),
         ),
 
         // Pagination Footer
@@ -700,14 +726,22 @@ class BillsHistoryScreen extends ConsumerWidget {
   }
 
   /// Mobile card list view
-  Widget _buildMobileCardList(BuildContext context, List<dynamic> records) {
+  Widget _buildMobileCardList(
+    BuildContext context,
+    List<dynamic> records,
+    Map<String, bool> billsSyncMap,
+    Map<String, bool> expensesSyncMap,
+  ) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       itemCount: records.length,
       itemBuilder: (context, index) {
         final record = records[index];
         if (record is BillModel) {
-          return _MobileBillCard(bill: record);
+          return _MobileBillCard(
+            bill: record,
+            hasPendingWrites: billsSyncMap[record.id] ?? false,
+          );
         } else if (record is ExpenseModel) {
           return _MobileExpenseCard(expense: record);
         }
@@ -717,7 +751,12 @@ class BillsHistoryScreen extends ConsumerWidget {
   }
 
   /// Desktop table view
-  Widget _buildDesktopTable(BuildContext context, List<dynamic> records) {
+  Widget _buildDesktopTable(
+    BuildContext context,
+    List<dynamic> records,
+    Map<String, bool> billsSyncMap,
+    Map<String, bool> expensesSyncMap,
+  ) {
     final isTablet = ResponsiveHelper.isTablet(context);
     final hPad = isTablet ? 12.0 : 24.0;
     final hMargin = isTablet ? 8.0 : 24.0;
@@ -762,9 +801,17 @@ class BillsHistoryScreen extends ConsumerWidget {
               itemBuilder: (context, index) {
                 final record = records[index];
                 if (record is BillModel) {
-                  return _BillRow(bill: record, compact: isTablet);
+                  return _BillRow(
+                    bill: record,
+                    compact: isTablet,
+                    hasPendingWrites: billsSyncMap[record.id] ?? false,
+                  );
                 } else if (record is ExpenseModel) {
-                  return _ExpenseRow(expense: record, compact: isTablet);
+                  return _ExpenseRow(
+                    expense: record,
+                    compact: isTablet,
+                    hasPendingWrites: expensesSyncMap[record.id] ?? false,
+                  );
                 }
                 return const SizedBox.shrink();
               },
@@ -1085,8 +1132,13 @@ class BillsHistoryScreen extends ConsumerWidget {
 class _BillRow extends ConsumerWidget {
   final BillModel bill;
   final bool compact;
+  final bool hasPendingWrites;
 
-  const _BillRow({required this.bill, this.compact = false});
+  const _BillRow({
+    required this.bill,
+    this.compact = false,
+    this.hasPendingWrites = false,
+  });
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1133,6 +1185,11 @@ class _BillRow extends ConsumerWidget {
               overflow: TextOverflow.ellipsis,
             ),
           ),
+          if (hasPendingWrites)
+            Padding(
+              padding: const EdgeInsets.only(left: 4),
+              child: SyncBadge(hasPendingWrites: hasPendingWrites),
+            ),
 
           // Date & Time
           Expanded(
@@ -1258,8 +1315,13 @@ class _BillRow extends ConsumerWidget {
 class _ExpenseRow extends StatelessWidget {
   final ExpenseModel expense;
   final bool compact;
+  final bool hasPendingWrites;
 
-  const _ExpenseRow({required this.expense, this.compact = false});
+  const _ExpenseRow({
+    required this.expense,
+    this.compact = false,
+    this.hasPendingWrites = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1309,6 +1371,11 @@ class _ExpenseRow extends StatelessWidget {
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (hasPendingWrites)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: SyncBadge(hasPendingWrites: hasPendingWrites),
+                  ),
               ],
             ),
           ),
@@ -1847,8 +1914,9 @@ class _AddExpensePopupState extends ConsumerState<AddExpensePopup> {
 /// Mobile-optimized bill card for list view
 class _MobileBillCard extends StatelessWidget {
   final BillModel bill;
+  final bool hasPendingWrites;
 
-  const _MobileBillCard({required this.bill});
+  const _MobileBillCard({required this.bill, this.hasPendingWrites = false});
 
   @override
   Widget build(BuildContext context) {
@@ -1874,6 +1942,10 @@ class _MobileBillCard extends StatelessWidget {
                     '#${bill.billNumber}',
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
+                  if (hasPendingWrites) ...[
+                    const SizedBox(width: 4),
+                    SyncBadge(hasPendingWrites: hasPendingWrites),
+                  ],
                   const Spacer(),
                   InkWell(
                     onTap: () {

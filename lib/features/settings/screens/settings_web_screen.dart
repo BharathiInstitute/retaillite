@@ -19,6 +19,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 import 'package:retaillite/shared/widgets/logout_dialog.dart';
+import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
 /// Settings tab enum
@@ -42,6 +43,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _emailController;
   late TextEditingController _upiIdController;
   late TextEditingController _billingFooterController;
+  late TextEditingController _gstController;
 
   // WiFi printer state (Windows only)
   late TextEditingController _wifiIpController;
@@ -66,6 +68,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _billingFooterController = TextEditingController(
       text: user?.settings.receiptFooter ?? 'Thank you for shopping!',
     );
+    _gstController = TextEditingController(text: user?.gstNumber ?? '');
 
     // WiFi/USB printer controllers (Windows only)
     _wifiIpController = TextEditingController(
@@ -102,6 +105,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _emailController.dispose();
     _upiIdController.dispose();
     _billingFooterController.dispose();
+    _gstController.dispose();
     _wifiIpController.dispose();
     _wifiPortController.dispose();
     super.dispose();
@@ -330,6 +334,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             phone: _contactNumberController.text.trim(),
             address: _shopAddressController.text.trim(),
             email: _emailController.text.trim(),
+            gstNumber: _gstController.text.trim(),
             upiId: upiId.isNotEmpty ? upiId : null,
           );
       if (!success) {
@@ -773,6 +778,20 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 ),
               ),
             ),
+          // App Version
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: Text(
+              'v$appVersion+$appBuildNumber',
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
           // Logout button
           Padding(
             padding: const EdgeInsets.all(16),
@@ -1072,7 +1091,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             children: [
               _buildFieldLabel('GST Number'),
               _buildTextField(
-                value: user?.gstNumber ?? '',
+                controller: _gstController,
                 hint: '22AAAAA0000A1Z5',
               ),
               const SizedBox(height: 8),
@@ -2269,6 +2288,29 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                       },
                     ),
                   ),
+                  if (appSettings.retentionDays == -1)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 16,
+                            color: Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'High storage usage — data will never be auto-deleted',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.orange.shade700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                   const SizedBox(height: 24),
 
                   // Existing toggles
@@ -2464,7 +2506,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   children: [
                     _buildFieldLabel('GSTIN'),
                     _buildTextField(
-                      value: user?.gstNumber ?? '',
+                      controller: _gstController,
                       hint: '22AAAAA0000A1Z5',
                     ),
                   ],

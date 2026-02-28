@@ -13,6 +13,7 @@ import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
+import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 
 class HardwareSettingsScreen extends ConsumerStatefulWidget {
   const HardwareSettingsScreen({super.key});
@@ -392,9 +393,38 @@ class _HardwareSettingsScreenState
                       DropdownMenuItem(value: 90, child: Text('90 days')),
                       DropdownMenuItem(value: 180, child: Text('180 days')),
                       DropdownMenuItem(value: 365, child: Text('1 year')),
+                      DropdownMenuItem(value: -1, child: Text('Keep forever')),
                     ],
                   ),
                 ),
+                if (settings.retentionDays == -1)
+                  Padding(
+                    padding: const EdgeInsets.only(
+                      top: 8,
+                      left: 16,
+                      right: 16,
+                      bottom: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          size: 16,
+                          color: Colors.orange.shade700,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'High storage usage — data will never be auto-deleted',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.orange.shade700,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
@@ -443,6 +473,23 @@ class _HardwareSettingsScreenState
                   onChanged: (v) => setState(() => _voiceInput = v),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // App Version
+          Center(
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 24),
+              child: Text(
+                'v$appVersion+$appBuildNumber',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: theme.colorScheme.onSurfaceVariant.withValues(
+                    alpha: 0.6,
+                  ),
+                ),
+              ),
             ),
           ),
         ],

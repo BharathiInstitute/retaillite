@@ -272,6 +272,12 @@ class _WebSidebar extends ConsumerWidget {
             ),
           ),
 
+          // Sync indicator — always visible in sidebar
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 8),
+            child: GlobalSyncIndicator(),
+          ),
+
           // User Profile Card (Bottom of Sidebar) - Navigates to Settings
           GestureDetector(
             onTap: () => context.go('/settings/general'),
