@@ -77,6 +77,64 @@ class ImageService {
     }
   }
 
+  /// Cross-platform product image picker: works on Web, Android, Windows
+  /// Uploads to Firebase Storage under users/$uid/products/
+  /// Returns the download URL string on success, null on cancel/error
+  static Future<String?> pickAndUploadProductImage() async {
+    try {
+      final uid = FirebaseAuth.instance.currentUser?.uid;
+      if (uid == null) return null;
+
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return null;
+      final file = result.files.first;
+
+      Uint8List? bytes = file.bytes;
+      if (bytes == null && !kIsWeb && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+      if (bytes == null) return null;
+
+      // Resize to product thumbnail size
+      Uint8List resizedBytes;
+      if (kIsWeb) {
+        resizedBytes = _resizeImageBytes(
+          bytes,
+          ImageSizes.productThumbnailSize,
+        );
+      } else {
+        resizedBytes = await compute(
+          (data) => _resizeImageBytes(
+            data['bytes'] as Uint8List,
+            data['size'] as int,
+          ),
+          {'bytes': bytes, 'size': ImageSizes.productThumbnailSize},
+        );
+      }
+
+      // Upload to Firebase Storage with unique name
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final storageRef = FirebaseStorage.instance.ref().child(
+        'users/$uid/products/product_$timestamp.jpg',
+      );
+
+      await storageRef.putData(
+        resizedBytes,
+        SettableMetadata(contentType: 'image/jpeg'),
+      );
+
+      final downloadUrl = await storageRef.getDownloadURL();
+      return downloadUrl;
+    } catch (e) {
+      debugPrint('Error picking/uploading product image: $e');
+      return null;
+    }
+  }
+
   /// Cross-platform profile image picker: works on Web, Android, Windows
   /// Uploads to Firebase Storage as profile_image.jpg (separate from shop logo)
   /// Returns the download URL string on success, null on cancel/error

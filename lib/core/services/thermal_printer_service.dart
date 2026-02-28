@@ -594,11 +594,13 @@ class UsbPrinterService {
     }
   }
 
-  /// Send raw ESC/POS bytes to a Windows printer
+  /// Send raw ESC/POS bytes to a Windows printer using Windows Spooler API
   static Future<bool> _sendBytes(String printerName, List<int> bytes) async {
     if (!isAvailable || printerName.isEmpty) return false;
 
     try {
+      debugPrint('🖨️ USB: Sending ${bytes.length} bytes to "$printerName"...');
+
       // Write bytes to temp file
       final tempDir = await getTemporaryDirectory();
       final tempFile = File(
@@ -606,26 +608,95 @@ class UsbPrinterService {
       );
       await tempFile.writeAsBytes(bytes);
 
-      // Send to printer using PowerShell Out-Printer with raw data
-      // Use COPY /B to send raw bytes to the printer share
+      // Use Windows Spooler API via PowerShell P/Invoke for raw printing
+      // This is the correct way to send raw ESC/POS data on Windows
       final result = await Process.run('powershell', [
+        '-NoProfile',
+        '-ExecutionPolicy',
+        'Bypass',
         '-Command',
         '''
-\$printer = (New-Object -ComObject WScript.Network)
-\$port = (Get-Printer -Name "$printerName" | Get-PrinterPort).Name
-if (\$port) {
-  Copy-Item "${tempFile.path}" -Destination "\\\\.\\$printerName" -Force 2>\$null
-  if (-not \$?) {
-    # Fallback: use .NET raw printing
-    \$bytes = [System.IO.File]::ReadAllBytes("${tempFile.path}")
-    \$doc = New-Object System.Drawing.Printing.PrintDocument
-    \$doc.PrinterSettings.PrinterName = "$printerName"
-    # Try direct raw send
-    \$p = [System.Runtime.InteropServices.Marshal]::StringToHGlobalAnsi("$printerName")
-    exit 0
-  }
+Add-Type -TypeDefinition @"
+using System;
+using System.IO;
+using System.Runtime.InteropServices;
+
+public class RawPrinterHelper {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct DOCINFOA {
+        [MarshalAs(UnmanagedType.LPStr)] public string pDocName;
+        [MarshalAs(UnmanagedType.LPStr)] public string pOutputFile;
+        [MarshalAs(UnmanagedType.LPStr)] public string pDataType;
+    }
+
+    [DllImport("winspool.drv", EntryPoint = "OpenPrinterA", CharSet = CharSet.Ansi, SetLastError = true)]
+    public static extern bool OpenPrinter(string szPrinter, out IntPtr hPrinter, IntPtr pd);
+
+    [DllImport("winspool.drv", EntryPoint = "ClosePrinter", SetLastError = true)]
+    public static extern bool ClosePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartDocPrinterA", CharSet = CharSet.Ansi, SetLastError = true)]
+    public static extern int StartDocPrinter(IntPtr hPrinter, int level, ref DOCINFOA di);
+
+    [DllImport("winspool.drv", EntryPoint = "EndDocPrinter", SetLastError = true)]
+    public static extern bool EndDocPrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "StartPagePrinter", SetLastError = true)]
+    public static extern bool StartPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "EndPagePrinter", SetLastError = true)]
+    public static extern bool EndPagePrinter(IntPtr hPrinter);
+
+    [DllImport("winspool.drv", EntryPoint = "WritePrinter", SetLastError = true)]
+    public static extern bool WritePrinter(IntPtr hPrinter, IntPtr pBytes, int dwCount, out int dwWritten);
+
+    public static bool SendRawData(string printerName, byte[] data) {
+        IntPtr hPrinter = IntPtr.Zero;
+        if (!OpenPrinter(printerName, out hPrinter, IntPtr.Zero)) {
+            Console.Error.WriteLine("ERROR: Cannot open printer");
+            return false;
+        }
+        try {
+            DOCINFOA di = new DOCINFOA();
+            di.pDocName = "ESC/POS Receipt";
+            di.pDataType = "RAW";
+
+            if (StartDocPrinter(hPrinter, 1, ref di) == 0) {
+                Console.Error.WriteLine("ERROR: StartDocPrinter failed");
+                return false;
+            }
+            try {
+                if (!StartPagePrinter(hPrinter)) {
+                    Console.Error.WriteLine("ERROR: StartPagePrinter failed");
+                    return false;
+                }
+                IntPtr pBytes = Marshal.AllocCoTaskMem(data.Length);
+                try {
+                    Marshal.Copy(data, 0, pBytes, data.Length);
+                    int written = 0;
+                    if (!WritePrinter(hPrinter, pBytes, data.Length, out written)) {
+                        Console.Error.WriteLine("ERROR: WritePrinter failed");
+                        return false;
+                    }
+                    Console.WriteLine("OK:" + written);
+                } finally {
+                    Marshal.FreeCoTaskMem(pBytes);
+                }
+                EndPagePrinter(hPrinter);
+            } finally {
+                EndDocPrinter(hPrinter);
+            }
+            return true;
+        } finally {
+            ClosePrinter(hPrinter);
+        }
+    }
 }
-exit 0
+"@
+
+\$data = [System.IO.File]::ReadAllBytes("${tempFile.path.replaceAll('\\', '\\\\')}")
+\$ok = [RawPrinterHelper]::SendRawData("$printerName", \$data)
+if (\$ok) { exit 0 } else { exit 1 }
 ''',
       ]);
 
@@ -634,44 +705,20 @@ exit 0
         await tempFile.delete();
       } catch (_) {}
 
-      // Fallback: try a simpler raw approach
-      if (result.exitCode != 0) {
-        return await _sendBytesSimple(printerName, bytes);
+      final stdout = (result.stdout as String).trim();
+      final stderr = (result.stderr as String).trim();
+
+      if (result.exitCode == 0 && stdout.startsWith('OK:')) {
+        debugPrint('🖨️ USB: Print success — $stdout');
+        return true;
       }
 
-      return true;
-    } catch (e) {
-      debugPrint('USB print error: $e');
+      debugPrint('🖨️ USB: Print failed (exit ${result.exitCode})');
+      if (stdout.isNotEmpty) debugPrint('🖨️ USB stdout: $stdout');
+      if (stderr.isNotEmpty) debugPrint('🖨️ USB stderr: $stderr');
       return false;
-    }
-  }
-
-  /// Simple fallback: write temp file and use COPY /B
-  static Future<bool> _sendBytesSimple(
-    String printerName,
-    List<int> bytes,
-  ) async {
-    try {
-      final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}\\thermal_print_raw.bin');
-      await tempFile.writeAsBytes(bytes);
-
-      // Try direct COPY to printer
-      final result = await Process.run('cmd', [
-        '/c',
-        'COPY',
-        '/B',
-        tempFile.path,
-        '\\\\localhost\\$printerName',
-      ]);
-
-      try {
-        await tempFile.delete();
-      } catch (_) {}
-
-      return result.exitCode == 0;
     } catch (e) {
-      debugPrint('USB simple print error: $e');
+      debugPrint('🖨️ USB print error: $e');
       return false;
     }
   }

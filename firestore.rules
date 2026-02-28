@@ -158,14 +158,14 @@ service cloud.firestore {
       
       // ===================
       // NOTIFICATIONS (sub-collection)
-      // Written by Cloud Functions, read/updated by client
+      // Written by Cloud Functions or Admin panel, read/updated by client
       // ===================
       match /notifications/{notificationId} {
-        allow read: if isAuthenticated() && isOwner(userId);
-        allow update: if isAuthenticated() && isOwner(userId); // mark read
-        allow delete: if isAuthenticated() && isOwner(userId);
-        // Only Cloud Functions create notifications (Admin SDK bypasses rules)
-        allow create: if false;
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        allow update: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        allow delete: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        // Admin can create notifications from admin panel, Cloud Functions use Admin SDK
+        allow create: if isAdmin();
       }
       
       // ===================
@@ -176,6 +176,14 @@ service cloud.firestore {
         allow create, update: if isAuthenticated() && isOwner(userId)
           && isReasonableSize();
         allow delete: if isAuthenticated() && isOwner(userId);
+      }
+      
+      // ===================
+      // COUNTERS (sub-collection for atomic bill numbering etc.)
+      // ===================
+      match /counters/{counterId} {
+        allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
+        allow write: if isAuthenticated() && isOwner(userId) && isReasonableSize();
       }
     }
     
@@ -223,12 +231,12 @@ service cloud.firestore {
     
     // ===================
     // GLOBAL NOTIFICATIONS (system-wide alerts)
-    // Created by Cloud Functions, read by admins
+    // Created by Cloud Functions or Admin panel, read by admins
     // ===================
     match /notifications/{notifId} {
       allow read: if isAdmin();
-      // Only Cloud Functions create/manage these
-      allow write: if false;
+      // Admin can create/update from admin panel, Cloud Functions use Admin SDK
+      allow write: if isAdmin();
     }
     
     // ===================
@@ -283,7 +291,7 @@ service cloud.firestore {
     // ===================
     match /desktop_auth_sessions/{sessionId} {
       // Allow anyone to create a pending session (desktop app creates before auth)
-      allow create: if request.resource.data.keys().hasOnly(['status', 'createdAt'])
+      allow create: if request.resource.data.keys().hasOnly(['status', 'createdAt', 'expiresAt'])
         && request.resource.data.status == 'pending'
         && request.resource.size() < 1000;
       

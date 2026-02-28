@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:retaillite/features/notifications/providers/notification_provider.dart';
 import 'package:retaillite/features/notifications/widgets/notification_bell.dart';
 import 'package:retaillite/shared/widgets/global_sync_indicator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -246,12 +247,80 @@ class _WebSidebar extends ConsumerWidget {
                     child: NotificationBell(),
                   )
                 else
-                  _SidebarItem(
-                    icon: Icons.notifications_outlined,
-                    label: 'Notifications',
-                    isSelected: false,
-                    isCollapsed: isCollapsed,
-                    onTap: () => GoRouter.of(context).push('/notifications'),
+                  Consumer(
+                    builder: (context, ref, _) {
+                      final unreadAsync = ref.watch(
+                        unreadNotificationCountProvider,
+                      );
+                      final count = unreadAsync.valueOrNull ?? 0;
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () =>
+                                GoRouter.of(context).push('/notifications'),
+                            borderRadius: BorderRadius.circular(8),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 12,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(
+                                    count > 0
+                                        ? Icons.notifications_active
+                                        : Icons.notifications_outlined,
+                                    size: 20,
+                                    color: count > 0
+                                        ? Colors.amber
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.onSurfaceVariant,
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: Text(
+                                      'Notifications',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w500,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ),
+                                  if (count > 0)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        count > 99 ? '99+' : '$count',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
 
                 // "Visit Website" — web only, hidden on Android/Windows

@@ -510,9 +510,26 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                                 setState(() => _isUploadingImage = true);
                                 try {
                                   final url =
-                                      await ImageService.pickAndUploadLogo();
+                                      await ImageService.pickAndUploadProductImage();
                                   if (url != null && mounted) {
                                     setState(() => _imageUrl = url);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('✅ Image uploaded'),
+                                        backgroundColor: AppColors.success,
+                                      ),
+                                    );
+                                  }
+                                } catch (e) {
+                                  if (mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Image upload failed: $e',
+                                        ),
+                                        backgroundColor: AppColors.error,
+                                      ),
+                                    );
                                   }
                                 } finally {
                                   if (mounted) {

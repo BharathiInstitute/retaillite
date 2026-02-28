@@ -2,12 +2,14 @@
 /// Handles user authentication with Firebase Auth
 library;
 
+import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -168,11 +170,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Load user profile from Firestore
   Future<void> _loadUserProfile(User firebaseUser) async {
     try {
+      debugPrint('🔐 _loadUserProfile: START for ${firebaseUser.uid}');
       final doc = await _firestore
           .collection('users')
           .doc(firebaseUser.uid)
           .get()
           .timeout(const Duration(seconds: 10));
+      debugPrint('🔐 _loadUserProfile: Firestore doc exists=${doc.exists}');
 
       // Google sign-in users are always email-verified
       final isGoogleUser = firebaseUser.providerData.any(
@@ -185,7 +189,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             data['isShopSetupComplete'] as bool? ?? false;
 
         // Load this user's cloud settings into local SharedPreferences
+        debugPrint('🔐 _loadUserProfile: Loading cloud settings...');
         await OfflineStorageService.loadAllSettingsFromCloud();
+        debugPrint('🔐 _loadUserProfile: Cloud settings loaded');
 
         final emailVerified =
             isGoogleUser ||
@@ -219,6 +225,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
         );
+        debugPrint(
+          '🔐 _loadUserProfile: State set isLoggedIn=true, isShopSetup=$isShopSetupComplete',
+        );
 
         // Save FCM token for push notifications (non-blocking)
         // ignore: unawaited_futures
@@ -233,6 +242,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           PaymentLinkService.setUpiId(userUpiId);
         }
       } else {
+        debugPrint('🔐 _loadUserProfile: No Firestore doc — new user');
         // User exists in Auth but not in Firestore - new user needs shop setup
         state = AuthState(
           status: AuthStatus.authenticated,
@@ -508,6 +518,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   }
 
   /// Sign in with email and password
+  /// On Windows desktop, uses Firebase Auth REST API (platform channel is buggy)
   Future<bool> signIn({
     String? email,
     String? phone,
@@ -520,9 +531,15 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
     try {
       state = state.copyWith(isLoading: true);
+      final loginEmail = (email ?? phone)!.trim();
+
+      // On Windows desktop, use REST API to bypass buggy platform channel
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        return await _signInWithRestApi(loginEmail, password);
+      }
 
       final credential = await _auth.signInWithEmailAndPassword(
-        email: (email ?? phone)!.trim(),
+        email: loginEmail,
         password: password,
       );
 
@@ -532,6 +549,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       }
       return false;
     } on FirebaseAuthException catch (e) {
+      debugPrint(
+        '🔐 FirebaseAuthException: code=${e.code}, message=${e.message}',
+      );
       String message;
       switch (e.code) {
         case 'user-not-found':
@@ -552,23 +572,141 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         case 'user-disabled':
           message = 'This account has been disabled. Please contact support.';
           break;
-        default:
+        case 'channel-error':
           message =
-              'Login failed. Please check your credentials and try again.';
+              'Connection error. Please check your internet and try again.';
+          break;
+        case 'network-request-failed':
+          message = 'Network error. Please check your internet connection.';
+          break;
+        default:
+          message = 'Login failed (${e.code}). Please check your credentials.';
       }
       state = state.copyWith(isLoading: false, error: message);
       return false;
     } catch (e) {
-      debugPrint('🔐 Login error: $e');
+      debugPrint('🔐 Login error (generic): $e');
+      state = state.copyWith(isLoading: false, error: 'Login failed: $e');
+      return false;
+    }
+  }
+
+  /// Windows-only: Sign in via Firebase Auth REST API
+  /// Bypasses the broken platform channel on Windows desktop
+  Future<bool> _signInWithRestApi(String email, String password) async {
+    try {
+      // Use the web API key from Firebase options
+      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final url = Uri.parse(
+        'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey',
+      );
+
+      debugPrint('🖥️ Windows: Using REST API for email sign-in...');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email,
+          'password': password,
+          'returnSecureToken': true,
+        }),
+      );
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        // Parse Firebase REST API error
+        final error = data['error'] as Map<String, dynamic>?;
+        final errorMessage = error?['message'] as String? ?? 'Unknown error';
+        debugPrint('🖥️ Windows REST API error: $errorMessage');
+
+        String message;
+        switch (errorMessage) {
+          case 'EMAIL_NOT_FOUND':
+            message = 'No user found with this email. Please register.';
+            break;
+          case 'INVALID_PASSWORD':
+          case 'INVALID_LOGIN_CREDENTIALS':
+            message = 'Invalid email or password.';
+            break;
+          case 'USER_DISABLED':
+            message = 'This account has been disabled.';
+            break;
+          case 'TOO_MANY_ATTEMPTS_TRY_LATER':
+            message = 'Too many attempts. Please try again later.';
+            break;
+          default:
+            message = 'Login failed: $errorMessage';
+        }
+        state = state.copyWith(isLoading: false, error: message);
+        return false;
+      }
+
+      // Success — sign in with the custom token
+      final idToken = data['idToken'] as String;
+      debugPrint(
+        '🖥️ Windows: REST API sign-in successful, exchanging token...',
+      );
+
+      // Use signInWithCredential with the returned tokens
+      // Create a custom credential using the email link approach won't work,
+      // so we use signInWithCustomToken via Cloud Function
+      // Instead, let's try signInWithEmailAndPassword one more time — the REST
+      // API already authenticated, so we just need to establish the local session.
+      // Actually, we can use the idToken directly with a Cloud Function.
+
+      // Simplest approach: The REST API verified credentials, now try to
+      // use signInWithEmailAndPassword which should work since the user exists
+      // OR use a Cloud Function to generate a custom token from the idToken.
+
+      // Use signInWithEmailLink is not viable. Let's call the cloud function
+      // to exchange the idToken for a customToken
+      try {
+        final functions = FirebaseFunctions.instance;
+        final result = await functions.httpsCallable('exchangeIdToken').call({
+          'idToken': idToken,
+        });
+        final customToken = result.data['customToken'] as String;
+        await _auth.signInWithCustomToken(customToken);
+        debugPrint('✅ Windows: Signed in with custom token');
+        return true;
+      } catch (cfError) {
+        debugPrint(
+          '🖥️ Windows: Cloud Function not available, trying direct auth: $cfError',
+        );
+        // Fallback: try direct signInWithEmailAndPassword one more time
+        try {
+          await _auth.signInWithEmailAndPassword(
+            email: email,
+            password: password,
+          );
+          debugPrint('✅ Windows: Direct auth succeeded on retry');
+          return true;
+        } catch (retryError) {
+          debugPrint('🖥️ Windows: Direct auth retry also failed: $retryError');
+          // The REST API confirmed the credentials are correct
+          // but we can't establish a local session
+          state = state.copyWith(
+            isLoading: false,
+            error:
+                'Credentials verified but session could not be created. Please try Google Sign-In.',
+          );
+          return false;
+        }
+      }
+    } catch (e) {
+      debugPrint('🖥️ Windows REST API error: $e');
       state = state.copyWith(
         isLoading: false,
-        error: 'Login failed. Please try again.',
+        error: 'Login failed. Please check your internet connection.',
       );
       return false;
     }
   }
 
   /// Register with email and password
+  /// On Windows desktop, uses Firebase Auth REST API (platform channel is buggy)
   Future<bool> register({
     required String email,
     required String password,
@@ -577,6 +715,16 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   }) async {
     try {
       state = state.copyWith(isLoading: true);
+
+      // On Windows desktop, use REST API to bypass buggy platform channel
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        return await _registerWithRestApi(
+          email: email,
+          password: password,
+          name: name,
+          emailVerified: emailVerified,
+        );
+      }
 
       final credential = await _auth.createUserWithEmailAndPassword(
         email: email.trim(),
@@ -599,21 +747,12 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         }
 
         // Create Firestore doc
-        await _firestore.collection('users').doc(user.uid).set({
-          'email': email.trim().toLowerCase(),
-          'ownerName': name.trim(),
-          'phone': '',
-          'photoUrl': '',
-          'isShopSetupComplete': false,
-          'emailVerified': emailVerified,
-          'phoneVerified': false,
-          'authProvider': 'email',
-          'createdAt': FieldValue.serverTimestamp(),
-          'subscription': {
-            'plan': 'free',
-            'startDate': FieldValue.serverTimestamp(),
-          },
-        });
+        await _createUserFirestoreDoc(
+          uid: user.uid,
+          email: email,
+          name: name,
+          emailVerified: emailVerified,
+        );
 
         debugPrint('✅ User registered: ${user.email}');
         return true;
@@ -646,10 +785,138 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  /// Create user document in Firestore (shared by normal + REST API register)
+  Future<void> _createUserFirestoreDoc({
+    required String uid,
+    required String email,
+    required String name,
+    required bool emailVerified,
+  }) async {
+    await _firestore.collection('users').doc(uid).set({
+      'email': email.trim().toLowerCase(),
+      'ownerName': name.trim(),
+      'phone': '',
+      'photoUrl': '',
+      'isShopSetupComplete': false,
+      'emailVerified': emailVerified,
+      'phoneVerified': false,
+      'authProvider': 'email',
+      'createdAt': FieldValue.serverTimestamp(),
+      'subscription': {
+        'plan': 'free',
+        'startDate': FieldValue.serverTimestamp(),
+      },
+    });
+  }
+
+  /// Windows-only: Register via Firebase Auth REST API
+  Future<bool> _registerWithRestApi({
+    required String email,
+    required String password,
+    required String name,
+    required bool emailVerified,
+  }) async {
+    try {
+      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final url = Uri.parse(
+        'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$apiKey',
+      );
+
+      debugPrint('🖥️ Windows: Using REST API for registration...');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({
+          'email': email.trim(),
+          'password': password,
+          'displayName': name.trim(),
+          'returnSecureToken': true,
+        }),
+      );
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+
+      if (response.statusCode != 200) {
+        final error = data['error'] as Map<String, dynamic>?;
+        final errorMessage = error?['message'] as String? ?? 'Unknown error';
+        debugPrint('🖥️ Windows REST API register error: $errorMessage');
+
+        String message;
+        switch (errorMessage) {
+          case 'EMAIL_EXISTS':
+            message =
+                'An account already exists with this email. Please login.';
+            break;
+          case 'WEAK_PASSWORD : Password should be at least 6 characters':
+            message = 'Password is too weak. Use at least 6 characters.';
+            break;
+          case 'INVALID_EMAIL':
+            message = 'Invalid email format.';
+            break;
+          default:
+            message = 'Registration failed: $errorMessage';
+        }
+        state = state.copyWith(isLoading: false, error: message);
+        return false;
+      }
+
+      // Success — exchange idToken for customToken
+      final idToken = data['idToken'] as String;
+      debugPrint(
+        '🖥️ Windows: REST API registration successful, exchanging token...',
+      );
+
+      try {
+        final functions = FirebaseFunctions.instance;
+        final result = await functions.httpsCallable('exchangeIdToken').call({
+          'idToken': idToken,
+        });
+        final customToken = result.data['customToken'] as String;
+        await _auth.signInWithCustomToken(customToken);
+
+        // Create Firestore doc after successful auth
+        final user = _auth.currentUser;
+        if (user != null) {
+          await _createUserFirestoreDoc(
+            uid: user.uid,
+            email: email,
+            name: name,
+            emailVerified: emailVerified,
+          );
+        }
+
+        debugPrint('✅ Windows: Registered and signed in with custom token');
+        return true;
+      } catch (cfError) {
+        debugPrint('🖥️ Windows: Cloud Function error: $cfError');
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Account created but sign-in failed. Please try logging in.',
+        );
+        return false;
+      }
+    } catch (e) {
+      debugPrint('🖥️ Windows REST API register error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Registration failed. Please check your internet connection.',
+      );
+      return false;
+    }
+  }
+
   /// Send password reset email
+  /// On Windows desktop, uses Firebase Auth REST API (platform channel is buggy)
   Future<bool> sendPasswordResetEmail(String email) async {
     try {
       state = state.copyWith(isLoading: true);
+
+      // On Windows desktop, use REST API to bypass buggy platform channel
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        return await _sendPasswordResetWithRestApi(email.trim());
+      }
+
       await _auth.sendPasswordResetEmail(email: email.trim());
       state = state.copyWith(isLoading: false);
       debugPrint('✅ Password reset email sent to: $email');
@@ -676,6 +943,56 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(
         isLoading: false,
         error: 'Failed to send reset email. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Windows-only: Send password reset email via REST API
+  Future<bool> _sendPasswordResetWithRestApi(String email) async {
+    try {
+      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final url = Uri.parse(
+        'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=$apiKey',
+      );
+
+      debugPrint('🖥️ Windows: Using REST API for password reset...');
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: json.encode({'requestType': 'PASSWORD_RESET', 'email': email}),
+      );
+
+      if (response.statusCode == 200) {
+        state = state.copyWith(isLoading: false);
+        debugPrint('✅ Windows: Password reset email sent to: $email');
+        return true;
+      }
+
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final error = data['error'] as Map<String, dynamic>?;
+      final errorMessage = error?['message'] as String? ?? 'Unknown error';
+      debugPrint('🖥️ Windows REST API reset error: $errorMessage');
+
+      String message;
+      switch (errorMessage) {
+        case 'EMAIL_NOT_FOUND':
+          message = 'No account found with this email.';
+          break;
+        case 'INVALID_EMAIL':
+          message = 'Invalid email format.';
+          break;
+        default:
+          message = 'Failed to send reset email: $errorMessage';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+      return false;
+    } catch (e) {
+      debugPrint('🖥️ Windows REST API reset error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Failed to send reset email. Please check your internet.',
       );
       return false;
     }
@@ -1043,6 +1360,12 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// This is NOT affected by Firebase's Email Enumeration Protection
   Future<String?> getAuthProviderForEmail(String email) async {
     try {
+      // Skip if user is not authenticated — Firestore rules require auth
+      if (_auth.currentUser == null) {
+        debugPrint('🔐 Skipping auth provider check (not authenticated)');
+        return null;
+      }
+
       final query = await _firestore
           .collection('users')
           .where('email', isEqualTo: email.trim().toLowerCase())

@@ -6,7 +6,9 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 
 class FCMTokenService {
-  static final _messaging = FirebaseMessaging.instance;
+  static FirebaseMessaging? _messagingInstance;
+  static FirebaseMessaging get _messaging =>
+      _messagingInstance ??= FirebaseMessaging.instance;
   static final _firestore = FirebaseFirestore.instance;
 
   /// Request notification permission and save the FCM token for this user.

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:firebase_app_check/firebase_app_check.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -89,6 +90,23 @@ Future<void> _initializeApp() async {
       debugPrint('ℹ️ Skipping App Check on Windows (not supported)');
     } else {
       debugPrint('ℹ️ Skipping App Check on web (no reCAPTCHA key configured)');
+    }
+
+    // On Windows desktop, try to disable app verification for Firebase Auth
+    // (reCAPTCHA can't be displayed in desktop apps)
+    // Note: setSettings may not be supported on all Windows versions
+    if (isWindows) {
+      try {
+        await FirebaseAuth.instance.setSettings(
+          appVerificationDisabledForTesting: true,
+        );
+        debugPrint('ℹ️ Firebase Auth: App verification disabled for Windows');
+      } catch (e) {
+        debugPrint(
+          'ℹ️ Firebase Auth: setSettings not supported on Windows ($e)',
+        );
+        // Non-fatal: email/password auth may still work without this
+      }
     }
 
     // Initialize Crashlytics collection (not supported on web or Windows)

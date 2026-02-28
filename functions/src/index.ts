@@ -1038,3 +1038,50 @@ export const scheduledFirestoreBackup = functions
             console.error("❌ Firestore backup error:", error);
         }
     });
+
+// ─── Windows Desktop Email/Password Auth ───
+
+/**
+ * Exchange a Firebase Auth REST API idToken for a custom token.
+ * 
+ * On Windows desktop, signInWithEmailAndPassword fails with unknown-error
+ * due to a buggy platform channel. The workaround:
+ * 1. Desktop calls Firebase Auth REST API to verify email/password
+ * 2. REST API returns an idToken
+ * 3. Desktop calls this function to exchange idToken for customToken
+ * 4. Desktop calls signInWithCustomToken(customToken) to establish session
+ * 
+ * No auth required since the user isn't signed in yet on desktop.
+ */
+export const exchangeIdToken = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 15, memory: "256MB", maxInstances: 10 })
+    .https.onCall(async (data: { idToken: string }) => {
+        const { idToken } = data;
+
+        if (!idToken) {
+            throw new functions.https.HttpsError(
+                "invalid-argument",
+                "idToken is required"
+            );
+        }
+
+        try {
+            // Verify the idToken to get the user's UID
+            const decodedToken = await admin.auth().verifyIdToken(idToken);
+            const uid = decodedToken.uid;
+
+            console.log(`🖥️ Exchanging idToken for customToken, uid: ${uid}`);
+
+            // Generate a custom token for this user
+            const customToken = await admin.auth().createCustomToken(uid);
+
+            return { customToken };
+        } catch (error) {
+            console.error("❌ exchangeIdToken error:", error);
+            throw new functions.https.HttpsError(
+                "internal",
+                "Failed to exchange token. Please try again."
+            );
+        }
+    });

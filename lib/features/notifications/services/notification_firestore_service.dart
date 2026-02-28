@@ -111,73 +111,26 @@ class NotificationFirestoreService {
   static Future<int> sendToAllUsers({
     required NotificationModel notification,
   }) async {
+    DocumentReference? globalRef;
     try {
-      // Also save to global notifications collection for admin history
-      final globalRef = await _firestore
+      // Save to global notifications collection for admin history
+      globalRef = await _firestore
           .collection('notifications')
           .add(notification.toFirestore());
 
       // Get all user IDs
       final usersSnap = await _firestore.collection('users').get();
       debugPrint('📋 Found ${usersSnap.docs.length} users in collection');
-      var batch = _firestore.batch();
-      int count = 0;
 
-      for (final userDoc in usersSnap.docs) {
-        final userNotifRef = _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('notifications')
-            .doc(); // auto-ID
-
-        batch.set(userNotifRef, {
-          ...notification.toUserNotification(),
-          'globalNotificationId': globalRef.id,
+      if (usersSnap.docs.isEmpty) {
+        await globalRef.update({
+          'recipientCount': 0,
+          'sentAt': FieldValue.serverTimestamp(),
+          'error': 'No users found in collection',
         });
-        count++;
-
-        // Firestore batch limit is 500 — create new batch after commit
-        if (count % 450 == 0) {
-          await batch.commit();
-          batch = _firestore.batch();
-        }
+        return 0;
       }
 
-      // Commit remaining
-      if (count % 450 != 0) {
-        await batch.commit();
-      }
-
-      // Update global doc with recipient count
-      await globalRef.update({
-        'recipientCount': count,
-        'sentAt': FieldValue.serverTimestamp(),
-      });
-
-      debugPrint('✅ Notification sent to $count users');
-      return count;
-    } catch (e, st) {
-      debugPrint('❌ Failed to send to all users: $e\n$st');
-      return 0;
-    }
-  }
-
-  /// Send notification to users with a specific plan
-  static Future<int> sendToPlanUsers({
-    required String plan,
-    required NotificationModel notification,
-  }) async {
-    try {
-      final globalRef = await _firestore
-          .collection('notifications')
-          .add(notification.toFirestore());
-
-      final usersSnap = await _firestore
-          .collection('users')
-          .where('subscription.plan', isEqualTo: plan)
-          .get();
-
-      debugPrint('📋 Found ${usersSnap.docs.length} users with plan: $plan');
       var batch = _firestore.batch();
       int count = 0;
 
@@ -204,7 +157,82 @@ class NotificationFirestoreService {
         await batch.commit();
       }
 
-      // Update global doc with recipient count
+      await globalRef.update({
+        'recipientCount': count,
+        'sentAt': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('✅ Notification sent to $count users');
+      return count;
+    } catch (e, st) {
+      debugPrint('❌ Failed to send to all users: $e\n$st');
+      // Mark global doc as failed so it doesn't show "Processing..." forever
+      if (globalRef != null) {
+        try {
+          await globalRef.update({
+            'recipientCount': 0,
+            'sentAt': FieldValue.serverTimestamp(),
+            'error': e.toString(),
+          });
+        } catch (_) {}
+      }
+      rethrow;
+    }
+  }
+
+  /// Send notification to users with a specific plan
+  static Future<int> sendToPlanUsers({
+    required String plan,
+    required NotificationModel notification,
+  }) async {
+    DocumentReference? globalRef;
+    try {
+      globalRef = await _firestore
+          .collection('notifications')
+          .add(notification.toFirestore());
+
+      final usersSnap = await _firestore
+          .collection('users')
+          .where('subscription.plan', isEqualTo: plan)
+          .get();
+
+      debugPrint('📋 Found ${usersSnap.docs.length} users with plan: $plan');
+
+      if (usersSnap.docs.isEmpty) {
+        await globalRef.update({
+          'recipientCount': 0,
+          'sentAt': FieldValue.serverTimestamp(),
+          'error': 'No users found with plan: $plan',
+        });
+        return 0;
+      }
+
+      var batch = _firestore.batch();
+      int count = 0;
+
+      for (final userDoc in usersSnap.docs) {
+        final userNotifRef = _firestore
+            .collection('users')
+            .doc(userDoc.id)
+            .collection('notifications')
+            .doc();
+
+        batch.set(userNotifRef, {
+          ...notification.toUserNotification(),
+          'globalNotificationId': globalRef.id,
+        });
+        count++;
+
+        if (count % 450 == 0) {
+          await batch.commit();
+          batch = _firestore.batch();
+        }
+      }
+
+      if (count % 450 != 0) {
+        await batch.commit();
+      }
+
       await globalRef.update({
         'recipientCount': count,
         'sentAt': FieldValue.serverTimestamp(),
@@ -214,7 +242,16 @@ class NotificationFirestoreService {
       return count;
     } catch (e, st) {
       debugPrint('❌ Failed to send to plan users: $e\n$st');
-      return 0;
+      if (globalRef != null) {
+        try {
+          await globalRef.update({
+            'recipientCount': 0,
+            'sentAt': FieldValue.serverTimestamp(),
+            'error': e.toString(),
+          });
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 
@@ -223,9 +260,10 @@ class NotificationFirestoreService {
     required List<String> userIds,
     required NotificationModel notification,
   }) async {
+    DocumentReference? globalRef;
     try {
       // Save to global history
-      final globalRef = await _firestore
+      globalRef = await _firestore
           .collection('notifications')
           .add(notification.toFirestore());
 
@@ -255,7 +293,6 @@ class NotificationFirestoreService {
         await batch.commit();
       }
 
-      // Update global doc with recipient count
       await globalRef.update({
         'recipientCount': count,
         'sentAt': FieldValue.serverTimestamp(),
@@ -265,7 +302,16 @@ class NotificationFirestoreService {
       return count;
     } catch (e, st) {
       debugPrint('❌ Failed to send to selected users: $e\n$st');
-      return 0;
+      if (globalRef != null) {
+        try {
+          await globalRef.update({
+            'recipientCount': 0,
+            'sentAt': FieldValue.serverTimestamp(),
+            'error': e.toString(),
+          });
+        } catch (_) {}
+      }
+      rethrow;
     }
   }
 

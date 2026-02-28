@@ -12,20 +12,28 @@ import 'package:flutter/foundation.dart';
 class AnalyticsService {
   AnalyticsService._();
 
-  static final FirebaseAnalytics _analytics = FirebaseAnalytics.instance;
-  static final FirebasePerformance _performance = FirebasePerformance.instance;
+  /// Whether analytics/performance are supported on this platform
+  static final bool _isSupported =
+      kIsWeb || !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
+
+  /// Lazy-initialized — only access on supported platforms!
+  static FirebaseAnalytics? _analytics;
+  static FirebaseAnalytics get _safeAnalytics =>
+      _analytics ??= FirebaseAnalytics.instance;
+
+  static FirebasePerformance? _performance;
+  static FirebasePerformance get _safePerformance =>
+      _performance ??= FirebasePerformance.instance;
 
   /// Crashlytics is NOT supported on web or Windows desktop
   static final bool _hasCrashlytics =
-      !kIsWeb && !(Platform.isWindows || Platform.isLinux);
+      !kIsWeb && !(Platform.isWindows || Platform.isLinux || Platform.isMacOS);
 
   // ==================== Initialization ====================
 
   /// Initialize all monitoring services
   static Future<void> initialize() async {
-    // Firebase Analytics/Crashlytics/Performance not supported on desktop
-    if (!kIsWeb &&
-        (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    if (!_isSupported) {
       debugPrint('📊 AnalyticsService: Skipped on desktop (not supported)');
       return;
     }
@@ -38,7 +46,7 @@ class AnalyticsService {
     }
 
     // Set default analytics consent
-    await _analytics.setAnalyticsCollectionEnabled(true);
+    await _safeAnalytics.setAnalyticsCollectionEnabled(true);
 
     debugPrint('📊 AnalyticsService: Initialized');
   }
@@ -52,26 +60,28 @@ class AnalyticsService {
     String? subscriptionTier,
     bool? isDemoMode,
   }) async {
+    if (!_isSupported) return;
+
     if (userId != null) {
-      await _analytics.setUserId(id: userId);
+      await _safeAnalytics.setUserId(id: userId);
       if (_hasCrashlytics) {
         await FirebaseCrashlytics.instance.setUserIdentifier(userId);
       }
     }
 
     if (shopName != null) {
-      await _analytics.setUserProperty(name: 'shop_name', value: shopName);
+      await _safeAnalytics.setUserProperty(name: 'shop_name', value: shopName);
     }
 
     if (subscriptionTier != null) {
-      await _analytics.setUserProperty(
+      await _safeAnalytics.setUserProperty(
         name: 'subscription_tier',
         value: subscriptionTier,
       );
     }
 
     if (isDemoMode != null) {
-      await _analytics.setUserProperty(
+      await _safeAnalytics.setUserProperty(
         name: 'is_demo_mode',
         value: isDemoMode.toString(),
       );
@@ -82,7 +92,8 @@ class AnalyticsService {
 
   /// Log screen view
   static Future<void> logScreenView(String screenName) async {
-    await _analytics.logScreenView(screenName: screenName);
+    if (!_isSupported) return;
+    await _safeAnalytics.logScreenView(screenName: screenName);
   }
 
   // ==================== Business Events ====================
@@ -93,7 +104,8 @@ class AnalyticsService {
     required int itemCount,
     required String paymentMode,
   }) async {
-    await _analytics.logEvent(
+    if (!_isSupported) return;
+    await _safeAnalytics.logEvent(
       name: 'bill_created',
       parameters: {
         'amount': amount,
@@ -109,7 +121,8 @@ class AnalyticsService {
     required String category,
     required double price,
   }) async {
-    await _analytics.logEvent(
+    if (!_isSupported) return;
+    await _safeAnalytics.logEvent(
       name: 'product_added',
       parameters: {
         'product_name': productName,
@@ -121,12 +134,14 @@ class AnalyticsService {
 
   /// Log customer added
   static Future<void> logCustomerAdded() async {
-    await _analytics.logEvent(name: 'customer_added');
+    if (!_isSupported) return;
+    await _safeAnalytics.logEvent(name: 'customer_added');
   }
 
   /// Log report generated
   static Future<void> logReportGenerated({required String reportType}) async {
-    await _analytics.logEvent(
+    if (!_isSupported) return;
+    await _safeAnalytics.logEvent(
       name: 'report_generated',
       parameters: {'report_type': reportType},
     );
@@ -134,7 +149,8 @@ class AnalyticsService {
 
   /// Log sync completed
   static Future<void> logSyncCompleted({required int itemsSynced}) async {
-    await _analytics.logEvent(
+    if (!_isSupported) return;
+    await _safeAnalytics.logEvent(
       name: 'sync_completed',
       parameters: {'items_synced': itemsSynced},
     );
@@ -169,15 +185,17 @@ class AnalyticsService {
   // ==================== Performance Monitoring ====================
 
   /// Start a custom trace for performance monitoring
-  static Future<Trace> startTrace(String name) async {
-    final trace = _performance.newTrace(name);
+  static Future<Trace?> startTrace(String name) async {
+    if (!_isSupported) return null;
+    final trace = _safePerformance.newTrace(name);
     await trace.start();
     return trace;
   }
 
   /// Create HTTP metric for API performance
-  static HttpMetric newHttpMetric(String url, HttpMethod method) {
-    return _performance.newHttpMetric(url, method);
+  static HttpMetric? newHttpMetric(String url, HttpMethod method) {
+    if (!_isSupported) return null;
+    return _safePerformance.newHttpMetric(url, method);
   }
 }
 

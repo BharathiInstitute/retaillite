@@ -376,6 +376,7 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
 
     if (savedPrinter != null) {
       state = PrinterState(
+        isConnected: true,
         printerName: savedPrinter['name'],
         printerAddress: savedPrinter['address'],
         paperSizeIndex: paperSize,
@@ -476,6 +477,11 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
   /// Set error state
   void setError(String error) {
     state = state.copyWith(error: error, isScanning: false);
+  }
+
+  /// Update connection status (e.g., after checking if USB device is still present)
+  void setConnectionStatus(bool connected) {
+    state = state.copyWith(isConnected: connected);
   }
 
   /// Clear error

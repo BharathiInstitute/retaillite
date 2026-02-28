@@ -15,7 +15,9 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 }
 
 class NotificationService {
-  static final _messaging = FirebaseMessaging.instance;
+  static FirebaseMessaging? _messagingInstance;
+  static FirebaseMessaging get _messaging =>
+      _messagingInstance ??= FirebaseMessaging.instance;
 
   /// Initialize FCM message listeners. Call once from main() or app init.
   static void initMessageListeners({

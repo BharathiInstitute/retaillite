@@ -226,6 +226,18 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         _windowsPrinters = printers;
         _isLoadingUsbPrinters = false;
       });
+
+      // Check if saved printer is still available in the system
+      final savedName = UsbPrinterService.getSavedPrinterName();
+      if (savedName.isNotEmpty) {
+        final isAvailable = printers.contains(savedName);
+        final notifier = ref.read(printerProvider.notifier);
+        if (isAvailable) {
+          notifier.connectPrinter('USB: $savedName', savedName);
+        } else {
+          notifier.setConnectionStatus(false);
+        }
+      }
     }
   }
 
@@ -2391,29 +2403,60 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 80,
-                    height: 80,
-                    decoration: BoxDecoration(
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: AppShadows.small,
-                    ),
-                    child: const Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.camera_alt, size: 24, color: Colors.grey),
-                        SizedBox(height: 4),
-                        Text(
-                          'Logo',
-                          style: TextStyle(
-                            fontSize: 10,
-                            color: AppColors.textMuted,
-                          ),
+                  GestureDetector(
+                    onTap: _pickShopLogo,
+                    child: Tooltip(
+                      message: 'Click to upload shop logo',
+                      child: Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(8),
+                          boxShadow: AppShadows.small,
+                          image:
+                              user?.shopLogoPath != null &&
+                                  user!.shopLogoPath!.startsWith('http')
+                              ? DecorationImage(
+                                  image: NetworkImage(user.shopLogoPath!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
                         ),
-                      ],
+                        child: _isUploadingLogo
+                            ? const Center(
+                                child: SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : (user?.shopLogoPath == null ||
+                                  !user!.shopLogoPath!.startsWith('http'))
+                            ? const Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  Icon(
+                                    Icons.add_a_photo,
+                                    size: 24,
+                                    color: Colors.grey,
+                                  ),
+                                  SizedBox(height: 4),
+                                  Text(
+                                    'Logo',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: AppColors.textMuted,
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
+                      ),
                     ),
                   ),
                   const SizedBox(width: 16),

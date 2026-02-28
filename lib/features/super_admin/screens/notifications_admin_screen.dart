@@ -2,6 +2,7 @@
 /// Features: Templates, send to all/selected/by plan, user search & picker, history
 library;
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -97,30 +98,31 @@ class NotificationsAdminScreen extends ConsumerStatefulWidget {
 class _NotificationsAdminScreenState
     extends ConsumerState<NotificationsAdminScreen>
     with SingleTickerProviderStateMixin {
-  List<Map<String, dynamic>> _history = [];
-  bool _isLoading = true;
   late TabController _tabController;
+  Stream<List<Map<String, dynamic>>>? _historyStream;
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    _loadHistory();
+    _historyStream = FirebaseFirestore.instance
+        .collection('notifications')
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map(
+          (snap) => snap.docs.map((doc) {
+            final data = doc.data();
+            data['id'] = doc.id;
+            return data;
+          }).toList(),
+        );
   }
 
   @override
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadHistory() async {
-    setState(() => _isLoading = true);
-    final history = await NotificationFirestoreService.getNotificationHistory();
-    setState(() {
-      _history = history;
-      _isLoading = false;
-    });
   }
 
   @override
@@ -151,13 +153,6 @@ class _NotificationsAdminScreenState
                   adminShellScaffoldKey.currentState?.openDrawer();
                 },
               ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'Refresh',
-            onPressed: _loadHistory,
-          ),
-        ],
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
@@ -181,14 +176,19 @@ class _NotificationsAdminScreenState
           _ComposeTab(
             ref: ref,
             onSent: () {
-              _loadHistory();
               _tabController.animateTo(1);
             },
           ),
-          _isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : _history.isEmpty
-              ? Center(
+          StreamBuilder<List<Map<String, dynamic>>>(
+            stream: _historyStream,
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting &&
+                  !snapshot.hasData) {
+                return const Center(child: CircularProgressIndicator());
+              }
+              final history = snapshot.data ?? [];
+              if (history.isEmpty) {
+                return Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -207,18 +207,18 @@ class _NotificationsAdminScreenState
                       ),
                     ],
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadHistory,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: _history.length,
-                    itemBuilder: (context, index) {
-                      final notif = _history[index];
-                      return _HistoryCard(data: notif);
-                    },
-                  ),
-                ),
+                );
+              }
+              return ListView.builder(
+                padding: const EdgeInsets.all(16),
+                itemCount: history.length,
+                itemBuilder: (context, index) {
+                  final notif = history[index];
+                  return _HistoryCard(data: notif);
+                },
+              );
+            },
+          ),
         ],
       ),
     );
@@ -301,21 +301,33 @@ class _ComposeTabState extends State<_ComposeTab> {
       sentBy: adminEmail,
     );
 
-    int count;
-    if (_targetMode == 'all') {
-      count = await NotificationFirestoreService.sendToAllUsers(
-        notification: notification,
+    int count = 0;
+    try {
+      if (_targetMode == 'all') {
+        count = await NotificationFirestoreService.sendToAllUsers(
+          notification: notification,
+        );
+      } else if (_targetMode == 'plan') {
+        count = await NotificationFirestoreService.sendToPlanUsers(
+          plan: _selectedPlan,
+          notification: notification,
+        );
+      } else {
+        count = await NotificationFirestoreService.sendToSelectedUsers(
+          userIds: _selectedUserIds.toList(),
+          notification: notification,
+        );
+      }
+    } catch (e) {
+      setState(() => _isSending = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('❌ Failed to send: $e'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
+        ),
       );
-    } else if (_targetMode == 'plan') {
-      count = await NotificationFirestoreService.sendToPlanUsers(
-        plan: _selectedPlan,
-        notification: notification,
-      );
-    } else {
-      count = await NotificationFirestoreService.sendToSelectedUsers(
-        userIds: _selectedUserIds.toList(),
-        notification: notification,
-      );
+      return;
     }
 
     setState(() => _isSending = false);
