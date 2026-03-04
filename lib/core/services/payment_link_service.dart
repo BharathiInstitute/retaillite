@@ -105,7 +105,7 @@ class PaymentLinkService {
     if (transactionNote != null && transactionNote.isNotEmpty) {
       parts.add('tn=${Uri.encodeComponent(transactionNote)}');
     }
-    return 'https://stores.tulasierp.com/pay?${parts.join('&')}';
+    return 'https://app.retaillite.com/pay?${parts.join('&')}';
   }
 
   /// Generate the UPI QR code data string (same as deep link, for QR rendering)
@@ -153,11 +153,13 @@ class PaymentLinkService {
     String? billId,
     String? shopName,
   }) async {
-    debugPrint('========================================');
-    debugPrint('PaymentLinkService.createPaymentLink()');
-    debugPrint('Amount: $amount, Customer: $customerName');
-    debugPrint('UPI ID: $_upiId');
-    debugPrint('========================================');
+    if (kDebugMode) {
+      debugPrint('========================================');
+      debugPrint('PaymentLinkService.createPaymentLink()');
+      debugPrint('Amount: $amount, Customer: $customerName');
+      debugPrint('UPI ID: $_upiId');
+      debugPrint('========================================');
+    }
 
     // If UPI ID is configured, generate a free UPI deep link directly
     if (_upiId.isNotEmpty && isValidUpiId(_upiId)) {
@@ -167,13 +169,15 @@ class PaymentLinkService {
         payeeName: shopName,
         transactionNote: description ?? 'Payment to ${shopName ?? "store"}',
       );
-      debugPrint('>>> ✅ UPI deep link generated: $deepLink');
+      if (kDebugMode) debugPrint('>>> ✅ UPI deep link generated: $deepLink');
       return PaymentLinkResult.success(paymentLink: deepLink);
     }
 
     // No UPI ID — try Razorpay Cloud Function
     try {
-      debugPrint('>>> Calling Cloud Function: createPaymentLink');
+      if (kDebugMode) {
+        debugPrint('>>> Calling Cloud Function: createPaymentLink');
+      }
       final callable = _functions.httpsCallable(
         'createPaymentLink',
         options: HttpsCallableOptions(timeout: const Duration(seconds: 30)),
@@ -188,12 +192,14 @@ class PaymentLinkService {
         'billId': billId,
         'shopName': shopName,
       };
-      debugPrint('>>> Params: $params');
+      if (kDebugMode) debugPrint('>>> Params: $params');
 
       final result = await callable.call<Map<String, dynamic>>(params);
       final data = result.data;
       if (data['success'] == true && data['paymentLink'] != null) {
-        debugPrint('>>> ✅ Razorpay link: ${data['paymentLink']}');
+        if (kDebugMode) {
+          debugPrint('>>> ✅ Razorpay link: ${data['paymentLink']}');
+        }
         return PaymentLinkResult.success(
           paymentLink: data['paymentLink'] as String,
           paymentLinkId: data['paymentLinkId'] as String?,

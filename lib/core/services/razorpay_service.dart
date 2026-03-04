@@ -1,6 +1,7 @@
 /// Razorpay payment service for handling online payments
 library;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:retaillite/core/config/razorpay_config.dart';
@@ -212,23 +213,24 @@ extension RazorpayPaymentExtension on BuildContext {
   }
 }
 
-/// Helper class to convert callback to Future
+/// Helper class to convert callback to Future.
+/// Uses a proper Completer instead of busy-wait polling to avoid
+/// wasting CPU cycles and potential infinite loops.
 class _PaymentCompleter {
-  PaymentResult? _result;
-  void Function(PaymentResult)? _completeCallback;
+  final _completer = Completer<PaymentResult>();
 
-  Future<PaymentResult> get future async {
-    if (_result != null) return _result!;
-
-    // Wait for callback
-    while (_result == null) {
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-    return _result!;
-  }
+  /// Returns when the payment is completed, failed, or times out (10 min).
+  Future<PaymentResult> get future => _completer.future.timeout(
+    const Duration(minutes: 10),
+    onTimeout: () => const PaymentResult(
+      success: false,
+      errorMessage: 'Payment timed out after 10 minutes',
+    ),
+  );
 
   void complete(PaymentResult result) {
-    _result = result;
-    _completeCallback?.call(result);
+    if (!_completer.isCompleted) {
+      _completer.complete(result);
+    }
   }
 }

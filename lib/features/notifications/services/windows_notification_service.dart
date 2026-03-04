@@ -22,8 +22,8 @@ class WindowsNotificationService {
     if (kIsWeb || !Platform.isWindows) return;
 
     const windowsSettings = WindowsInitializationSettings(
-      appName: 'Tulasi Stores',
-      appUserModelId: 'TulasiERP.TulasiStores',
+      appName: 'RetailLite',
+      appUserModelId: 'RetailLite.App',
       guid: 'e031b94d-44bc-474e-a0e4-80cf69d69c2d',
     );
 

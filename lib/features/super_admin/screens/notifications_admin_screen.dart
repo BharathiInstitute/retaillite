@@ -2,10 +2,13 @@
 /// Features: Templates, send to all/selected/by plan, user search & picker, history
 library;
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/notifications/models/notification_model.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
@@ -31,7 +34,7 @@ class _NotifTemplate {
 const _templates = [
   _NotifTemplate(
     name: 'Welcome',
-    title: 'Welcome to Tulasi Stores! 🎉',
+    title: 'Welcome to ${AppConstants.appName}! 🎉',
     body:
         'Thank you for joining! Start by adding your products and making your first sale.',
     type: NotificationType.announcement,
@@ -745,6 +748,7 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
   final _selected = <String>{};
   final _searchCtrl = TextEditingController();
   bool _loading = true;
+  Timer? _debounce;
 
   @override
   void initState() {
@@ -789,6 +793,7 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
 
   @override
   void dispose() {
+    _debounce?.cancel();
     _searchCtrl.dispose();
     super.dispose();
   }
@@ -821,7 +826,12 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
-              onChanged: _filter,
+              onChanged: (query) {
+                _debounce?.cancel();
+                _debounce = Timer(const Duration(milliseconds: 300), () {
+                  _filter(query);
+                });
+              },
             ),
             const SizedBox(height: 8),
             // Select all / Clear

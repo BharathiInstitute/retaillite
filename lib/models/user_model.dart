@@ -1,4 +1,4 @@
-/// User/Shop model for Tulasi Stores app
+/// User/Shop model for RetailLite app
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';

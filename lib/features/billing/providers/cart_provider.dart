@@ -39,6 +39,9 @@ class CartState {
 class CartNotifier extends StateNotifier<CartState> {
   CartNotifier() : super(const CartState());
 
+  /// Max quantity per cart item
+  static const int _maxQuantity = 9999;
+
   /// Add product to cart
   void addProduct(ProductModel product, {int quantity = 1}) {
     final existingIndex = state.items.indexWhere(
@@ -46,12 +49,11 @@ class CartNotifier extends StateNotifier<CartState> {
     );
 
     if (existingIndex >= 0) {
-      // Update existing item quantity
+      // Update existing item quantity (capped)
       final updatedItems = [...state.items];
       final existing = updatedItems[existingIndex];
-      updatedItems[existingIndex] = existing.copyWith(
-        quantity: existing.quantity + quantity,
-      );
+      final newQty = (existing.quantity + quantity).clamp(1, _maxQuantity);
+      updatedItems[existingIndex] = existing.copyWith(quantity: newQty);
       state = state.copyWith(items: updatedItems);
     } else {
       // Add new item
@@ -73,9 +75,10 @@ class CartNotifier extends StateNotifier<CartState> {
       return;
     }
 
+    final capped = quantity.clamp(1, _maxQuantity);
     final updatedItems = state.items.map((item) {
       if (item.productId == productId) {
-        return item.copyWith(quantity: quantity);
+        return item.copyWith(quantity: capped);
       }
       return item;
     }).toList();
@@ -85,20 +88,16 @@ class CartNotifier extends StateNotifier<CartState> {
 
   /// Increment item quantity
   void incrementQuantity(String productId) {
-    final item = state.items.firstWhere(
-      (item) => item.productId == productId,
-      orElse: () => throw Exception('Item not found'),
-    );
-    updateQuantity(productId, item.quantity + 1);
+    final idx = state.items.indexWhere((item) => item.productId == productId);
+    if (idx < 0) return;
+    updateQuantity(productId, state.items[idx].quantity + 1);
   }
 
   /// Decrement item quantity
   void decrementQuantity(String productId) {
-    final item = state.items.firstWhere(
-      (item) => item.productId == productId,
-      orElse: () => throw Exception('Item not found'),
-    );
-    updateQuantity(productId, item.quantity - 1);
+    final idx = state.items.indexWhere((item) => item.productId == productId);
+    if (idx < 0) return;
+    updateQuantity(productId, state.items[idx].quantity - 1);
   }
 
   /// Remove item from cart

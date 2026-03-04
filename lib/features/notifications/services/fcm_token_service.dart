@@ -1,6 +1,8 @@
 /// FCM Token Service — saves device FCM token to Firestore for push notifications
 library;
 
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +12,7 @@ class FCMTokenService {
   static FirebaseMessaging get _messaging =>
       _messagingInstance ??= FirebaseMessaging.instance;
   static final _firestore = FirebaseFirestore.instance;
+  static StreamSubscription<String>? _tokenRefreshSub;
 
   /// Request notification permission and save the FCM token for this user.
   /// Call this after login / on app start.
@@ -30,8 +33,11 @@ class FCMTokenService {
       String? token;
       if (kIsWeb) {
         token = await _messaging.getToken(
-          vapidKey:
-              'BJWGlSt5rrtGMA46BnzYfeNBAGNRRIchhSlu2pqVs-V0lH6TH715-qVarkTtZy_GU7HxA7aOFDbatD2WXwuYldc',
+          vapidKey: const String.fromEnvironment(
+            'VAPID_KEY',
+            defaultValue:
+                'BJWGlSt5rrtGMA46BnzYfeNBAGNRRIchhSlu2pqVs-V0lH6TH715-qVarkTtZy_GU7HxA7aOFDbatD2WXwuYldc',
+          ),
         );
       } else {
         token = await _messaging.getToken();
@@ -52,8 +58,9 @@ class FCMTokenService {
 
       debugPrint('✅ FCM token saved for user $userId');
 
-      // Listen for token refresh
-      _messaging.onTokenRefresh.listen((newToken) async {
+      // Listen for token refresh (cancel previous listener first)
+      await _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = _messaging.onTokenRefresh.listen((newToken) async {
         debugPrint('🔄 FCM token refreshed');
         await _firestore.collection('users').doc(userId).set({
           'fcmTokens': FieldValue.arrayUnion([newToken]),
@@ -68,6 +75,10 @@ class FCMTokenService {
   /// Remove current device token on logout
   static Future<void> removeToken(String userId) async {
     try {
+      // Cancel token refresh listener
+      await _tokenRefreshSub?.cancel();
+      _tokenRefreshSub = null;
+
       if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) return;
 
       final token = await _messaging.getToken();

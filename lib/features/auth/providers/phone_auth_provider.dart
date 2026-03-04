@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 
 /// Phone auth state
 enum PhoneAuthStatus { initial, sending, codeSent, verifying, verified, error }
@@ -58,13 +59,15 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
 
   PhoneAuthNotifier() : super(const PhoneAuthState());
 
-  /// Format phone number to E.164 format for India
-  String _formatPhoneNumber(String phone) {
+  /// Format phone number to E.164 format
+  /// Accepts optional [countryCode] for international support (defaults to AppConstants.countryCode)
+  String _formatPhoneNumber(String phone, {String? countryCode}) {
+    final code = countryCode ?? AppConstants.countryCode;
     phone = phone.trim().replaceAll(RegExp(r'[\s\-\(\)]'), '');
     if (phone.startsWith('+')) return phone;
     if (phone.startsWith('0')) phone = phone.substring(1);
-    if (phone.length == 10) return '+91$phone';
-    return '+91$phone';
+    if (phone.length == 10) return '$code$phone';
+    return '$code$phone';
   }
 
   /// Send OTP to phone number
@@ -254,6 +257,10 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
       _cancelResendTimer();
     } catch (e) {
       debugPrint('📱 Auto-verification failed: $e');
+      state = state.copyWith(
+        status: PhoneAuthStatus.error,
+        error: 'Auto-verification failed. Please enter the code manually.',
+      );
     }
   }
 
@@ -326,7 +333,7 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
 
   /// Clear error
   void clearError() {
-    state = state.copyWith();
+    state = state.copyWith(status: PhoneAuthStatus.initial);
   }
 
   /// Set a custom error message

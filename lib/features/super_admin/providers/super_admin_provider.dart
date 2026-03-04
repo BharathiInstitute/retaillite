@@ -23,14 +23,26 @@ final adminEmailsProvider = FutureProvider<List<String>>((ref) async {
 });
 
 /// Check if current user is a super admin
-/// Uses hardcoded list for quick sync check (used by router)
+/// Uses hardcoded list for quick sync check (used by router),
+/// but also validates against Firestore async list.
 final isSuperAdminProvider = Provider<bool>((ref) {
   final authState = ref.watch(authNotifierProvider);
   final user = authState.user;
 
   if (user == null || user.email == null) return false;
 
-  return superAdminEmails.contains(user.email!.toLowerCase().trim());
+  final normalizedEmail = user.email!.toLowerCase().trim();
+
+  // Primary: check Firestore-based admin list (if loaded)
+  final firestoreEmails = ref.watch(adminEmailsProvider);
+  final isInFirestore = firestoreEmails.whenOrNull(
+    data: (emails) =>
+        emails.map((e) => e.toLowerCase().trim()).contains(normalizedEmail),
+  );
+  if (isInFirestore != null) return isInFirestore;
+
+  // Fallback: hardcoded list (for offline / first load)
+  return superAdminEmails.contains(normalizedEmail);
 });
 
 /// Check if current user is the primary owner (kehsaram001@gmail.com)

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/product_csv_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/features/products/widgets/add_product_modal.dart';
@@ -9,6 +10,7 @@ import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
 import 'package:retaillite/shared/widgets/sync_badge.dart';
+import 'package:retaillite/shared/widgets/upgrade_prompt_modal.dart';
 
 class ProductsWebScreen extends ConsumerStatefulWidget {
   const ProductsWebScreen({super.key});
@@ -574,7 +576,8 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
     if (_searchQuery.isNotEmpty) {
       result = result.where((p) {
         return p.name.toLowerCase().contains(_searchQuery) ||
-            (p.barcode?.toLowerCase().contains(_searchQuery) ?? false);
+            (p.barcode?.toLowerCase().contains(_searchQuery) ?? false) ||
+            (p.category?.toLowerCase().contains(_searchQuery) ?? false);
       }).toList();
     }
     return result;
@@ -647,12 +650,21 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
         return;
       }
 
-      final service = ref.read(productsServiceProvider);
-      int added = 0;
-      for (final product in result.products) {
-        await service.addProduct(product);
-        added++;
+      // Check product limit before importing
+      final limits = await UserMetricsService.getUserLimits();
+      final remaining = limits.productsLimit - limits.productsCount;
+      if (result.products.length > remaining) {
+        if (mounted) {
+          await UpgradePromptModal.show(
+            context,
+            trigger: UpgradeTrigger.productLimit,
+          );
+        }
+        return;
       }
+
+      final service = ref.read(productsServiceProvider);
+      final added = await service.addProductsBatch(result.products);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

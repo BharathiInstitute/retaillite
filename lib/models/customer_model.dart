@@ -33,9 +33,15 @@ class CustomerModel {
     return DateTime.now().difference(lastTransactionAt!).inDays;
   }
 
-  /// Check if overdue (more than 30 days)
-  bool get isOverdue =>
-      daysSinceLastTransaction != null && daysSinceLastTransaction! > 30;
+  /// Default overdue threshold in days
+  static const int defaultOverdueDays = 30;
+
+  /// Check if overdue (more than threshold days) using default threshold
+  bool get isOverdue => isOverdueAfter(defaultOverdueDays);
+
+  /// Check if overdue with custom threshold
+  bool isOverdueAfter(int days) =>
+      daysSinceLastTransaction != null && daysSinceLastTransaction! > days;
 
   factory CustomerModel.fromFirestore(DocumentSnapshot doc) {
     final data = doc.data() as Map<String, dynamic>;

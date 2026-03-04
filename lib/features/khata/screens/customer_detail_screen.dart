@@ -10,7 +10,6 @@ import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
 import 'package:retaillite/features/khata/widgets/give_udhaar_modal.dart';
 import 'package:retaillite/features/khata/widgets/record_payment_modal.dart';
@@ -388,17 +387,35 @@ class CustomerDetailScreen extends ConsumerWidget {
                                 );
                               }
 
+                              // Cap visible list to avoid rendering all items at once
+                              const maxVisible = 50;
+                              final visibleCount = transactions.length > maxVisible
+                                  ? maxVisible
+                                  : transactions.length;
+
                               return Card(
-                                child: ListView.separated(
-                                  shrinkWrap: true,
-                                  physics: const NeverScrollableScrollPhysics(),
-                                  itemCount: transactions.length,
-                                  separatorBuilder: (e, _) =>
-                                      const Divider(height: 1),
-                                  itemBuilder: (context, index) =>
-                                      _TransactionTile(
-                                        transaction: transactions[index],
+                                child: Column(
+                                  children: [
+                                    ListView.separated(
+                                      shrinkWrap: true,
+                                      physics: const NeverScrollableScrollPhysics(),
+                                      itemCount: visibleCount,
+                                      separatorBuilder: (e, _) =>
+                                          const Divider(height: 1),
+                                      itemBuilder: (context, index) =>
+                                          _TransactionTile(
+                                            transaction: transactions[index],
+                                          ),
+                                    ),
+                                    if (transactions.length > maxVisible)
+                                      Padding(
+                                        padding: const EdgeInsets.all(8),
+                                        child: Text(
+                                          '${transactions.length - maxVisible} more transactions not shown',
+                                          style: Theme.of(context).textTheme.bodySmall,
+                                        ),
                                       ),
+                                  ],
                                 ),
                               );
                             },
@@ -567,6 +584,10 @@ class CustomerDetailScreen extends ConsumerWidget {
     // Build reminder message with UPI link if configured
     final upiId = PaymentLinkService.upiId;
     final hasUpi = upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId);
+    final atIdx = upiId.indexOf('@');
+    final maskedUpi = hasUpi && atIdx > 2
+        ? '${upiId.substring(0, 2)}${'*' * (atIdx - 2)}${upiId.substring(atIdx)}'
+        : upiId;
     final user = ref.read(currentUserProvider);
     final shopName = user?.shopName ?? 'Store';
 
@@ -583,7 +604,7 @@ class CustomerDetailScreen extends ConsumerWidget {
           'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
           '💳 *UPI से भुगतान करें:*\n'
           '━━━━━━━━━━━━━━\n'
-          '📱 UPI ID: *$upiId*\n'
+          '📱 UPI ID: *$maskedUpi*\n'
           '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
           '━━━━━━━━━━━━━━\n\n'
           '👉 *भुगतान करने के लिए यहाँ क्लिक करें:*\n'
@@ -754,8 +775,6 @@ class CustomerDetailScreen extends ConsumerWidget {
                     .deleteCustomer(customer.id);
 
                 ref.invalidate(customersProvider);
-                ref.invalidate(sortedCustomersProvider);
-                ref.invalidate(khataStatsProvider);
 
                 navigator.pop(); // Go back to list
                 scaffoldMessenger.showSnackBar(

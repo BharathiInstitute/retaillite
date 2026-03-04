@@ -1,6 +1,9 @@
 /// Add/Edit product modal
 library;
 
+import 'dart:async';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,10 +12,12 @@ import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/services/barcode_scanner_service.dart';
 import 'package:retaillite/core/services/barcode_lookup_service.dart';
 import 'package:retaillite/core/utils/validators.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
+import 'package:retaillite/shared/widgets/upgrade_prompt_modal.dart';
 
 class AddProductModal extends ConsumerStatefulWidget {
   final ProductModel? product;
@@ -123,12 +128,12 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
       final product = ProductModel(
         id: widget.product?.id ?? '',
         name: _nameController.text.trim(),
-        price: double.parse(_priceController.text),
+        price: double.tryParse(_priceController.text) ?? 0,
         purchasePrice: _purchasePriceController.text.isEmpty
             ? null
-            : double.parse(_purchasePriceController.text),
-        stock: int.parse(_stockController.text),
-        lowStockAlert: int.parse(_lowStockController.text),
+            : double.tryParse(_purchasePriceController.text),
+        stock: int.tryParse(_stockController.text) ?? 0,
+        lowStockAlert: int.tryParse(_lowStockController.text) ?? 5,
         unit: _selectedUnit,
         barcode: _barcodeController.text.trim().isEmpty
             ? null
@@ -144,6 +149,20 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
       if (_isEditing) {
         await service.updateProduct(product);
       } else {
+        // Check product limit before adding
+        final limits = await UserMetricsService.getUserLimits();
+        if (!limits.canAddProduct) {
+          if (mounted) {
+            setState(() => _isLoading = false);
+            unawaited(
+              UpgradePromptModal.show(
+                context,
+                trigger: UpgradeTrigger.productLimit,
+              ),
+            );
+          }
+          return;
+        }
         await service.addProduct(product);
       }
 
@@ -158,12 +177,27 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        final errorStr = e.toString().toLowerCase();
+        final isLimitError =
+            errorStr.contains('permission-denied') ||
+            errorStr.contains('permission_denied') ||
+            errorStr.contains('missing or insufficient permissions');
+
+        if (isLimitError) {
+          unawaited(
+            UpgradePromptModal.show(
+              context,
+              trigger: UpgradeTrigger.productLimit,
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
       }
     } finally {
       if (mounted) {
@@ -177,7 +211,12 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Product?'),
-        content: const Text('This action cannot be undone.'),
+        content: const Text(
+          'This product may appear in existing bills. '
+          'Deleting it won\'t remove it from past bills, but it will '
+          'no longer be available for new sales.\n\n'
+          'This action cannot be undone.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -475,11 +514,11 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                                 Center(
                                   child: ClipRRect(
                                     borderRadius: BorderRadius.circular(12),
-                                    child: Image.network(
-                                      _imageUrl!,
+                                    child: CachedNetworkImage(
+                                      imageUrl: _imageUrl!,
                                       height: 120,
                                       fit: BoxFit.contain,
-                                      errorBuilder: (_, __, stackTrace) =>
+                                      errorWidget: (_, url, error) =>
                                           const Icon(
                                             Icons.broken_image,
                                             size: 40,
@@ -511,7 +550,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                                 try {
                                   final url =
                                       await ImageService.pickAndUploadProductImage();
-                                  if (url != null && mounted) {
+                                  if (url != null && context.mounted) {
                                     setState(() => _imageUrl = url);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
@@ -521,7 +560,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                                     );
                                   }
                                 } catch (e) {
-                                  if (mounted) {
+                                  if (context.mounted) {
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       SnackBar(
                                         content: Text(

@@ -2,9 +2,12 @@
 /// Phone verification happens at Shop Setup (for both Google & email users)
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_layout.dart';
@@ -41,6 +44,23 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   bool _isVerifyingOtp = false;
   bool _isResendingOtp = false;
   String? _otpError;
+  int _otpCooldownSeconds = 0;
+  Timer? _otpCooldownTimer;
+
+  void _startOtpCooldown() {
+    _otpCooldownSeconds = 60;
+    _otpCooldownTimer?.cancel();
+    _otpCooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      setState(() {
+        _otpCooldownSeconds--;
+        if (_otpCooldownSeconds <= 0) timer.cancel();
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -49,6 +69,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _otpController.dispose();
+    _otpCooldownTimer?.cancel();
     super.dispose();
   }
 
@@ -73,6 +94,15 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
   /// Send OTP to verify email
   Future<void> _handleSendOtp() async {
+    // Client-side rate limit: 60s cooldown between OTP sends
+    if (_otpCooldownSeconds > 0) {
+      setState(
+        () => _otpError =
+            'Please wait $_otpCooldownSeconds seconds before resending',
+      );
+      return;
+    }
+
     final name = _nameController.text.trim();
     final email = _emailController.text.trim();
 
@@ -92,34 +122,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     ref.read(authNotifierProvider.notifier).clearError();
 
     try {
-      // Check if email is already used
-      try {
-        final methods =
-            await ref
-                .read(authNotifierProvider.notifier)
-                .getSignInMethodsForEmail(email) ??
-            [];
-
-        if (!mounted) return;
-
-        if (methods.isNotEmpty) {
-          if (methods.contains('google.com')) {
-            setState(
-              () => _otpError =
-                  'This email is linked to Google. Use "Continue with Google".',
-            );
-          } else {
-            setState(
-              () =>
-                  _otpError = 'Account already exists. Please Sign In instead.',
-            );
-          }
-          return;
-        }
-      } catch (e) {
-        debugPrint('🔐 Error checking auth provider: $e');
-        // Continue even if check fails
-      }
+      // Don't enumerate auth methods — let Firebase handle duplicate
+      // email errors during registration to prevent email enumeration
+      // attacks.
 
       // Send OTP
       final sent = await ref
@@ -133,6 +138,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
           _otpSent = true;
           _otpError = null;
         });
+        _startOtpCooldown();
       } else {
         setState(() {
           _otpError =
@@ -261,7 +267,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
 
     return AuthLayout(
       title: 'Create Account',
-      subtitle: 'Get started with Tulasi Stores',
+      subtitle: 'Get started with ${AppConstants.appName}',
       icon: Icons.person_add_outlined,
       onBack: () => context.pop(),
       child: Column(

@@ -7,7 +7,6 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
@@ -47,6 +46,31 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
       return;
     }
 
+    // Large credit amount confirmation
+    if (_amount >= 10000) {
+      final confirm = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Large Credit Amount'),
+          content: Text(
+            'You are about to give \u20b9${_amount.toStringAsFixed(0)} credit to ${widget.customer.name}.\n\nAre you sure?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Confirm'),
+            ),
+          ],
+        ),
+      );
+      if (confirm != true || !mounted) return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
@@ -68,21 +92,11 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
               : _noteController.text,
         );
       } else {
-        // Real mode: Save to Firestore
-        // 1. Update customer balance (ADD credit - positive amount)
-        await OfflineStorageService.updateCustomerBalance(
-          widget.customer.id,
-          _amount, // Positive to increase balance (customer owes more)
-        );
-
-        // 2. Save credit transaction
-        await OfflineStorageService.saveTransaction(
+        // Real mode: Atomic Firestore write (balance + transaction)
+        await OfflineStorageService.addCreditAtomic(
           customerId: widget.customer.id,
-          type: 'purchase',
           amount: _amount,
-          note: _noteController.text.isEmpty
-              ? 'Credit given'
-              : _noteController.text,
+          note: _noteController.text.isEmpty ? null : _noteController.text,
         );
       }
 
@@ -90,8 +104,6 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
-      ref.invalidate(sortedCustomersProvider);
-      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);

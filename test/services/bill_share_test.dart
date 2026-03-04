@@ -81,7 +81,7 @@ void main() {
         ],
         total: 28,
         paymentMethod: PaymentMethod.upi,
-        createdAt: DateTime(2026, 1),
+        createdAt: DateTime(2026),
         date: '2026-01-01',
       );
       final text = BillShareService.generateBillText(singleItemBill);

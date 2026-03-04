@@ -3,13 +3,13 @@
 /// On Windows desktop, phone OTP is skipped (Firebase Phone Auth unsupported)
 library;
 
-import 'dart:io' show Platform;
-
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart'
+    show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/providers/phone_auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_layout.dart';
@@ -35,7 +35,8 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
   bool _phoneVerified = false;
 
   /// Desktop platforms don't support Firebase Phone Auth
-  bool get _isDesktop => !kIsWeb && Platform.isWindows;
+  bool get _isDesktop =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.windows;
 
   @override
   void initState() {
@@ -48,7 +49,10 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
         _ownerNameController.text = userModel.ownerName;
       }
       if (userModel.phone.isNotEmpty) {
-        final phone = userModel.phone.replaceFirst('+91', '');
+        final phone = userModel.phone.replaceFirst(
+          AppConstants.countryCode,
+          '',
+        );
         _phoneController.text = phone;
       }
       // If phone already verified (e.g. returning user), skip OTP
@@ -121,7 +125,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
       final phone = _phoneController.text.trim();
       await ref
           .read(authNotifierProvider.notifier)
-          .updatePhoneVerified(phone: '+91$phone');
+          .updatePhoneVerified(phone: '${AppConstants.countryCode}$phone');
 
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -167,8 +171,8 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
           .completeShopSetup(
             shopName: _shopNameController.text.trim(),
             ownerName: _ownerNameController.text.trim(),
-            phone: '+91$phone',
-            phoneVerified: !_isDesktop,
+            phone: '${AppConstants.countryCode}$phone',
+            phoneVerified: _phoneVerified,
             address: _addressController.text.trim().isNotEmpty
                 ? _addressController.text.trim()
                 : null,
@@ -336,7 +340,7 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                         Icons.phone_outlined,
                         color: AppColors.textSecondary,
                       ),
-                      prefixText: '+91 ',
+                      prefixText: '${AppConstants.countryCode} ',
                       suffixIcon: _phoneVerified
                           ? const Icon(
                               Icons.check_circle,
@@ -609,6 +613,17 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
                 fillColor: Colors.white,
               ),
               textCapitalization: TextCapitalization.characters,
+              validator: (value) {
+                if (value == null || value.isEmpty) return null; // Optional
+                // GST format: 22AAAAA0000A1Z5 (2 digits, 5 alpha, 4 digits, 1 alpha, 1 digit, 1 alpha/digit, 1 alpha/digit)
+                final gstRegex = RegExp(
+                  r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z][Z][0-9A-Z]$',
+                );
+                if (!gstRegex.hasMatch(value.toUpperCase())) {
+                  return 'Invalid GST format (e.g. 22AAAAA0000A1Z5)';
+                }
+                return null;
+              },
             ),
             const SizedBox(height: 32),
 

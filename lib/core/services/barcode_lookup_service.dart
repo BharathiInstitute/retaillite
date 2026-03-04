@@ -96,7 +96,7 @@ class BarcodeLookupService {
           .get(
             Uri.parse(url),
             headers: {
-              'User-Agent': 'TulasiStores/1.0 (contact@retaillite.com)',
+              'User-Agent': 'RetailLite/1.0 (contact@retaillite.com)',
             },
           )
           .timeout(const Duration(seconds: 10));

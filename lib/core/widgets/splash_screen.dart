@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/design/design_system.dart';
 
 /// Splash screen shown during app initialization
@@ -54,7 +55,7 @@ class SplashScreen extends StatelessWidget {
 
                 // App Name
                 const Text(
-                  'Tulasi Stores',
+                  AppConstants.appName,
                   style: TextStyle(
                     fontSize: 36,
                     fontWeight: FontWeight.bold,

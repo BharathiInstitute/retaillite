@@ -10,9 +10,9 @@ Future<void> enableWebPersistence() async {
   try {
     FirebaseFirestore.instance.settings = const Settings(
       persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+      cacheSizeBytes: 100 * 1024 * 1024, // 100 MB
     );
-    debugPrint('✅ Web persistence enabled (IndexedDB)');
+    debugPrint('✅ Web persistence enabled (IndexedDB, 100 MB cache)');
   } catch (e) {
     debugPrint('⚠️ Web persistence setup: $e');
   }

@@ -1,6 +1,7 @@
 /// Push Notification Service — handles FCM foreground/background messages
 library;
 
+import 'dart:async';
 import 'dart:io' show Platform;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -19,6 +20,9 @@ class NotificationService {
   static FirebaseMessaging get _messaging =>
       _messagingInstance ??= FirebaseMessaging.instance;
 
+  static StreamSubscription<RemoteMessage>? _onMessageSub;
+  static StreamSubscription<RemoteMessage>? _onMessageOpenedSub;
+
   /// Initialize FCM message listeners. Call once from main() or app init.
   static void initMessageListeners({
     void Function(RemoteMessage)? onMessage,
@@ -28,13 +32,15 @@ class NotificationService {
     if (!kIsWeb && Platform.isWindows) return;
 
     // Foreground messages
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+    _onMessageSub = FirebaseMessaging.onMessage.listen((RemoteMessage message) {
       debugPrint('📬 Foreground message: ${message.notification?.title}');
       onMessage?.call(message);
     });
 
     // When app is opened from a notification tap (background → foreground)
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
+    _onMessageOpenedSub = FirebaseMessaging.onMessageOpenedApp.listen((
+      RemoteMessage message,
+    ) {
       debugPrint('📬 Message opened app: ${message.notification?.title}');
       onMessageOpenedApp?.call(message);
     });
@@ -57,5 +63,13 @@ class NotificationService {
       badge: true,
       sound: true,
     );
+  }
+
+  /// Cancel all subscriptions to prevent memory leaks
+  static void dispose() {
+    _onMessageSub?.cancel();
+    _onMessageSub = null;
+    _onMessageOpenedSub?.cancel();
+    _onMessageOpenedSub = null;
   }
 }

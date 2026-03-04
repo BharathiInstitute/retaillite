@@ -32,7 +32,7 @@ void main() {
     });
 
     test('free tier has bill limit', () {
-      expect(AppConstants.freeMaxBillsPerDay, greaterThan(0));
+      expect(AppConstants.freeMaxBillsPerMonth, greaterThan(0));
     });
 
     test('free tier has customer limit', () {
@@ -41,11 +41,11 @@ void main() {
 
     test('paid tier limits exceed free tier', () {
       expect(
-        AppConstants.paidMaxProducts,
+        AppConstants.proMaxProducts,
         greaterThan(AppConstants.freeMaxProducts),
       );
       expect(
-        AppConstants.paidMaxCustomers,
+        AppConstants.proMaxCustomers,
         greaterThan(AppConstants.freeMaxCustomers),
       );
     });

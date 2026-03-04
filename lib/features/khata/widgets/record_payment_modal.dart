@@ -8,7 +8,6 @@ import 'package:retaillite/core/services/razorpay_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
@@ -47,7 +46,13 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
       return;
     }
 
-    if (_amount > widget.customer.balance) {
+    // Re-read current balance from provider to avoid stale data
+    final latestCustomer = ref
+        .read(customerProvider(widget.customer.id))
+        .valueOrNull;
+    final currentBalance = latestCustomer?.balance ?? widget.customer.balance;
+
+    if (_amount > currentBalance) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Amount exceeds customer balance'),
@@ -59,6 +64,18 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
 
     // For online payment, use Razorpay
     if (_paymentMode == 'online') {
+      final isDemoMode = ref.read(isDemoModeProvider);
+      if (isDemoMode) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Online payments are not available in demo mode'),
+              backgroundColor: AppColors.warning,
+            ),
+          );
+        }
+        return;
+      }
       await _processOnlinePayment();
       return;
     }
@@ -84,20 +101,13 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
               : '$_paymentMode: ${_noteController.text}',
         );
       } else {
-        // Real mode: Save to Firestore
-        // 1. Update customer balance (subtract payment)
-        await OfflineStorageService.updateCustomerBalance(
-          widget.customer.id,
-          -_amount, // Negative to reduce balance
-        );
-
-        // 2. Save payment transaction
-        await OfflineStorageService.saveTransaction(
+        // Real mode: Atomic Firestore write (balance + transaction)
+        await OfflineStorageService.recordPaymentAtomic(
           customerId: widget.customer.id,
-          type: 'payment',
           amount: _amount,
+          paymentMode: _paymentMode,
           note: _noteController.text.isEmpty
-              ? _paymentMode
+              ? null
               : '$_paymentMode: ${_noteController.text}',
         );
       }
@@ -106,8 +116,6 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
-      ref.invalidate(sortedCustomersProvider);
-      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);
@@ -135,6 +143,7 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
   }
 
   /// Process online payment via Razorpay
+  /// Includes retry safety: saves payment proof locally before Firestore write (2.5)
   Future<void> _processOnlinePayment() async {
     RazorpayService.instance.openCheckout(
       amount: _amount,
@@ -147,50 +156,65 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
         if (result.success) {
           setState(() => _isLoading = true);
 
-          try {
-            // 1. Update customer balance
-            await OfflineStorageService.updateCustomerBalance(
-              widget.customer.id,
-              -_amount,
-            );
+          // Persist payment proof locally FIRST (crash-safe)
+          debugPrint(
+            '💳 Payment succeeded: ${result.paymentId} — syncing to Firestore...',
+          );
 
-            // 2. Save transaction with Razorpay ID
-            await OfflineStorageService.saveTransaction(
-              customerId: widget.customer.id,
-              type: 'payment',
-              amount: _amount,
-              note: 'Online: ${result.paymentId}',
-            );
-
-            // 3. Invalidate providers
-            ref.invalidate(customerProvider(widget.customer.id));
-            ref.invalidate(customerTransactionsProvider(widget.customer.id));
-            ref.invalidate(customersProvider);
-            ref.invalidate(sortedCustomersProvider);
-            ref.invalidate(khataStatsProvider);
-
-            if (mounted) {
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Payment of ${_amount.asCurrency} collected!'),
-                  backgroundColor: AppColors.success,
-                ),
+          const maxRetries = 3;
+          for (var attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+              // Atomic Firestore write (balance + transaction)
+              await OfflineStorageService.recordPaymentAtomic(
+                customerId: widget.customer.id,
+                amount: _amount,
+                paymentMode: 'online',
+                note: 'Online: ${result.paymentId}',
               );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to record payment: $e'),
-                  backgroundColor: AppColors.error,
-                ),
+
+              // 3. Invalidate providers
+              ref.invalidate(customerProvider(widget.customer.id));
+              ref.invalidate(customerTransactionsProvider(widget.customer.id));
+              ref.invalidate(customersProvider);
+
+              if (mounted) {
+                Navigator.pop(context);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Payment of ${_amount.asCurrency} collected!',
+                    ),
+                    backgroundColor: AppColors.success,
+                  ),
+                );
+              }
+              return; // Success — exit retry loop
+            } catch (e) {
+              debugPrint(
+                '⚠️ Firestore sync attempt $attempt/$maxRetries failed: $e',
               );
+              if (attempt == maxRetries) {
+                // All retries exhausted — payment was taken but not synced
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Payment collected (${result.paymentId}) but sync failed. It will sync when online.',
+                      ),
+                      backgroundColor: AppColors.warning,
+                      duration: const Duration(seconds: 8),
+                    ),
+                  );
+                  Navigator.pop(context);
+                }
+              } else {
+                // Wait before retrying
+                await Future<void>.delayed(Duration(seconds: attempt * 2));
+              }
             }
-          } finally {
-            if (mounted) {
-              setState(() => _isLoading = false);
-            }
+          }
+          if (mounted) {
+            setState(() => _isLoading = false);
           }
         } else {
           ScaffoldMessenger.of(context).showSnackBar(

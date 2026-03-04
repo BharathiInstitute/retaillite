@@ -6,7 +6,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="Tulasi Stores - भारत का सबसे आसान बिलिंग ऐप">
+  <meta name="description" content="RetailLite - India's easiest billing app">
 
   <!-- Google Sign-In Client ID (required for web) -->
   <meta name="google-signin-client_id"
@@ -29,11 +29,11 @@
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Tulasi Stores">
+  <meta name="apple-mobile-web-app-title" content="RetailLite">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
   <link rel="icon" type="image/png" href="favicon.png">
 
-  <title>Tulasi Stores</title>
+  <title>RetailLite</title>
   <link rel="manifest" href="manifest.json">
 
   <!-- Minimal loading styles - Flutter handles the splash -->
@@ -135,6 +135,14 @@
   </picture>
 
   <script src="flutter_bootstrap.js" async=""></script>
+  <script>
+    // Register custom RetailLite service worker for offline caching
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/retaillite-sw.js')
+        .then(function(reg) { console.log('[RetailLite] SW registered'); })
+        .catch(function(err) { console.warn('[RetailLite] SW failed:', err); });
+    }
+  </script>
 
 
 </body>

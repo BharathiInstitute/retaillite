@@ -9,11 +9,13 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:print_bluetooth_thermal/print_bluetooth_thermal.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:intl/intl.dart';
@@ -82,14 +84,27 @@ class EscPosBuilder {
   static final _dateFormat = DateFormat('dd/MM/yyyy hh:mm a');
 
   // ── ESC/POS command helpers ──
-  static List<int> init() => [0x1B, 0x40];
+
+  /// Initialize printer and select UTF-8 character code table (codepage 0x6F).
+  /// This ensures non-ASCII characters (₹, Hindi etc.) are printed correctly
+  /// on printers that support multi-byte encodings.
+  static List<int> init() => [
+    0x1B, 0x40, // ESC @ — Initialize printer
+    0x1B, 0x74, 0x6F, // ESC t 111 — Select UTF-8 codepage
+  ];
   static List<int> center() => [0x1B, 0x61, 0x01];
   static List<int> left() => [0x1B, 0x61, 0x00];
   static List<int> bold(bool on) => [0x1B, 0x45, on ? 0x01 : 0x00];
   static List<int> doubleHeight(bool on) => [0x1B, 0x21, on ? 0x10 : 0x00];
   static List<int> feed(int lines) => [0x1B, 0x64, lines];
   static List<int> cut() => [0x1D, 0x56, 0x00];
-  static List<int> text(String t) => t.codeUnits;
+
+  /// Convert text to bytes safe for ESC/POS printers.
+  /// Uses UTF-8 encoding to support Hindi, ₹ symbol, and other non-ASCII chars.
+  /// Printers that do not support UTF-8 will ignore the codepage command in
+  /// [init] and fall back to their default codepage; non-latin characters may
+  /// render as '?' in that case.
+  static List<int> text(String t) => utf8.encode(t);
 
   static List<int> fontSize(PrinterFontSizeMode mode) {
     switch (mode) {
@@ -150,7 +165,7 @@ class EscPosBuilder {
       ...text('Time: ${DateTime.now()}\n'),
       ...text('${'=' * chars}\n'),
       ...center(),
-      ...text('Tulasi Stores\n'),
+      ...text('${AppConstants.appName}\n'),
       ...feed(3),
       ...cut(),
     ];
@@ -177,7 +192,7 @@ class EscPosBuilder {
     bytes.addAll(center());
     bytes.addAll(bold(true));
     bytes.addAll(doubleHeight(true));
-    bytes.addAll(text('${shopName ?? 'Tulasi Stores'}\n'));
+    bytes.addAll(text('${shopName ?? AppConstants.defaultShopName}\n'));
     bytes.addAll(doubleHeight(false));
     bytes.addAll(bold(false));
 
@@ -282,7 +297,7 @@ class EscPosBuilder {
     } else {
       bytes.addAll(text('Thank you for shopping!\n'));
     }
-    bytes.addAll(text('Powered by Tulasi Stores\n'));
+    bytes.addAll(text('Powered by ${AppConstants.appName}\n'));
 
     bytes.addAll(feed(3));
     bytes.addAll(cut());
@@ -438,6 +453,10 @@ class WifiPrinterService {
   static String? _connectedIp;
   static int? _connectedPort;
 
+  /// Connection state stream for real-time UI updates
+  static final _connectionStateController = StreamController<bool>.broadcast();
+  static Stream<bool> get connectionState => _connectionStateController.stream;
+
   /// Available on all non-web platforms
   static bool get isAvailable => !kIsWeb;
 
@@ -463,6 +482,7 @@ class WifiPrinterService {
       );
       _connectedIp = ip;
       _connectedPort = port;
+      _connectionStateController.add(true);
 
       // Listen for errors and disconnection
       _socket!.listen(
@@ -491,7 +511,9 @@ class WifiPrinterService {
   static Future<void> disconnect() async {
     try {
       await _socket?.close();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('⚠️ WiFi printer: socket close failed: $e');
+    }
     _cleanup();
   }
 
@@ -499,6 +521,7 @@ class WifiPrinterService {
     _socket = null;
     _connectedIp = null;
     _connectedPort = null;
+    _connectionStateController.add(false);
   }
 
   /// Send raw bytes to WiFi printer
@@ -695,7 +718,7 @@ public class RawPrinterHelper {
 "@
 
 \$data = [System.IO.File]::ReadAllBytes("${tempFile.path.replaceAll('\\', '\\\\')}")
-\$ok = [RawPrinterHelper]::SendRawData("$printerName", \$data)
+\$ok = [RawPrinterHelper]::SendRawData("${printerName.replaceAll(RegExp(r'[";$`\\]'), '')}", \$data)
 if (\$ok) { exit 0 } else { exit 1 }
 ''',
       ]);
@@ -703,7 +726,9 @@ if (\$ok) { exit 0 } else { exit 1 }
       // Cleanup temp file
       try {
         await tempFile.delete();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('⚠️ USB print: temp file cleanup failed: $e');
+      }
 
       final stdout = (result.stdout as String).trim();
       final stderr = (result.stderr as String).trim();

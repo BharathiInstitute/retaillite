@@ -1,6 +1,7 @@
 /// CSV Import/Export service for products
 library;
 
+import 'dart:convert';
 import 'dart:io';
 import 'package:csv/csv.dart';
 import 'package:file_picker/file_picker.dart';
@@ -119,11 +120,16 @@ class ProductCsvService {
 
       String csvContent;
       if (result.files.first.bytes != null) {
-        csvContent = String.fromCharCodes(result.files.first.bytes!);
+        csvContent = utf8.decode(result.files.first.bytes!);
       } else if (result.files.first.path != null) {
         csvContent = await File(result.files.first.path!).readAsString();
       } else {
         return CsvImportResult(products: [], errors: ['Could not read file']);
+      }
+
+      // Strip UTF-8 BOM if present (Excel adds this)
+      if (csvContent.startsWith('\uFEFF')) {
+        csvContent = csvContent.substring(1);
       }
 
       return _parseCsv(csvContent);

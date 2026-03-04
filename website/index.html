@@ -68,6 +68,7 @@
         <li><a href="index.html" class="active">Home</a></li>
         <li><a href="src/pages/features.html">Features</a></li>
         <li><a href="src/pages/screenshots.html">Screenshots</a></li>
+        <li><a href="src/pages/pricing.html">Pricing</a></li>
         <li><a href="src/pages/about.html">About</a></li>
         <li><a href="src/pages/support.html">Support</a></li>
       </ul>
@@ -87,6 +88,7 @@
       <a href="index.html">Home</a>
       <a href="src/pages/features.html">Features</a>
       <a href="src/pages/screenshots.html">Screenshots</a>
+      <a href="src/pages/pricing.html">Pricing</a>
       <a href="src/pages/about.html">About</a>
       <a href="src/pages/support.html">Support</a>
       <a href="src/pages/download.html" style="color: var(--color-primary); font-weight: 700;">Download Now</a>
@@ -117,6 +119,9 @@
           </a>
           <a href="src/pages/features.html" class="btn btn-secondary btn-lg">
             See Features →
+          </a>
+          <a href="src/pages/pricing.html" class="btn btn-outline btn-lg">
+            💰 View Pricing →
           </a>
         </div>
       </div>
@@ -198,6 +203,38 @@
             </div>
           </div>
         </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ========== SECTION: VIDEO DEMO ========== -->
+  <section class="section" id="demo" style="background: var(--color-surface); padding: 4rem 0;">
+    <div class="container">
+      <div class="text-center animate-on-scroll">
+        <div class="badge" style="margin-bottom: 1rem;">▶️ Live Demo</div>
+        <h2>See It In Action</h2>
+        <p class="section-subtitle">Watch how a shopkeeper creates a bill, manages inventory, and shares receipts on
+          WhatsApp — all in under 60 seconds.</p>
+      </div>
+
+      <div class="mt-5 animate-on-scroll" style="max-width: 800px; margin: 2rem auto 0;">
+        <div style="position: relative; padding-bottom: 56.25%; height: 0; border-radius: 16px; overflow: hidden;
+                    box-shadow: var(--shadow-xl);">
+          <!-- Replace VIDEO_ID below with your YouTube video ID -->
+          <iframe
+            id="demo-video"
+            src="https://www.youtube.com/embed/VIDEO_ID?rel=0&modestbranding=1"
+            title="Tulasi Stores — App Demo"
+            frameborder="0"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowfullscreen
+            style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+          ></iframe>
+        </div>
+        <p style="text-align: center; margin-top: 1rem; color: var(--color-text-secondary); font-size: 0.875rem;">
+          No signup needed to watch · 60-second overview
+        </p>
       </div>
     </div>
   </section>
@@ -642,6 +679,7 @@
           <ul>
             <li><a href="src/pages/features.html">Features</a></li>
             <li><a href="src/pages/screenshots.html">Screenshots</a></li>
+            <li><a href="src/pages/pricing.html">Pricing</a></li>
             <li><a href="src/pages/download.html">Download</a></li>
           </ul>
         </div>
@@ -693,6 +731,20 @@
       const tm = document.getElementById('tablet-mockup');
       if (tm) tm.style.display = window.innerWidth >= 768 ? 'block' : 'none';
     });
+  </script>
+
+  <!-- Tawk.to Live Chat -->
+  <!-- Replace YOUR_PROPERTY_ID and YOUR_WIDGET_ID with values from tawk.to dashboard -->
+  <script type="text/javascript">
+    var Tawk_API = Tawk_API || {}, Tawk_LoadStart = new Date();
+    (function () {
+      var s1 = document.createElement("script"), s0 = document.getElementsByTagName("script")[0];
+      s1.async = true;
+      s1.src = 'https://embed.tawk.to/YOUR_PROPERTY_ID/YOUR_WIDGET_ID';
+      s1.charset = 'UTF-8';
+      s1.setAttribute('crossorigin', '*');
+      s0.parentNode.insertBefore(s1, s0);
+    })();
   </script>
 </body>
 

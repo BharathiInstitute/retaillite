@@ -341,7 +341,7 @@ class WindowsUpdateService {
     int silentAttempts = 0,
   }) async {
     final dir = await _updateDir();
-    final installerPath = '${dir.path}\\TulasiStores_Update.exe';
+    final installerPath = '${dir.path}\\RetailLite_Update.exe';
     final installerFile = File(installerPath);
 
     debugPrint('⬇️ Downloading update v${info.version} in background...');
@@ -523,11 +523,15 @@ exit
   ) async {
     try {
       await marker.delete();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('⚠️ Cleanup: marker delete failed: $e');
+    }
     try {
       final installer = File(installerPath);
       if (installer.existsSync()) await installer.delete();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('⚠️ Cleanup: installer delete failed: $e');
+    }
     // Delete any leftover watchdog/flag files
     try {
       final dir = await _updateDir();
@@ -535,7 +539,9 @@ exit
       if (bat.existsSync()) await bat.delete();
       final flag = File('${dir.path}\\watchdog_timeout.flag');
       if (flag.existsSync()) await flag.delete();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('⚠️ Cleanup: watchdog files delete failed: $e');
+    }
   }
 
   /// Clean up all update files (for manual reset)

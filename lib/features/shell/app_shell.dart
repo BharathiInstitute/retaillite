@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/color_utils.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
@@ -87,7 +88,7 @@ class AppShell extends ConsumerWidget {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      user?.shopName ?? 'Tulasi Stores',
+                      user?.shopName ?? AppConstants.defaultShopName,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
@@ -159,7 +160,9 @@ class AppShell extends ConsumerWidget {
         radius: radius,
         backgroundImage: NetworkImage(logoPath),
         backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-        onBackgroundImageError: (_, _) {},
+        onBackgroundImageError: (e, _) {
+          debugPrint('⚠️ Shell avatar image error: $e');
+        },
       );
     }
 
@@ -333,7 +336,7 @@ class AppShell extends ConsumerWidget {
 
               const SizedBox(height: 16),
               Text(
-                'Powered by Tulasi Stores',
+                'Powered by ${AppConstants.appName}',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
@@ -524,7 +527,7 @@ class AppShell extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 12),
               child: Text(
-                'Powered by Tulasi Stores',
+                'Powered by ${AppConstants.appName}',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

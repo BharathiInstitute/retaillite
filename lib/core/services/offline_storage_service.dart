@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/sync_status_service.dart';
 import 'package:retaillite/core/utils/id_generator.dart';
@@ -204,6 +205,14 @@ class OfflineStorageService {
   /// Expose prefs for direct access (e.g., route persistence)
   static SharedPreferences? get prefs => _prefs;
 
+  /// Reset internal state for testing. MUST be called in test setUp
+  /// after SharedPreferences.setMockInitialValues().
+  @visibleForTesting
+  static void resetForTesting() {
+    _initialized = false;
+    _prefs = null;
+  }
+
   /// Get user's collection path
   static String get _basePath {
     final uid = _auth.currentUser?.uid;
@@ -229,6 +238,7 @@ class OfflineStorageService {
   }
 
   /// Get cached products from Firestore
+  @Deprecated('Use productsProvider stream instead')
   static List<ProductModel> getCachedProducts() {
     debugPrint('getCachedProducts: Use productsProvider stream instead');
     return [];
@@ -238,7 +248,10 @@ class OfflineStorageService {
   static Future<List<ProductModel>> getCachedProductsAsync() async {
     if (_basePath.isEmpty) return [];
     try {
-      final snapshot = await _firestore.collection('$_basePath/products').get();
+      final snapshot = await _firestore
+          .collection('$_basePath/products')
+          .limit(500)
+          .get();
       return snapshot.docs
           .map((doc) => ProductModel.fromFirestore(doc))
           .toList();
@@ -319,6 +332,7 @@ class OfflineStorageService {
           .where('createdAt', isGreaterThanOrEqualTo: Timestamp.fromDate(start))
           .where('createdAt', isLessThanOrEqualTo: Timestamp.fromDate(end))
           .orderBy('createdAt', descending: true)
+          .limit(1000)
           .get();
       return snapshot.docs.map((doc) => BillModel.fromFirestore(doc)).toList();
     } catch (e) {
@@ -334,20 +348,26 @@ class OfflineStorageService {
   }
 
   /// Get next sequential bill number using Firestore atomic counter.
-  /// Atomic, multi-device safe, survives app reinstalls.
+  /// Uses runTransaction for atomic read-increment-return to prevent
+  /// duplicate bill numbers from concurrent calls.
   /// Falls back to random bill number if Firestore access fails.
   static Future<int> getNextBillNumber() async {
     if (_basePath.isEmpty) return generateBillNumber();
 
     try {
       final counterRef = _firestore.doc('$_basePath/counters/billing');
-      // Atomic increment — safe even with concurrent access
-      await counterRef.set({
-        'billNumber': FieldValue.increment(1),
-      }, SetOptions(merge: true));
-      final snapshot = await counterRef.get();
-      final data = snapshot.data();
-      return (data?['billNumber'] as int?) ?? 1001;
+      final newBillNumber = await _firestore.runTransaction<int>((
+        transaction,
+      ) async {
+        final snapshot = await transaction.get(counterRef);
+        final current = (snapshot.data()?['billNumber'] as int?) ?? 1000;
+        final next = current + 1;
+        transaction.set(counterRef, {
+          'billNumber': next,
+        }, SetOptions(merge: true));
+        return next;
+      });
+      return newBillNumber;
     } catch (e) {
       debugPrint('⚠️ Bill counter fallback: $e');
       return generateBillNumber();
@@ -359,30 +379,114 @@ class OfflineStorageService {
     await saveBill(bill);
   }
 
+  /// Atomically save a bill + update customer balance + create transaction
+  /// for Udhar payments. Uses WriteBatch so all three writes succeed or fail together.
+  static Future<void> saveBillWithUdharAtomic({
+    required BillModel bill,
+    required String customerId,
+    required double amount,
+  }) async {
+    if (_basePath.isEmpty) return;
+    final batch = _firestore.batch();
+
+    // 1. Save the bill
+    batch.set(
+      _firestore.doc('$_basePath/bills/${bill.id}'),
+      bill.toFirestore(),
+    );
+
+    // 2. Update customer balance (increase for udhar/credit)
+    batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
+      'balance': FieldValue.increment(amount),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 3. Create transaction record
+    final txnId = generateSafeId('txn');
+    final transaction = TransactionModel(
+      id: txnId,
+      customerId: customerId,
+      type: TransactionType.purchase,
+      amount: amount,
+      billId: bill.id,
+      createdAt: DateTime.now(),
+    );
+    batch.set(
+      _firestore.doc('$_basePath/transactions/$txnId'),
+      transaction.toFirestore(),
+    );
+
+    // Atomic commit — all three succeed or all fail
+    await batch.commit();
+  }
+
   /// Stream of all bills (real-time updates from Firestore)
-  static Stream<List<BillModel>> billsStream() {
+  /// Accepts optional [dateRange] and [paymentMethod] for server-side filtering.
+  static Stream<List<BillModel>> billsStream({
+    DateTimeRange? dateRange,
+    String? paymentMethod,
+  }) {
     if (_basePath.isEmpty) return Stream.value([]);
-    return _firestore
+    Query query = _firestore
+        .collection('$_basePath/bills')
+        .orderBy('createdAt', descending: true);
+
+    // Server-side date filter
+    if (dateRange != null) {
+      query = query
+          .where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(dateRange.start),
+          )
+          .where(
+            'createdAt',
+            isLessThanOrEqualTo: Timestamp.fromDate(
+              dateRange.end.add(const Duration(days: 1)),
+            ),
+          );
+    }
+
+    // Server-side payment method filter
+    if (paymentMethod != null) {
+      query = query.where('paymentMethod', isEqualTo: paymentMethod);
+    }
+
+    query = query.limit(AppConstants.queryLimitBills);
+
+    return query.snapshots().map((snapshot) {
+      final bills = snapshot.docs
+          .map((doc) => BillModel.fromFirestore(doc))
+          .toList();
+      // Report sync status
+      final pendingCount = snapshot.docs
+          .where((d) => d.metadata.hasPendingWrites)
+          .length;
+      SyncStatusService.updateCollection(
+        'bills',
+        totalDocs: bills.length,
+        unsyncedDocs: pendingCount,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      );
+      return bills;
+    });
+  }
+
+  /// Paginated bills fetch — returns (bills, lastDocument) for cursor pagination.
+  /// Pass [startAfter] from a previous call to load the next page.
+  static Future<(List<BillModel>, DocumentSnapshot?)> fetchBillsPage({
+    int pageSize = 50,
+    DocumentSnapshot? startAfter,
+  }) async {
+    if (_basePath.isEmpty) return (<BillModel>[], null);
+    var query = _firestore
         .collection('$_basePath/bills')
         .orderBy('createdAt', descending: true)
-        .limit(AppConstants.queryLimitBills)
-        .snapshots()
-        .map((snapshot) {
-          final bills = snapshot.docs
-              .map((doc) => BillModel.fromFirestore(doc))
-              .toList();
-          // Report sync status
-          final pendingCount = snapshot.docs
-              .where((d) => d.metadata.hasPendingWrites)
-              .length;
-          SyncStatusService.updateCollection(
-            'bills',
-            totalDocs: bills.length,
-            unsyncedDocs: pendingCount,
-            hasPendingWrites: snapshot.metadata.hasPendingWrites,
-          );
-          return bills;
-        });
+        .limit(pageSize);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    final bills = snap.docs.map((d) => BillModel.fromFirestore(d)).toList();
+    final lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
+    return (bills, lastDoc);
   }
 
   /// Stream of bills in a date range (real-time)
@@ -404,19 +508,27 @@ class OfflineStorageService {
         );
   }
 
-  /// Delete old bills (data retention)
+  /// Delete old bills (data retention) — processes in batches of 400
+  /// to stay under Firestore's 500-operation batch limit.
   static Future<int> deleteOldBills(DateTime before) async {
     if (_basePath.isEmpty) return 0;
-    final snapshot = await _firestore
+    int totalDeleted = 0;
+    final query = _firestore
         .collection('$_basePath/bills')
-        .where('createdAt', isLessThan: Timestamp.fromDate(before))
-        .get();
-    final batch = _firestore.batch();
-    for (final doc in snapshot.docs) {
-      batch.delete(doc.reference);
+        .where('createdAt', isLessThan: Timestamp.fromDate(before));
+
+    while (true) {
+      final snapshot = await query.limit(400).get();
+      if (snapshot.docs.isEmpty) break;
+
+      final batch = _firestore.batch();
+      for (final doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+      totalDeleted += snapshot.docs.length;
     }
-    await batch.commit();
-    return snapshot.docs.length;
+    return totalDeleted;
   }
 
   // ==================== Expenses ====================
@@ -454,29 +566,73 @@ class OfflineStorageService {
   }
 
   /// Stream of all expenses (real-time updates from Firestore)
-  static Stream<List<ExpenseModel>> expensesStream() {
+  /// Accepts optional [dateRange] and [paymentMethod] for server-side filtering.
+  static Stream<List<ExpenseModel>> expensesStream({
+    DateTimeRange? dateRange,
+    String? paymentMethod,
+  }) {
     if (_basePath.isEmpty) return Stream.value([]);
-    return _firestore
+    Query query = _firestore
+        .collection('$_basePath/expenses')
+        .orderBy('createdAt', descending: true);
+
+    // Server-side date filter
+    if (dateRange != null) {
+      query = query
+          .where(
+            'createdAt',
+            isGreaterThanOrEqualTo: Timestamp.fromDate(dateRange.start),
+          )
+          .where(
+            'createdAt',
+            isLessThanOrEqualTo: Timestamp.fromDate(
+              dateRange.end.add(const Duration(days: 1)),
+            ),
+          );
+    }
+
+    // Server-side payment method filter
+    if (paymentMethod != null) {
+      query = query.where('paymentMethod', isEqualTo: paymentMethod);
+    }
+
+    query = query.limit(AppConstants.queryLimitExpenses);
+
+    return query.snapshots().map((snapshot) {
+      final expenses = snapshot.docs
+          .map((doc) => ExpenseModel.fromFirestore(doc))
+          .toList();
+      // Report sync status
+      final pendingCount = snapshot.docs
+          .where((d) => d.metadata.hasPendingWrites)
+          .length;
+      SyncStatusService.updateCollection(
+        'expenses',
+        totalDocs: expenses.length,
+        unsyncedDocs: pendingCount,
+        hasPendingWrites: snapshot.metadata.hasPendingWrites,
+      );
+      return expenses;
+    });
+  }
+
+  /// Paginated expenses fetch — returns (expenses, lastDocument) for cursor pagination.
+  static Future<(List<ExpenseModel>, DocumentSnapshot?)> fetchExpensesPage({
+    int pageSize = 50,
+    DocumentSnapshot? startAfter,
+  }) async {
+    if (_basePath.isEmpty) return (<ExpenseModel>[], null);
+    var query = _firestore
         .collection('$_basePath/expenses')
         .orderBy('createdAt', descending: true)
-        .limit(AppConstants.queryLimitExpenses)
-        .snapshots()
-        .map((snapshot) {
-          final expenses = snapshot.docs
-              .map((doc) => ExpenseModel.fromFirestore(doc))
-              .toList();
-          // Report sync status
-          final pendingCount = snapshot.docs
-              .where((d) => d.metadata.hasPendingWrites)
-              .length;
-          SyncStatusService.updateCollection(
-            'expenses',
-            totalDocs: expenses.length,
-            unsyncedDocs: pendingCount,
-            hasPendingWrites: snapshot.metadata.hasPendingWrites,
-          );
-          return expenses;
-        });
+        .limit(pageSize);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    final expenses = snap.docs
+        .map((d) => ExpenseModel.fromFirestore(d))
+        .toList();
+    final lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
+    return (expenses, lastDoc);
   }
 
   // ==================== Customers ====================
@@ -497,8 +653,10 @@ class OfflineStorageService {
   static Future<List<CustomerModel>> getCachedCustomersAsync() async {
     if (_basePath.isEmpty) return [];
     try {
+      // D10: Add limit to prevent reading unbounded customer lists
       final snapshot = await _firestore
           .collection('$_basePath/customers')
+          .limit(1000)
           .get();
       return snapshot.docs
           .map((doc) => CustomerModel.fromFirestore(doc))
@@ -555,6 +713,79 @@ class OfflineStorageService {
     });
   }
 
+  /// Atomically update customer balance AND save a transaction in a single
+  /// WriteBatch. This prevents data corruption if the app crashes mid-write.
+  static Future<void> recordPaymentAtomic({
+    required String customerId,
+    required double amount,
+    String? note,
+    String paymentMode = 'cash',
+  }) async {
+    if (_basePath.isEmpty) return;
+    final batch = _firestore.batch();
+
+    // 1. Update customer balance (subtract payment)
+    batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
+      'balance': FieldValue.increment(-amount),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Create transaction record
+    final txnId = generateSafeId('txn');
+    final transaction = TransactionModel(
+      id: txnId,
+      customerId: customerId,
+      type: TransactionType.payment,
+      amount: amount,
+      note: note ?? paymentMode,
+      paymentMode: paymentMode,
+      createdAt: DateTime.now(),
+    );
+    batch.set(
+      _firestore.doc('$_basePath/transactions/$txnId'),
+      transaction.toFirestore(),
+    );
+
+    // Atomic commit — both succeed or both fail
+    await batch.commit();
+  }
+
+  /// Atomically update customer balance AND save a credit transaction.
+  static Future<void> addCreditAtomic({
+    required String customerId,
+    required double amount,
+    String? billId,
+    String? note,
+  }) async {
+    if (_basePath.isEmpty) return;
+    final batch = _firestore.batch();
+
+    // 1. Update customer balance (add credit)
+    batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
+      'balance': FieldValue.increment(amount),
+      'updatedAt': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Create transaction record
+    final txnId = generateSafeId('txn');
+    final transaction = TransactionModel(
+      id: txnId,
+      customerId: customerId,
+      type: TransactionType.purchase,
+      amount: amount,
+      note: note ?? 'Credit given',
+      billId: billId,
+      createdAt: DateTime.now(),
+    );
+    batch.set(
+      _firestore.doc('$_basePath/transactions/$txnId'),
+      transaction.toFirestore(),
+    );
+
+    // Atomic commit
+    await batch.commit();
+  }
+
   /// Stream of all customers (real-time updates from Firestore)
   static Stream<List<CustomerModel>> customersStream() {
     if (_basePath.isEmpty) return Stream.value([]);
@@ -578,6 +809,25 @@ class OfflineStorageService {
           );
           return customers;
         });
+  }
+
+  /// Paginated customers fetch — returns (customers, lastDocument) for cursor pagination.
+  static Future<(List<CustomerModel>, DocumentSnapshot?)> fetchCustomersPage({
+    int pageSize = 50,
+    DocumentSnapshot? startAfter,
+  }) async {
+    if (_basePath.isEmpty) return (<CustomerModel>[], null);
+    var query = _firestore
+        .collection('$_basePath/customers')
+        .orderBy('name')
+        .limit(pageSize);
+    if (startAfter != null) query = query.startAfterDocument(startAfter);
+    final snap = await query.get();
+    final customers = snap.docs
+        .map((d) => CustomerModel.fromFirestore(d))
+        .toList();
+    final lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
+    return (customers, lastDoc);
   }
 
   /// Stream of a single customer (real-time)
@@ -702,6 +952,7 @@ class OfflineStorageService {
   // ==================== Sync Status Streams ====================
 
   /// Stream of per-document sync status for bills
+  /// Only tracks documents with hasPendingWrites=true to keep the map bounded.
   static Stream<Map<String, bool>> billsSyncStream() {
     if (_basePath.isEmpty) return Stream.value({});
     return _firestore
@@ -712,12 +963,13 @@ class OfflineStorageService {
         .map(
           (snapshot) => {
             for (final doc in snapshot.docs)
-              doc.id: doc.metadata.hasPendingWrites,
+              if (doc.metadata.hasPendingWrites) doc.id: true,
           },
         );
   }
 
   /// Stream of per-document sync status for customers
+  /// Only tracks documents with hasPendingWrites=true to keep the map bounded.
   static Stream<Map<String, bool>> customersSyncStream() {
     if (_basePath.isEmpty) return Stream.value({});
     return _firestore
@@ -727,12 +979,13 @@ class OfflineStorageService {
         .map(
           (snapshot) => {
             for (final doc in snapshot.docs)
-              doc.id: doc.metadata.hasPendingWrites,
+              if (doc.metadata.hasPendingWrites) doc.id: true,
           },
         );
   }
 
   /// Stream of per-document sync status for expenses
+  /// Only tracks documents with hasPendingWrites=true to keep the map bounded.
   static Stream<Map<String, bool>> expensesSyncStream() {
     if (_basePath.isEmpty) return Stream.value({});
     return _firestore
@@ -743,7 +996,7 @@ class OfflineStorageService {
         .map(
           (snapshot) => {
             for (final doc in snapshot.docs)
-              doc.id: doc.metadata.hasPendingWrites,
+              if (doc.metadata.hasPendingWrites) doc.id: true,
           },
         );
   }

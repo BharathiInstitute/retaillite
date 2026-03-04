@@ -1,6 +1,7 @@
 /// Global error handling utilities
 library;
 
+import 'dart:async';
 import 'dart:io' show Platform;
 import 'dart:math';
 
@@ -87,6 +88,7 @@ class ErrorHandler extends WidgetsBindingObserver {
 
   static bool _initialized = false;
   static final ErrorHandler _instance = ErrorHandler._();
+  static StreamSubscription<dynamic>? _connectivitySub;
 
   /// Current app lifecycle state
   static AppLifecycleState _lifecycleState = AppLifecycleState.resumed;
@@ -146,7 +148,7 @@ class ErrorHandler extends WidgetsBindingObserver {
     };
 
     // Listen for connectivity changes to flush offline queue
-    ConnectivityService.statusStream.listen((status) {
+    _connectivitySub = ConnectivityService.statusStream.listen((status) {
       if (status == ConnectivityStatus.online) {
         ErrorLoggingService.flushOfflineQueue();
       }
@@ -160,6 +162,12 @@ class ErrorHandler extends WidgetsBindingObserver {
           ? "Windows"
           : "Native"} mode, session: $_sessionId)',
     );
+  }
+
+  /// Dispose subscriptions (for cleanup / testing)
+  static void dispose() {
+    _connectivitySub?.cancel();
+    _connectivitySub = null;
   }
 
   /// Extract rich context from FlutterErrorDetails
@@ -212,7 +220,9 @@ class ErrorHandler extends WidgetsBindingObserver {
         metadata['screenWidth'] = size.width;
         metadata['screenHeight'] = size.height;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('⚠️ Metadata: screen size read failed: $e');
+    }
 
     // Connectivity
     metadata['connectivity'] = ConnectivityService.currentStatus.name;
@@ -267,6 +277,11 @@ class ErrorHandler extends WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _lifecycleState = state;
+
+    // Mark clean exit when app is detached (closing)
+    if (state == AppLifecycleState.detached) {
+      ErrorLoggingService.markCleanExit();
+    }
   }
 
   /// Report a caught error (use this for try-catch blocks)
@@ -423,7 +438,16 @@ class ErrorHandler extends WidgetsBindingObserver {
   }
 }
 
-/// Error boundary widget
+/// Error boundary widget — intercepts Flutter framework errors in the
+/// subtree and shows a fallback UI instead of a red error screen.
+///
+/// Usage:
+/// ```dart
+/// ErrorBoundary(
+///   child: MyScreen(),
+///   errorBuilder: (details) => Text('Oops: ${details.exception}'),
+/// )
+/// ```
 class ErrorBoundary extends StatefulWidget {
   final Widget child;
   final Widget Function(FlutterErrorDetails)? errorBuilder;
@@ -437,9 +461,34 @@ class ErrorBoundary extends StatefulWidget {
 class _ErrorBoundaryState extends State<ErrorBoundary> {
   FlutterErrorDetails? _error;
 
+  /// Previous FlutterError.onError handler (restored on dispose)
+  FlutterExceptionHandler? _previousHandler;
+
   @override
   void initState() {
     super.initState();
+    // Intercept Flutter errors so we can capture build errors
+    // from this subtree. The original handler is still called so
+    // Crashlytics + ErrorLoggingService logging continues.
+    _previousHandler = FlutterError.onError;
+    FlutterError.onError = _handleFlutterError;
+  }
+
+  @override
+  void dispose() {
+    // Restore original handler
+    FlutterError.onError = _previousHandler;
+    super.dispose();
+  }
+
+  void _handleFlutterError(FlutterErrorDetails details) {
+    // Forward to the original handler first (logging + Crashlytics)
+    _previousHandler?.call(details);
+
+    // Then show fallback UI
+    if (mounted) {
+      setState(() => _error = details);
+    }
   }
 
   @override

@@ -22,7 +22,9 @@ import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/windows_update_service.dart';
+import 'package:retaillite/core/services/write_retry_queue.dart';
 import 'package:retaillite/core/config/remote_config_state.dart';
+import 'package:retaillite/core/services/error_logging_service.dart';
 import 'package:retaillite/core/utils/error_handler.dart';
 import 'package:retaillite/core/widgets/force_update_screen.dart';
 import 'package:retaillite/core/widgets/maintenance_screen.dart';
@@ -37,6 +39,9 @@ import 'package:package_info_plus/package_info_plus.dart';
 String appVersion = '1.0.0'; // overwritten at startup
 int appBuildNumber = 0; // overwritten at startup
 
+/// Whether Firebase has finished initializing.
+bool _firebaseReady = false;
+
 void main() {
   // CRITICAL: Initialize binding FIRST, before anything else
   WidgetsFlutterBinding.ensureInitialized();
@@ -47,8 +52,18 @@ void main() {
   // Show splash screen immediately while initializing
   runApp(const SplashScreen(message: 'Starting...'));
 
-  // Initialize app in background
-  _initializeApp();
+  // Wrap in runZonedGuarded to catch ALL async errors,
+  // including those thrown before Firebase is ready.
+  runZonedGuarded(() => _initializeApp(), (error, stack) {
+    debugPrint('🔴 runZonedGuarded caught: $error');
+    if (_firebaseReady) {
+      // Firebase is up — use normal error pipeline
+      ErrorHandler.report(error, stack);
+    } else {
+      // Firebase NOT ready — save locally for next startup
+      ErrorLoggingService.savePreFirebaseCrash(error, stack);
+    }
+  });
 }
 
 /// Initialize all services and launch main app
@@ -67,70 +82,72 @@ Future<void> _initializeApp() async {
     // Register FCM background handler (must be top-level function)
     if (!isWindows) {
       FirebaseMessaging.onBackgroundMessage(firebaseMessagingBackgroundHandler);
-      await NotificationService.setForegroundOptions();
     }
 
-    // Initialize Firebase App Check — protects all Firebase services
-    // Skip on web (if no reCAPTCHA key) and Windows (not supported)
-    if (!isWindows && (!kIsWeb || AppCheckConfig.isWebConfigured)) {
-      try {
-        await FirebaseAppCheck.instance.activate(
-          providerAndroid: kDebugMode
-              ? const AndroidDebugProvider()
-              : const AndroidPlayIntegrityProvider(),
-          providerWeb: AppCheckConfig.isWebConfigured
-              ? ReCaptchaEnterpriseProvider(AppCheckConfig.recaptchaSiteKey)
-              : null,
-        );
-      } catch (e) {
-        debugPrint('⚠️ Firebase App Check activation failed: $e');
-        // Non-fatal: app can still work without App Check in debug mode
-      }
-    } else if (isWindows) {
-      debugPrint('ℹ️ Skipping App Check on Windows (not supported)');
-    } else {
-      debugPrint('ℹ️ Skipping App Check on web (no reCAPTCHA key configured)');
-    }
+    // ── Parallel Firebase init batch ──
+    // These are all independent after Firebase.initializeApp() completes.
+    // Running in parallel shaves ~500-800ms off cold start.
+    await Future.wait([
+      // FCM foreground options
+      if (!isWindows)
+        _safeInit('FCM', NotificationService.setForegroundOptions),
 
-    // On Windows desktop, try to disable app verification for Firebase Auth
-    // (reCAPTCHA can't be displayed in desktop apps)
-    // Note: setSettings may not be supported on all Windows versions
-    if (isWindows) {
-      try {
-        await FirebaseAuth.instance.setSettings(
-          appVerificationDisabledForTesting: true,
-        );
-        debugPrint('ℹ️ Firebase Auth: App verification disabled for Windows');
-      } catch (e) {
-        debugPrint(
-          'ℹ️ Firebase Auth: setSettings not supported on Windows ($e)',
-        );
-        // Non-fatal: email/password auth may still work without this
-      }
-    }
+      // App Check
+      _safeInit('AppCheck', () async {
+        if (!isWindows && (!kIsWeb || AppCheckConfig.isWebConfigured)) {
+          await FirebaseAppCheck.instance.activate(
+            providerAndroid: kDebugMode
+                ? const AndroidDebugProvider()
+                : const AndroidPlayIntegrityProvider(),
+            providerWeb: AppCheckConfig.isWebConfigured
+                ? ReCaptchaEnterpriseProvider(AppCheckConfig.recaptchaSiteKey)
+                : null,
+          );
+        }
+      }),
 
-    // Initialize Crashlytics collection (not supported on web or Windows)
-    // Note: FlutterError.onError is set by ErrorHandler.initialize() below
-    // which handles both Crashlytics + Firestore logging with full context
-    if (!kIsWeb && !isWindows) {
-      await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(true);
-    }
+      // Windows debug auth settings
+      _safeInit('AuthSettings', () async {
+        if (isWindows && kDebugMode) {
+          await FirebaseAuth.instance.setSettings(
+            appVerificationDisabledForTesting: true,
+          );
+        }
+      }),
 
-    // Initialize global error handling
+      // Crashlytics
+      _safeInit('Crashlytics', () async {
+        if (!kIsWeb && !isWindows) {
+          await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(
+            true,
+          );
+        }
+      }),
+
+      // Analytics
+      _safeInit('Analytics', AnalyticsService.initialize),
+
+      // Package info (no Firebase dependency)
+      _safeInit('PackageInfo', () async {
+        final packageInfo = await PackageInfo.fromPlatform();
+        appVersion = packageInfo.version;
+        appBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
+        RemoteConfigState.appVersion = appVersion;
+        debugPrint('📱 App version: v$appVersion+$appBuildNumber');
+      }),
+    ]);
+
+    // Firebase is now ready
+    _firebaseReady = true;
+
+    // Initialize global error handling (after Crashlytics is ready)
     ErrorHandler.initialize();
 
-    // Initialize analytics + performance monitoring
-    await AnalyticsService.initialize();
+    // Flush any crashes captured before Firebase was available
+    unawaited(ErrorLoggingService.flushPreFirebaseCrashes());
 
-    // Read version from pubspec.yaml (single source of truth)
-    try {
-      final packageInfo = await PackageInfo.fromPlatform();
-      appVersion = packageInfo.version;
-      appBuildNumber = int.tryParse(packageInfo.buildNumber) ?? 0;
-      debugPrint('📱 App version: v$appVersion+$appBuildNumber');
-    } catch (e) {
-      debugPrint('⚠️ Could not read package info: $e');
-    }
+    // Detect if previous session crashed (heartbeat check)
+    unawaited(ErrorLoggingService.markAppStarted());
 
     // Initialize Remote Config with defaults
     String merchantUpiId = '';
@@ -171,9 +188,16 @@ Future<void> _initializeApp() async {
         'latest_version',
       );
       RemoteConfigState.announcement = remoteConfig.getString('announcement');
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('⚠️ Remote Config initialization failed: $e');
-      // Non-fatal: app can work without Remote Config
+      unawaited(
+        ErrorLoggingService.logError(
+          error: e,
+          stackTrace: st,
+          severity: ErrorSeverity.warning,
+          metadata: {'context': 'Remote Config init'},
+        ),
+      );
     }
 
     if (merchantUpiId.isNotEmpty) {
@@ -218,6 +242,7 @@ Future<void> _initializeApp() async {
       _safeInit('AppHealth', AppHealthService.initialize),
       _safeInit('WindowsNotification', WindowsNotificationService.init),
       _safeInit('UserMetrics', UserMetricsService.initialize),
+      _safeInit('WriteRetryQueue', WriteRetryQueue.initialize),
     ]);
 
     // Launch the main app
@@ -269,8 +294,16 @@ Future<void> _initializeApp() async {
 Future<void> _safeInit(String name, Future<void> Function() init) async {
   try {
     await init();
-  } catch (e) {
+  } catch (e, st) {
     debugPrint('⚠️ $name init failed (non-fatal): $e');
+    unawaited(
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': '$name init'},
+      ),
+    );
   }
 }
 
@@ -280,8 +313,15 @@ Future<void> _runAutoCleanupIfDue() async {
   try {
     if (!DataRetentionService.isCleanupDue()) return;
 
-    // Use default 90-day retention (settings not available outside provider scope)
-    final service = DataRetentionService(RetentionPeriod.days90);
+    // Read user's retention setting (stored locally by settings provider)
+    final retDays =
+        OfflineStorageService.getSetting<int>(
+          SettingsKeys.retentionDays,
+          defaultValue: 90,
+        ) ??
+        90;
+    final period = RetentionPeriod.fromDays(retDays);
+    final service = DataRetentionService(period);
     final result = await service.cleanupExpiredData();
     if (result.totalDeleted > 0) {
       debugPrint(
@@ -289,8 +329,16 @@ Future<void> _runAutoCleanupIfDue() async {
         '${result.expensesDeleted} expenses deleted',
       );
     }
-  } catch (e) {
+  } catch (e, st) {
     debugPrint('⚠️ Auto-cleanup failed (non-fatal): $e');
+    unawaited(
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'Auto-cleanup'},
+      ),
+    );
   }
 }
 

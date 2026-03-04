@@ -1,6 +1,8 @@
 /// App routing configuration using go_router (local mode)
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -35,6 +37,7 @@ import 'package:retaillite/features/super_admin/screens/super_admin_login_screen
 import 'package:retaillite/features/super_admin/screens/notifications_admin_screen.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 import 'package:retaillite/features/notifications/screens/notifications_screen.dart';
+import 'package:retaillite/features/subscription/screens/subscription_screen.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/error_logging_service.dart';
 import 'package:retaillite/core/widgets/splash_screen.dart';
@@ -58,6 +61,7 @@ class AppRoutes {
   static const String settings = '/settings';
   static const String settingsTab = '/settings/:tab';
   static const String themeSettings = '/settings/theme';
+  static const String subscription = '/subscription';
 
   // Super Admin routes
   static const String superAdminLogin = '/super-admin/login';
@@ -89,6 +93,17 @@ class _AuthChangeNotifier extends ChangeNotifier {
 
 /// Key for persisting the last route in SharedPreferences
 const String _lastRouteKey = 'last_route';
+
+/// Debounce timer for route persistence (avoids excessive SharedPrefs writes)
+Timer? _routePersistTimer;
+
+/// Debounced route persistence — writes to SharedPrefs after 1s idle
+void _persistRoute(String fullUri) {
+  _routePersistTimer?.cancel();
+  _routePersistTimer = Timer(const Duration(seconds: 1), () {
+    OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
+  });
+}
 
 /// Read the last saved route from SharedPreferences (sync, prefs already init'd)
 String _getRestoredInitialLocation() {
@@ -185,7 +200,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             return '/super-admin';
           }
           // Persist super-admin route for refresh restoration
-          OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
+          _persistRoute(fullUri);
           return null; // Authorized — allow
         }
         return AppRoutes.billing; // Not authorized — send to store
@@ -209,7 +224,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       // ── Persist current route for restoration after web refresh ──
       // Save all app routes (but not auth/login pages)
       if (isLoggedIn && !isAuthRoute) {
-        OfflineStorageService.prefs?.setString(_lastRouteKey, fullUri);
+        _persistRoute(fullUri);
       }
 
       return null;
@@ -312,6 +327,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: AppRoutes.themeSettings,
         builder: (context, state) => const ThemeSettingsScreen(),
+      ),
+
+      // Subscription / upgrade screen
+      GoRoute(
+        path: AppRoutes.subscription,
+        builder: (context, state) => const SubscriptionScreen(),
       ),
 
       // User notifications inbox (outside main shell)

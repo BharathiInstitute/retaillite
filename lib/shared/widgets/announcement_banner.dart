@@ -9,6 +9,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/config/remote_config_state.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
 
 class AnnouncementBanner extends StatefulWidget {
   final Widget child;
@@ -21,6 +22,50 @@ class AnnouncementBanner extends StatefulWidget {
 class _AnnouncementBannerState extends State<AnnouncementBanner> {
   bool _announcementDismissed = false;
   bool _updateDismissed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadDismissState();
+  }
+
+  void _loadDismissState() {
+    final prefs = OfflineStorageService.prefs;
+    if (prefs == null) return;
+
+    // Check if current announcement was already dismissed
+    final dismissedHash = prefs.getString('dismissed_announcement_hash');
+    final currentHash = RemoteConfigState.announcement.hashCode.toString();
+    if (dismissedHash == currentHash &&
+        RemoteConfigState.announcement.isNotEmpty) {
+      _announcementDismissed = true;
+    }
+
+    // Check if update was dismissed (with 24h TTL)
+    final dismissedAt = prefs.getInt('dismissed_update_at');
+    if (dismissedAt != null) {
+      final elapsed = DateTime.now().millisecondsSinceEpoch - dismissedAt;
+      if (elapsed < const Duration(hours: 24).inMilliseconds) {
+        _updateDismissed = true;
+      }
+    }
+  }
+
+  void _dismissAnnouncement() {
+    setState(() => _announcementDismissed = true);
+    OfflineStorageService.prefs?.setString(
+      'dismissed_announcement_hash',
+      RemoteConfigState.announcement.hashCode.toString(),
+    );
+  }
+
+  void _dismissUpdate() {
+    setState(() => _updateDismissed = true);
+    OfflineStorageService.prefs?.setInt(
+      'dismissed_update_at',
+      DateTime.now().millisecondsSinceEpoch,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -47,7 +92,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
             ),
             actions: [
               TextButton(
-                onPressed: () => setState(() => _announcementDismissed = true),
+                onPressed: _dismissAnnouncement,
                 child: const Text('OK', style: TextStyle(color: Colors.white)),
               ),
             ],
@@ -65,7 +110,7 @@ class _AnnouncementBannerState extends State<AnnouncementBanner> {
             ),
             actions: [
               TextButton(
-                onPressed: () => setState(() => _updateDismissed = true),
+                onPressed: _dismissUpdate,
                 child: const Text(
                   'LATER',
                   style: TextStyle(color: Colors.white70),

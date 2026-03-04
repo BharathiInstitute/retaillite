@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/features/notifications/providers/notification_provider.dart';
 import 'package:retaillite/features/notifications/widgets/notification_bell.dart';
 import 'package:retaillite/shared/widgets/global_sync_indicator.dart';
@@ -106,7 +107,9 @@ class _WebSidebar extends ConsumerWidget {
         radius: radius,
         backgroundImage: NetworkImage(logoPath),
         backgroundColor: isSelected ? AppColors.primary : Colors.grey,
-        onBackgroundImageError: (_, _) {},
+        onBackgroundImageError: (e, _) {
+          debugPrint('⚠️ Shell avatar image error: $e');
+        },
       );
     }
 
@@ -147,7 +150,7 @@ class _WebSidebar extends ConsumerWidget {
                       const SizedBox(width: 12),
                       Flexible(
                         child: Text(
-                          user?.shopName ?? 'Tulasi Stores',
+                          user?.shopName ?? AppConstants.defaultShopName,
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -440,7 +443,7 @@ class _WebSidebar extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.only(bottom: 14),
               child: Text(
-                'Powered by Tulasi Stores',
+                'Powered by ${AppConstants.appName}',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,

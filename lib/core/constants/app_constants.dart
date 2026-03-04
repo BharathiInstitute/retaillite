@@ -1,23 +1,33 @@
-/// App-wide constants for Tulasi Stores retail billing app
+/// App-wide constants for RetailLite retail billing app
 library;
 
 class AppConstants {
   AppConstants._();
 
   // App Info
-  static const String appName = 'Tulasi Stores';
+  static const String appName = 'RetailLite';
+  static const String defaultShopName = 'My Shop';
   static const String appTagline = 'भारत का सबसे आसान बिलिंग ऐप';
   static const String version = '1.0.0';
 
-  // FREE Tier Limits
-  static const int freeMaxProducts = 20;
-  static const int freeMaxBillsPerDay = 5;
-  static const int freeMaxCustomers = 10;
+  // ── FREE Tier Limits (enforced via UserSubscription.billsLimit / productsLimit) ──
+  static const int freeMaxBillsPerMonth = 50; // 50 bills / month
+  static const int freeMaxProducts = 100; // 100 products
+  static const int freeMaxCustomers = 10; // 10 customers
 
-  // PAID Tier Limits
-  static const int paidMaxProducts = 500;
-  static const int paidMaxCustomers = 1000;
-  static const int paidPriceInr = 100;
+  // ── PRO Tier Limits ──
+  static const int proMaxBillsPerMonth = 500;
+  static const int proMaxProducts = 999999; // unlimited
+  static const int proMaxCustomers = 999999; // unlimited
+  static const int proPriceInrMonthly = 299;
+  static const int proPriceInrAnnual = 2390; // ~20% off
+
+  // ── BUSINESS Tier Limits ──
+  static const int businessMaxBillsPerMonth = 999999; // unlimited
+  static const int businessMaxProducts = 999999; // unlimited
+  static const int businessMaxCustomers = 999999; // unlimited
+  static const int businessPriceInrMonthly = 999;
+  static const int businessPriceInrAnnual = 7990; // ~20% off
 
   // OTP Settings
   static const int otpLength = 4;
@@ -39,10 +49,10 @@ class AppConstants {
   static const Duration animSlow = Duration(milliseconds: 500);
 
   // Firestore Query Limits
-  static const int queryLimitBills = 500;
-  static const int queryLimitExpenses = 500;
-  static const int queryLimitProducts = 500;
-  static const int queryLimitCustomers = 500;
+  static const int queryLimitBills = 100;
+  static const int queryLimitExpenses = 100;
+  static const int queryLimitProducts = 100;
+  static const int queryLimitCustomers = 100;
   static const int queryLimitTransactions = 100;
   static const int queryLimitNotifications = 50;
   static const int queryLimitAdminAnalytics = 200;

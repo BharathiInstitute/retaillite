@@ -72,71 +72,72 @@ class AdminFirestoreService {
     }
   }
 
-  /// Get admin dashboard statistics
+  /// Get admin dashboard statistics — reads from aggregation counter doc
+  /// (`app_config/stats`) kept up to date by the `onSubscriptionWrite` CF.
+  /// Falls back to count() aggregation queries for activity metrics.
   static Future<AdminStats> getAdminStats() async {
     try {
-      final usersSnapshot = await _firestore.collection('users').get();
-      final users = usersSnapshot.docs
-          .map((d) => AdminUser.fromFirestore(d))
-          .toList();
-
       final now = DateTime.now();
-      final today = DateTime(now.year, now.month, now.day);
-      final weekAgo = now.subtract(const Duration(days: 7));
-      final monthAgo = now.subtract(const Duration(days: 30));
+      final todayStart = Timestamp.fromDate(
+        DateTime(now.year, now.month, now.day),
+      );
+      final weekAgo = Timestamp.fromDate(now.subtract(const Duration(days: 7)));
+      final monthAgo = Timestamp.fromDate(
+        now.subtract(const Duration(days: 30)),
+      );
 
-      int activeToday = 0;
-      int activeThisWeek = 0;
-      int activeThisMonth = 0;
-      int newUsersToday = 0;
-      int newUsersThisWeek = 0;
-      int freeUsers = 0;
-      int proUsers = 0;
-      int businessUsers = 0;
-      double mrr = 0;
+      // ONE document read for plan/user counts (maintained by CF onSubscriptionWrite)
+      final statsDocFuture = _firestore
+          .collection('app_config')
+          .doc('stats')
+          .get();
 
-      for (final user in users) {
-        // Count active users
-        if (user.activity.isActiveToday) activeToday++;
-        if (user.activity.isActiveThisWeek) activeThisWeek++;
-        if (user.activity.lastActiveAt != null &&
-            user.activity.lastActiveAt!.isAfter(monthAgo)) {
-          activeThisMonth++;
-        }
+      // 5 count() aggregation queries — each costs 1 read, no doc data returned
+      final countFutures = Future.wait([
+        _firestore
+            .collection('users')
+            .where('activity.lastActiveAt', isGreaterThanOrEqualTo: todayStart)
+            .count()
+            .get(),
+        _firestore
+            .collection('users')
+            .where('activity.lastActiveAt', isGreaterThanOrEqualTo: weekAgo)
+            .count()
+            .get(),
+        _firestore
+            .collection('users')
+            .where('activity.lastActiveAt', isGreaterThanOrEqualTo: monthAgo)
+            .count()
+            .get(),
+        _firestore
+            .collection('users')
+            .where('createdAt', isGreaterThanOrEqualTo: todayStart)
+            .count()
+            .get(),
+        _firestore
+            .collection('users')
+            .where('createdAt', isGreaterThanOrEqualTo: weekAgo)
+            .count()
+            .get(),
+      ]);
 
-        // Count new users
-        if (user.createdAt != null) {
-          if (user.createdAt!.isAfter(today)) newUsersToday++;
-          if (user.createdAt!.isAfter(weekAgo)) newUsersThisWeek++;
-        }
+      final results = await Future.wait([statsDocFuture, countFutures]);
+      final statsDoc = results[0] as DocumentSnapshot;
+      final counts = results[1] as List<AggregateQuerySnapshot>;
 
-        // Count by plan
-        switch (user.subscription.plan) {
-          case SubscriptionPlan.free:
-            freeUsers++;
-            break;
-          case SubscriptionPlan.pro:
-            proUsers++;
-            mrr += 299;
-            break;
-          case SubscriptionPlan.business:
-            businessUsers++;
-            mrr += 999;
-            break;
-        }
-      }
+      final sd = statsDoc.data() as Map<String, dynamic>? ?? {};
 
       return AdminStats(
-        totalUsers: users.length,
-        activeToday: activeToday,
-        activeThisWeek: activeThisWeek,
-        activeThisMonth: activeThisMonth,
-        newUsersToday: newUsersToday,
-        newUsersThisWeek: newUsersThisWeek,
-        mrr: mrr,
-        freeUsers: freeUsers,
-        proUsers: proUsers,
-        businessUsers: businessUsers,
+        totalUsers: (sd['totalUsers'] as int?) ?? 0,
+        freeUsers: (sd['freeUsers'] as int?) ?? 0,
+        proUsers: (sd['proUsers'] as int?) ?? 0,
+        businessUsers: (sd['businessUsers'] as int?) ?? 0,
+        mrr: ((sd['mrr'] as num?) ?? 0).toDouble(),
+        activeToday: counts[0].count ?? 0,
+        activeThisWeek: counts[1].count ?? 0,
+        activeThisMonth: counts[2].count ?? 0,
+        newUsersToday: counts[3].count ?? 0,
+        newUsersThisWeek: counts[4].count ?? 0,
       );
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to get stats: $e');
@@ -189,16 +190,34 @@ class AdminFirestoreService {
     }
   }
 
-  /// Update user subscription (admin action)
+  /// Update user subscription (admin action) with audit trail (SA8)
   static Future<bool> updateUserSubscription(
     String userId,
     UserSubscription subscription,
   ) async {
     try {
+      final userDoc = await _firestore.collection('users').doc(userId).get();
+      final oldSub = userDoc.data()?['subscription'] as Map<String, dynamic>?;
+
       await _firestore.collection('users').doc(userId).update({
         'subscription': subscription.toMap(),
         'limits.billsLimit': subscription.billsLimit,
       });
+
+      // Write audit log
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('subscription_audit')
+          .add({
+            'oldPlan': oldSub?['plan'] ?? 'unknown',
+            'newPlan': subscription.plan,
+            'oldBillsLimit': oldSub?['billsLimit'],
+            'newBillsLimit': subscription.billsLimit,
+            'changedAt': FieldValue.serverTimestamp(),
+            'changedBy': 'admin',
+          });
+
       return true;
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to update subscription: $e');
@@ -250,6 +269,7 @@ class AdminFirestoreService {
             isLessThan: Timestamp.fromDate(futureDate),
           )
           .where('subscription.status', isEqualTo: 'active')
+          .limit(100)
           .get();
 
       return snapshot.docs.map((d) => AdminUser.fromFirestore(d)).toList();
@@ -259,49 +279,41 @@ class AdminFirestoreService {
     }
   }
 
-  /// Get platform distribution stats (aggregated from all users)
+  /// Get platform distribution stats from pre-aggregated stats doc.
+  /// D1-1: Replaces full-collection scan with single doc read.
   static Future<Map<String, int>> getPlatformStats() async {
     try {
-      final snapshot = await _firestore.collection('users').get();
-      final platformCounts = <String, int>{
-        'android': 0,
-        'ios': 0,
-        'web': 0,
-        'windows': 0,
-        'macos': 0,
-        'linux': 0,
-        'unknown': 0,
-      };
+      final statsDoc = await _firestore
+          .collection('app_config')
+          .doc('stats')
+          .get();
+      final data = statsDoc.data();
+      if (data == null) return {'unknown': 0};
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final activity = data['activity'] as Map<String, dynamic>?;
-        final platform =
-            (activity?['platform'] as String?)?.toLowerCase() ?? 'unknown';
-
-        if (platformCounts.containsKey(platform)) {
-          platformCounts[platform] = platformCounts[platform]! + 1;
-        } else {
-          platformCounts['unknown'] = platformCounts['unknown']! + 1;
-        }
+      final platformCounts = <String, int>{};
+      final raw = data['platformCounts'] as Map<String, dynamic>? ?? {};
+      for (final entry in raw.entries) {
+        final count = (entry.value as num?)?.toInt() ?? 0;
+        if (count > 0) platformCounts[entry.key] = count;
       }
 
-      // Remove platforms with 0 count
-      platformCounts.removeWhere((key, value) => value == 0);
-
-      return platformCounts;
+      return platformCounts.isEmpty ? {'unknown': 0} : platformCounts;
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to get platform stats: $e');
       return {'unknown': 0};
     }
   }
 
-  /// Get feature usage stats (based on user activity patterns)
+  /// Get feature usage stats from pre-aggregated stats doc.
+  /// D1-1: Replaces full-collection scan with single doc read.
   static Future<Map<String, double>> getFeatureUsageStats() async {
     try {
-      final snapshot = await _firestore.collection('users').get();
-      final totalUsers = snapshot.docs.length;
-      if (totalUsers == 0) {
+      final statsDoc = await _firestore
+          .collection('app_config')
+          .doc('stats')
+          .get();
+      final data = statsDoc.data();
+      if (data == null) {
         return {
           'billing': 0,
           'products': 0,
@@ -311,28 +323,19 @@ class AdminFirestoreService {
         };
       }
 
-      int usersWithBills = 0;
-      int usersWithProducts = 0;
-      int usersWithCustomers = 0;
+      final totalUsers = (data['totalUsers'] as num?)?.toDouble() ?? 1;
+      final usage = data['featureUsageCounts'] as Map<String, dynamic>? ?? {};
 
-      for (final doc in snapshot.docs) {
-        final data = doc.data();
-        final limits = data['limits'] as Map<String, dynamic>?;
+      final billingUsers = (usage['billing'] as num?)?.toDouble() ?? 0;
+      final productUsers = (usage['products'] as num?)?.toDouble() ?? 0;
+      final khataUsers = (usage['khata'] as num?)?.toDouble() ?? 0;
 
-        if ((limits?['billsThisMonth'] as int? ?? 0) > 0) usersWithBills++;
-        if ((limits?['productsCount'] as int? ?? 0) > 0) usersWithProducts++;
-        if ((limits?['customersCount'] as int? ?? 0) > 0) usersWithCustomers++;
-      }
-
-      // Calculate percentages
       return {
-        'billing': usersWithBills / totalUsers,
-        'products': usersWithProducts / totalUsers,
-        'khata': usersWithCustomers / totalUsers,
-        // NOTE: reports & settings don't have real usage tracking yet.
-        // These are estimates shown with '~' prefix in the analytics UI.
-        'reports': usersWithBills * 0.5 / totalUsers, // ~50% of billing users
-        'settings': 0.3, // ~30% estimated
+        'billing': totalUsers > 0 ? billingUsers / totalUsers : 0,
+        'products': totalUsers > 0 ? productUsers / totalUsers : 0,
+        'khata': totalUsers > 0 ? khataUsers / totalUsers : 0,
+        'reports': totalUsers > 0 ? (billingUsers * 0.5) / totalUsers : 0,
+        'settings': 0.3,
       };
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to get feature usage stats: $e');

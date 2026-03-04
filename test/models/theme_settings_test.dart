@@ -96,7 +96,7 @@ void main() {
       expect(settings.fontFamily, 'Inter');
       expect(settings.fontSizeScale, 1.0);
       expect(settings.useDarkMode, false);
-      expect(settings.useSystemTheme, true); // fromJson default differs
+      expect(settings.useSystemTheme, false); // Matches constructor default
     });
 
     test('should round-trip through JSON correctly', () {

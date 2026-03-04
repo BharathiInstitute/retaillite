@@ -45,8 +45,8 @@ void main() {
     test('data extracts values from items', () {
       const list = SyncedList<String>(
         items: [
-          const SyncedItem(data: 'a', hasPendingWrites: false),
-          const SyncedItem(data: 'b', hasPendingWrites: true),
+          SyncedItem(data: 'a', hasPendingWrites: false),
+          SyncedItem(data: 'b', hasPendingWrites: true),
         ],
         snapshotHasPendingWrites: true,
       );
@@ -56,9 +56,9 @@ void main() {
     test('unsyncedCount counts pending items', () {
       const list = SyncedList<String>(
         items: [
-          const SyncedItem(data: 'a', hasPendingWrites: false),
-          const SyncedItem(data: 'b', hasPendingWrites: true),
-          const SyncedItem(data: 'c', hasPendingWrites: true),
+          SyncedItem(data: 'a', hasPendingWrites: false),
+          SyncedItem(data: 'b', hasPendingWrites: true),
+          SyncedItem(data: 'c', hasPendingWrites: true),
         ],
         snapshotHasPendingWrites: true,
       );
@@ -67,7 +67,7 @@ void main() {
 
     test('allSynced when no pending writes', () {
       const list = SyncedList<String>(
-        items: [const SyncedItem(data: 'a', hasPendingWrites: false)],
+        items: [SyncedItem(data: 'a', hasPendingWrites: false)],
         snapshotHasPendingWrites: false,
       );
       expect(list.allSynced, isTrue);
@@ -75,7 +75,7 @@ void main() {
 
     test('not allSynced when snapshot has pending writes', () {
       const list = SyncedList<String>(
-        items: [const SyncedItem(data: 'a', hasPendingWrites: false)],
+        items: [SyncedItem(data: 'a', hasPendingWrites: false)],
         snapshotHasPendingWrites: true,
       );
       expect(list.allSynced, isFalse);

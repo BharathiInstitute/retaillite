@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:retaillite/core/services/error_logging_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Subscription plans
@@ -117,6 +118,7 @@ class UserLimits {
   final int productsCount;
   final int productsLimit;
   final int customersCount;
+  final int customersLimit;
 
   UserLimits({
     this.billsThisMonth = 0,
@@ -124,6 +126,7 @@ class UserLimits {
     this.productsCount = 0,
     this.productsLimit = 100,
     this.customersCount = 0,
+    this.customersLimit = 10,
   });
 
   Map<String, dynamic> toMap() => {
@@ -132,6 +135,7 @@ class UserLimits {
     'productsCount': productsCount,
     'productsLimit': productsLimit,
     'customersCount': customersCount,
+    'customersLimit': customersLimit,
   };
 
   factory UserLimits.fromMap(Map<String, dynamic>? map) {
@@ -142,12 +146,16 @@ class UserLimits {
       productsCount: (map['productsCount'] as int?) ?? 0,
       productsLimit: (map['productsLimit'] as int?) ?? 100,
       customersCount: (map['customersCount'] as int?) ?? 0,
+      customersLimit: (map['customersLimit'] as int?) ?? 10,
     );
   }
 
   bool get canCreateBill => billsThisMonth < billsLimit;
   bool get canAddProduct => productsCount < productsLimit;
+  bool get canAddCustomer => customersCount < customersLimit;
   int get billsRemaining => billsLimit - billsThisMonth;
+  int get productsRemaining => productsLimit - productsCount;
+  int get customersRemaining => customersLimit - customersCount;
 }
 
 /// Service for tracking user metrics and syncing to Firestore
@@ -161,7 +169,6 @@ class UserMetricsService {
 
   // Local cache keys
   static const String _billsThisMonthKey = 'bills_this_month';
-  static const String _lastResetMonthKey = 'last_reset_month';
   static const String _userIdKey = 'user_id';
 
   /// Initialize
@@ -171,8 +178,45 @@ class UserMetricsService {
     try {
       final info = await PackageInfo.fromPlatform();
       _appVersion = '${info.version}+${info.buildNumber}';
-    } catch (_) {
-      // Fallback stays at '1.0.0'
+    } catch (e) {
+      debugPrint('⚠️ PackageInfo unavailable: $e');
+    }
+    // Enforce subscription expiry on every app launch (fire and forget)
+    _checkAndEnforceSubscription().ignore();
+  }
+
+  /// Checks if current subscription has expired and downgrades to free if so.
+  /// Safe to call on every launch — reads one document from Firestore.
+  static Future<void> _checkAndEnforceSubscription() async {
+    final userId = _getUserId();
+    if (userId == null) return;
+    try {
+      final snap = await _firestore.collection('users').doc(userId).get();
+      if (!snap.exists) return;
+      final sub = UserSubscription.fromMap(
+        snap.data()?['subscription'] as Map<String, dynamic>?,
+      );
+      // Only enforce for paid plans that have an expiry date
+      if (sub.plan == SubscriptionPlan.free) return;
+      if (sub.expiresAt == null) return;
+      if (!DateTime.now().isAfter(sub.expiresAt!)) return;
+
+      // Subscription expired — downgrade to free limits
+      await _firestore.collection('users').doc(userId).update({
+        'subscription.status': SubscriptionStatus.expired.name,
+        'subscription.plan': SubscriptionPlan.free.name,
+        'limits.billsLimit': UserSubscription().billsLimit, // 50
+        'limits.productsLimit': UserSubscription().productsLimit, // 100
+        'limits.customersLimit': 10, // Free tier: 10 customers
+      });
+      debugPrint('⚠️ UserMetrics: Subscription expired — downgraded to free');
+    } catch (e, st) {
+      debugPrint('❌ UserMetrics: Subscription expiry check failed: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        metadata: {'context': 'Subscription expiry enforcement'},
+      ).ignore();
     }
   }
 
@@ -218,44 +262,73 @@ class UserMetricsService {
       }, SetOptions(merge: true));
 
       debugPrint('📊 UserMetrics: Activity tracked');
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to track activity: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'trackActivity'},
+      ).ignore();
     }
   }
 
-  /// Track bill creation (increments monthly counter)
+  /// Track bill creation — uses a Firestore transaction as the single source
+  /// of truth (prevents limit bypass via app reinstall / cache clear).
   static Future<bool> trackBillCreated() async {
     final userId = _getUserId();
     if (userId == null) return true; // Allow if not logged in
 
-    // Check and reset monthly counter
-    await _checkMonthlyReset();
-
-    // Get current limit
-    final limits = await getUserLimits();
-    if (!limits.canCreateBill) {
-      debugPrint('⚠️ UserMetrics: Bill limit reached');
-      return false;
-    }
-
     try {
-      // Update Firestore
-      await _firestore.collection('users').doc(userId).set({
-        'limits': {'billsThisMonth': FieldValue.increment(1)},
-        'activity': {'lastActiveAt': FieldValue.serverTimestamp()},
-      }, SetOptions(merge: true));
+      final userRef = _firestore.collection('users').doc(userId);
+      bool allowed = false;
+      int newCount = 0;
+      int limit = 50;
 
-      // Update local cache
-      final current = _prefs?.getInt(_billsThisMonthKey) ?? 0;
-      await _prefs?.setInt(_billsThisMonthKey, current + 1);
+      await _firestore.runTransaction((txn) async {
+        final snap = await txn.get(userRef);
+        final data = snap.data() ?? {};
+        final limitsMap = data['limits'] as Map<String, dynamic>? ?? {};
+        final now = DateTime.now();
+        final currentMonth =
+            '${now.year}-${now.month.toString().padLeft(2, '0')}';
 
-      debugPrint(
-        '📊 UserMetrics: Bill tracked (${current + 1}/${limits.billsLimit})',
-      );
-      return true;
-    } catch (e) {
+        // Detect new month via Firestore field (not SharedPreferences)
+        final lastResetMonth = (limitsMap['lastResetMonth'] as String?) ?? '';
+        final isNewMonth = lastResetMonth != currentMonth;
+        final billsThisMonth = isNewMonth
+            ? 0
+            : ((limitsMap['billsThisMonth'] as int?) ?? 0);
+        limit = (limitsMap['billsLimit'] as int?) ?? 50;
+
+        allowed = billsThisMonth < limit;
+        if (allowed) {
+          newCount = billsThisMonth + 1;
+          txn.update(userRef, {
+            'limits.billsThisMonth': newCount,
+            'limits.lastResetMonth': currentMonth,
+            'activity.lastActiveAt': FieldValue.serverTimestamp(),
+          });
+        }
+      });
+
+      if (allowed) {
+        // Mirror to SharedPreferences only as a non-authoritative UI cache
+        await _prefs?.setInt(_billsThisMonthKey, newCount);
+        debugPrint('📊 UserMetrics: Bill tracked ($newCount/$limit)');
+      } else {
+        debugPrint('⚠️ UserMetrics: Bill limit reached ($limit/$limit)');
+      }
+      return allowed;
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to track bill: $e');
-      return true; // Don't block on error
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'trackBillCreated'},
+      ).ignore();
+      return true; // Don't block billing on transient Firestore errors
     }
   }
 
@@ -269,8 +342,14 @@ class UserMetricsService {
         'limits': {'productsCount': FieldValue.increment(1)},
       }, SetOptions(merge: true));
       debugPrint('📊 UserMetrics: Product tracked');
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to track product: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'trackProductAdded'},
+      ).ignore();
     }
   }
 
@@ -283,8 +362,14 @@ class UserMetricsService {
       await _firestore.collection('users').doc(userId).set({
         'limits': {'productsCount': FieldValue.increment(-1)},
       }, SetOptions(merge: true));
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to track product deletion: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'trackProductDeleted'},
+      ).ignore();
     }
   }
 
@@ -297,8 +382,14 @@ class UserMetricsService {
       await _firestore.collection('users').doc(userId).set({
         'limits': {'customersCount': FieldValue.increment(1)},
       }, SetOptions(merge: true));
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to track customer: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'trackCustomerAdded'},
+      ).ignore();
     }
   }
 
@@ -313,8 +404,14 @@ class UserMetricsService {
 
       final data = doc.data();
       return UserLimits.fromMap(data?['limits'] as Map<String, dynamic>?);
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to get limits: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'getUserLimits'},
+      ).ignore();
       return UserLimits();
     }
   }
@@ -332,35 +429,19 @@ class UserMetricsService {
       return UserSubscription.fromMap(
         data?['subscription'] as Map<String, dynamic>?,
       );
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to get subscription: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        severity: ErrorSeverity.warning,
+        metadata: {'context': 'getUserSubscription'},
+      ).ignore();
       return UserSubscription();
     }
   }
 
-  /// Check and reset monthly counters
-  static Future<void> _checkMonthlyReset() async {
-    _prefs ??= await SharedPreferences.getInstance();
-    final now = DateTime.now();
-    final currentMonth = '${now.year}-${now.month.toString().padLeft(2, '0')}';
-    final lastResetMonth = _prefs?.getString(_lastResetMonthKey);
-
-    if (lastResetMonth != currentMonth) {
-      // New month, reset counters
-      await _prefs?.setInt(_billsThisMonthKey, 0);
-      await _prefs?.setString(_lastResetMonthKey, currentMonth);
-
-      // Reset in Firestore too
-      final userId = _getUserId();
-      if (userId != null) {
-        await _firestore.collection('users').doc(userId).set({
-          'limits': {'billsThisMonth': 0},
-        }, SetOptions(merge: true));
-      }
-
-      debugPrint('📊 UserMetrics: Monthly counters reset for $currentMonth');
-    }
-  }
+  // Monthly reset is now handled atomically inside trackBillCreated.
 
   /// Initialize user document with default values
   static Future<void> initializeUser({
@@ -395,8 +476,13 @@ class UserMetricsService {
       await _prefs?.setString(_userIdKey, userId);
 
       debugPrint('📊 UserMetrics: User initialized in Firestore');
-    } catch (e) {
+    } catch (e, st) {
       debugPrint('❌ UserMetrics: Failed to initialize user: $e');
+      ErrorLoggingService.logError(
+        error: e,
+        stackTrace: st,
+        metadata: {'context': 'initializeUser'},
+      ).ignore();
     }
   }
 }

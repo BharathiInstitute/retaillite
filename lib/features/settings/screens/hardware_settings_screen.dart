@@ -229,9 +229,11 @@ class _HardwareSettingsScreenState
 
     if (success) {
       await WifiPrinterService.saveWifiPrinter(ip, port);
-      ref
-          .read(printerProvider.notifier)
-          .connectPrinter('WiFi Printer', '$ip:$port');
+      unawaited(
+        ref
+            .read(printerProvider.notifier)
+            .connectPrinter('WiFi Printer', '$ip:$port'),
+      );
     }
 
     if (mounted) {

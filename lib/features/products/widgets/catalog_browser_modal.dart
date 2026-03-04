@@ -1,13 +1,17 @@
 /// Catalog browser modal for adding products from pre-built catalog
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/product_catalog_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
+import 'package:retaillite/shared/widgets/upgrade_prompt_modal.dart';
 
 class CatalogBrowserModal extends ConsumerStatefulWidget {
   const CatalogBrowserModal({super.key});
@@ -250,14 +254,38 @@ class _CatalogBrowserModalState extends ConsumerState<CatalogBrowserModal> {
     setState(() => _isAdding = true);
 
     try {
-      final service = ref.read(productsServiceProvider);
-      int added = 0;
-
-      for (final catalogProduct in _selectedProducts) {
-        final product = catalogProduct.toProductModel();
-        await service.addProduct(product);
-        added++;
+      // Check product limit before bulk adding
+      final limits = await UserMetricsService.getUserLimits();
+      final remaining = limits.productsRemaining;
+      if (_selectedProducts.length > remaining) {
+        if (mounted) {
+          setState(() => _isAdding = false);
+          if (remaining <= 0) {
+            unawaited(
+              UpgradePromptModal.show(
+                context,
+                trigger: UpgradeTrigger.productLimit,
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'You can only add $remaining more product${remaining == 1 ? '' : 's'}. Please select fewer items or upgrade your plan.',
+                ),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+        }
+        return;
       }
+
+      final service = ref.read(productsServiceProvider);
+      final products = _selectedProducts
+          .map((c) => c.toProductModel())
+          .toList();
+      final added = await service.addProductsBatch(products);
 
       if (mounted) {
         Navigator.pop(context);

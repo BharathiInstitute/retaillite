@@ -236,6 +236,37 @@ class AppLocalizations {
   String get somethingWentWrong => _translate('somethingWentWrong');
   String get networkError => _translate('networkError');
   String get tryAgain => _translate('tryAgain');
+
+  // Privacy & Data
+  String get accountSettings => _translate('accountSettings');
+  String get downloadMyData => _translate('downloadMyData');
+  String get exportDataAsJson => _translate('exportDataAsJson');
+  String get privacyPolicy => _translate('privacyPolicy');
+  String get termsOfService => _translate('termsOfService');
+  String get deleteAccountTitle => _translate('deleteAccount');
+  String get deleteEverything => _translate('deleteEverything');
+  String get typeDeleteToConfirm => _translate('typeDeleteToConfirm');
+  String get confirmDelete => _translate('confirmDelete');
+  String get deletingAccount => _translate('deletingAccount');
+  String get deleteAccountFailed => _translate('deleteAccountFailed');
+  String get preparingDataExport => _translate('preparingDataExport');
+  String get accountSettingsSaved => _translate('accountSettingsSaved');
+
+  // Subscription
+  String get subscriptionPlans => _translate('subscriptionPlans');
+  String get current => _translate('current');
+  String get upgrade => _translate('upgrade');
+  String get manage => _translate('manage');
+  String get upgradeComingSoon => _translate('upgradeComingSoon');
+
+  // Referral
+  String get shareInviteLink => _translate('shareInviteLink');
+  String get enterFriendCode => _translate('enterFriendCode');
+  String get enterReferralCode => _translate('enterReferralCode');
+  String get apply => _translate('apply');
+  String get referralCodeApplied => _translate('referralCodeApplied');
+  String get exportFailed => _translate('exportFailed');
+  String get comingSoon => _translate('comingSoon');
 }
 
 class _AppLocalizationsDelegate
@@ -264,7 +295,7 @@ extension LocalizationsExtension on BuildContext {
 
 // ============ ENGLISH STRINGS ============
 const Map<String, String> _englishStrings = {
-  'appName': 'Tulasi Stores',
+  'appName': 'RetailLite',
   'appTagline': "India's Easiest Billing App",
   'billing': 'Billing',
   'khata': 'Khata',
@@ -438,11 +469,39 @@ const Map<String, String> _englishStrings = {
   'somethingWentWrong': 'Something went wrong',
   'networkError': 'Network error. Please check your connection.',
   'tryAgain': 'Try Again',
+  // Privacy & Data
+  'accountSettings': 'Account Settings',
+  'downloadMyData': 'Download My Data',
+  'exportDataAsJson': 'Export all your data as JSON',
+  'privacyPolicy': 'Privacy Policy',
+  'termsOfService': 'Terms of Service',
+  'deleteAccount': 'Delete Account?',
+  'deleteEverything': 'Delete Everything',
+  'typeDeleteToConfirm': 'Type DELETE to confirm',
+  'confirmDelete': 'Confirm Delete',
+  'deletingAccount': 'Deleting account and all data...',
+  'deleteAccountFailed': 'Failed to delete account. Please try again.',
+  'preparingDataExport': 'Preparing your data export...',
+  'accountSettingsSaved': 'Account settings saved',
+  // Subscription
+  'subscriptionPlans': 'Subscription Plans',
+  'current': 'Current',
+  'upgrade': 'Upgrade',
+  'manage': 'Manage',
+  'upgradeComingSoon': 'Upgrade coming soon!',
+  // Referral
+  'shareInviteLink': 'Share Invite Link',
+  'enterFriendCode': "Have a friend's code? Enter it here",
+  'enterReferralCode': 'Enter Referral Code',
+  'apply': 'Apply',
+  'referralCodeApplied': 'Referral code applied!',
+  'exportFailed': 'Export failed',
+  'comingSoon': 'Coming soon!',
 };
 
 // ============ HINDI STRINGS ============
 const Map<String, String> _hindiStrings = {
-  'appName': 'Tulasi Stores',
+  'appName': 'RetailLite',
   'appTagline': 'भारत का सबसे आसान बिलिंग ऐप',
   'billing': 'बिलिंग',
   'khata': 'खाता',
@@ -616,11 +675,39 @@ const Map<String, String> _hindiStrings = {
   'somethingWentWrong': 'कुछ गलत हो गया',
   'networkError': 'नेटवर्क त्रुटि। कृपया कनेक्शन जांचें।',
   'tryAgain': 'पुनः प्रयास करें',
+  // Privacy & Data
+  'accountSettings': 'खाता सेटिंग्स',
+  'downloadMyData': 'मेरा डेटा डाउनलोड करें',
+  'exportDataAsJson': 'अपना सारा डेटा JSON में निर्यात करें',
+  'privacyPolicy': 'गोपनीयता नीति',
+  'termsOfService': 'सेवा की शर्तें',
+  'deleteAccount': 'खाता हटाएं?',
+  'deleteEverything': 'सब कुछ हटाएं',
+  'typeDeleteToConfirm': 'पुष्टि के लिए DELETE टाइप करें',
+  'confirmDelete': 'हटाना पुष्टि करें',
+  'deletingAccount': 'खाता और सारा डेटा हटाया जा रहा है...',
+  'deleteAccountFailed': 'खाता हटाने में विफल। कृपया पुनः प्रयास करें।',
+  'preparingDataExport': 'आपका डेटा निर्यात तैयार किया जा रहा है...',
+  'accountSettingsSaved': 'खाता सेटिंग्स सहेजी गईं',
+  // Subscription
+  'subscriptionPlans': 'सदस्यता योजनाएं',
+  'current': 'वर्तमान',
+  'upgrade': 'अपग्रेड',
+  'manage': 'प्रबंधित करें',
+  'upgradeComingSoon': 'अपग्रेड जल्द आ रहा है!',
+  // Referral
+  'shareInviteLink': 'आमंत्रण लिंक साझा करें',
+  'enterFriendCode': 'दोस्त का कोड है? यहां दर्ज करें',
+  'enterReferralCode': 'रेफरल कोड दर्ज करें',
+  'apply': 'लागू करें',
+  'referralCodeApplied': 'रेफरल कोड लागू हो गया!',
+  'exportFailed': 'निर्यात विफल',
+  'comingSoon': 'जल्द आ रहा है!',
 };
 
 // ============ TELUGU STRINGS ============
 const Map<String, String> _teluguStrings = {
-  'appName': 'Tulasi Stores',
+  'appName': 'RetailLite',
   'appTagline': 'భారతదేశం యొక్క సులభమైన బిల్లింగ్ యాప్',
   'billing': 'బిల్లింగ్',
   'khata': 'ఖాతా',
@@ -794,4 +881,33 @@ const Map<String, String> _teluguStrings = {
   'somethingWentWrong': 'ఏదో తప్పు జరిగింది',
   'networkError': 'నెట్‌వర్క్ లోపం. దయచేసి కనెక్షన్ తనిఖీ చేయండి.',
   'tryAgain': 'మళ్ళీ ప్రయత్నించండి',
+  // Privacy & Data
+  'accountSettings': 'ఖాతా సెట్టింగ్స్',
+  'downloadMyData': 'నా డేటా డౌన్‌లోడ్',
+  'exportDataAsJson': 'మీ డేటా మొత్తం JSON లో ఎగుమతి చేయండి',
+  'privacyPolicy': 'గోప్యతా విధానం',
+  'termsOfService': 'సేవా నిబంధనలు',
+  'deleteAccount': 'ఖాతా తొలగించాలా?',
+  'deleteEverything': 'అంతా తొలగించు',
+  'typeDeleteToConfirm': 'నిర్ధారించడానికి DELETE టైప్ చేయండి',
+  'confirmDelete': 'తొలగింపు నిర్ధారించు',
+  'deletingAccount': 'ఖాతా మరియు మొత్తం డేటా తొలగించబడుతోంది...',
+  'deleteAccountFailed':
+      'ఖాతా తొలగించడం విఫలమైంది. దయచేసి మళ్ళీ ప్రయత్నించండి.',
+  'preparingDataExport': 'మీ డేటా ఎగుమతి సిద్ధమవుతోంది...',
+  'accountSettingsSaved': 'ఖాతా సెట్టింగ్స్ భద్రపరచబడ్డాయి',
+  // Subscription
+  'subscriptionPlans': 'సబ్‌స్క్రిప్షన్ ప్లాన్స్',
+  'current': 'ప్రస్తుతం',
+  'upgrade': 'అప్‌గ్రేడ్',
+  'manage': 'నిర్వహించు',
+  'upgradeComingSoon': 'అప్‌గ్రేడ్ త్వరలో వస్తుంది!',
+  // Referral
+  'shareInviteLink': 'ఆహ్వాన లింక్ షేర్ చేయండి',
+  'enterFriendCode': 'స్నేహితుని కోడ్ ఉందా? ఇక్కడ నమోదు చేయండి',
+  'enterReferralCode': 'రిఫరల్ కోడ్ నమోదు చేయండి',
+  'apply': 'వర్తించు',
+  'referralCodeApplied': 'రిఫరల్ కోడ్ వర్తించబడింది!',
+  'exportFailed': 'ఎగుమతి విఫలమైంది',
+  'comingSoon': 'త్వరలో వస్తుంది!',
 };

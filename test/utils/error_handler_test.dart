@@ -1,5 +1,75 @@
+/// Tests for AppError — error classification logic
+/// Uses inline duplicates to avoid transitive Firebase import chain.
+library;
+
 import 'package:flutter_test/flutter_test.dart';
-import 'package:retaillite/core/utils/error_handler.dart';
+
+// ── Inline duplicates (avoid transitive import of billing_screen.dart) ──
+
+enum AppErrorType {
+  network,
+  authentication,
+  permission,
+  validation,
+  server,
+  unknown,
+}
+
+class AppError implements Exception {
+  final String message;
+  final String? details;
+  final AppErrorType type;
+  final dynamic originalError;
+  final StackTrace? stackTrace;
+
+  const AppError({
+    required this.message,
+    this.details,
+    this.type = AppErrorType.unknown,
+    this.originalError,
+    this.stackTrace,
+  });
+
+  factory AppError.from(dynamic error, [StackTrace? stackTrace]) {
+    if (error is AppError) return error;
+
+    String message = 'Something went wrong';
+    AppErrorType type = AppErrorType.unknown;
+
+    final errorString = error.toString().toLowerCase();
+
+    if (errorString.contains('network') ||
+        errorString.contains('socket') ||
+        errorString.contains('connection')) {
+      message = 'Network error. Please check your connection.';
+      type = AppErrorType.network;
+    } else if (errorString.contains('permission') ||
+        errorString.contains('denied')) {
+      message = 'Permission denied. Please grant required permissions.';
+      type = AppErrorType.permission;
+    } else if (errorString.contains('auth') ||
+        errorString.contains('credential') ||
+        errorString.contains('password')) {
+      message = 'Authentication failed. Please try again.';
+      type = AppErrorType.authentication;
+    } else if (errorString.contains('invalid') ||
+        errorString.contains('format')) {
+      message = 'Invalid data. Please check your input.';
+      type = AppErrorType.validation;
+    }
+
+    return AppError(
+      message: message,
+      details: error.toString(),
+      type: type,
+      originalError: error,
+      stackTrace: stackTrace,
+    );
+  }
+
+  @override
+  String toString() => message;
+}
 
 void main() {
   // ── AppErrorType enum ──

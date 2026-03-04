@@ -51,6 +51,17 @@ class AnalyticsService {
     debugPrint('📊 AnalyticsService: Initialized');
   }
 
+  /// Enable or disable analytics collection (for privacy consent opt-out)
+  static Future<void> setAnalyticsEnabled(bool enabled) async {
+    if (!_isSupported) return;
+    try {
+      await _safeAnalytics.setAnalyticsCollectionEnabled(enabled);
+      debugPrint('📊 Analytics collection ${enabled ? 'enabled' : 'disabled'}');
+    } catch (e) {
+      debugPrint('⚠️ Failed to set analytics enabled: $e');
+    }
+  }
+
   // ==================== User Properties ====================
 
   /// Set user properties for segmentation

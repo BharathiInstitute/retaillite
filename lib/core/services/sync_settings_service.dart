@@ -52,9 +52,9 @@ class SyncSettingsService {
       } else {
         FirebaseFirestore.instance.settings = const Settings(
           persistenceEnabled: true,
-          cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+          cacheSizeBytes: 100 * 1024 * 1024, // 100 MB
         );
-        debugPrint('✅ Firebase offline mode enabled with unlimited cache');
+        debugPrint('✅ Firebase offline mode enabled with 100 MB cache');
       }
     } catch (e) {
       debugPrint('⚠️ Firestore persistence setup: $e');

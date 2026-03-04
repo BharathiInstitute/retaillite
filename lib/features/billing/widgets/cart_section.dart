@@ -70,18 +70,19 @@ class CartSection extends ConsumerWidget {
                     style: Theme.of(context).textTheme.labelLarge,
                   ),
                   const Spacer(),
-                  TextButton(
-                    onPressed: () =>
-                        ref.read(cartProvider.notifier).clearCart(),
-                    style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: const Size(50, 30),
+                  if (cart.isNotEmpty)
+                    TextButton(
+                      onPressed: () =>
+                          ref.read(cartProvider.notifier).clearCart(),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size(50, 30),
+                      ),
+                      child: const Text(
+                        'Clear',
+                        style: TextStyle(color: AppColors.error, fontSize: 12),
+                      ),
                     ),
-                    child: const Text(
-                      'Clear',
-                      style: TextStyle(color: AppColors.error, fontSize: 12),
-                    ),
-                  ),
                 ],
               ),
             ),

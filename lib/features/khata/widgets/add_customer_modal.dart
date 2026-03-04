@@ -6,7 +6,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/utils/validators.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
@@ -60,6 +59,31 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
     try {
       final service = ref.read(khataServiceProvider);
 
+      final phone = _phoneController.text.trim();
+
+      // Duplicate phone check (skip for edit mode unless phone changed)
+      if (phone.isNotEmpty &&
+          (!_isEditMode || phone != widget.customer?.phone)) {
+        final existing = ref.read(customersProvider).valueOrNull ?? [];
+        final duplicate = existing.any(
+          (c) => c.phone == phone && c.id != (widget.customer?.id ?? ''),
+        );
+        if (duplicate) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text(
+                  'A customer with this phone number already exists',
+                ),
+                backgroundColor: AppColors.warning,
+              ),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
+      }
+
       final balance = double.tryParse(_balanceController.text) ?? 0;
 
       final customer = CustomerModel(
@@ -80,10 +104,8 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
         await service.addCustomer(customer);
       }
 
-      // Refresh the customers list, sorted list, and stats
+      // Refresh the customers list (derived providers cascade automatically)
       ref.invalidate(customersProvider);
-      ref.invalidate(sortedCustomersProvider);
-      ref.invalidate(khataStatsProvider);
       if (_isEditMode) {
         ref.invalidate(customerProvider(customer.id));
       }
@@ -197,10 +219,11 @@ class _AddCustomerModalState extends ConsumerState<AddCustomerModal> {
                         ),
                         const SizedBox(height: 16),
 
-                        // Opening balance
+                        // Opening balance (read-only in edit mode to force transactions)
                         CurrencyTextField(
                           label: 'Opening Balance (Optional)',
                           controller: _balanceController,
+                          readOnly: _isEditMode,
                         ),
                         const SizedBox(height: 8),
 

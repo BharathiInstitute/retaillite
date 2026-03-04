@@ -14,17 +14,53 @@ service cloud.firestore {
     }
     
     // Helper function to check if user is a super admin
+    // Uses dynamic admins collection — no redeploy needed to add/remove admins
     function isAdmin() {
       return request.auth != null && 
-        request.auth.token.email in [
-          'kehsaram001@gmail.com',
-          'admin@retaillite.com',
-          'bharathiinstitute1@gmail.com',
-          'bharahiinstitute1@gmail.com',
-          'shivamsingh8556@gmail.com',
-          'admin@lite.app',
-          'kehsihba@gmail.com'
-        ];
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+    }
+
+    // ── Subscription Limit Helpers ──
+    // Read the user's limits from their root document
+    function getUserLimits(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data.limits;
+    }
+
+    // Check if user can create a bill (billsThisMonth < billsLimit)
+    function canCreateBill(userId) {
+      let limits = getUserLimits(userId);
+      return limits.billsThisMonth < limits.billsLimit;
+    }
+
+    // Check if user can add a product (productsCount < productsLimit)
+    function canAddProduct(userId) {
+      let limits = getUserLimits(userId);
+      return limits.productsCount < limits.productsLimit;
+    }
+
+    // Check if user can add a customer (customersCount < customersLimit)
+    function canAddCustomer(userId) {
+      let limits = getUserLimits(userId);
+      // customersLimit must be initialized — deny if missing (prevents bypass)
+      return 'customersLimit' in limits && limits.customersCount < limits.customersLimit;
+    }
+
+    // Check if user's subscription is active
+    function hasActiveSubscription(userId) {
+      let sub = get(/databases/$(database)/documents/users/$(userId)).data.subscription;
+      return sub.status == 'active' || sub.status == 'trial';
+    }
+
+    // Rate limit: max writes per minute via last-write timestamp
+    // Checks the user's `_lastWriteAt` field to enforce a cooldown.
+    // Cloud Function `onBillCreated` updates this timestamp after each write.
+    // Client-side throttle (ThrottleService) is the primary defense;
+    // this rule is the server-side backstop.
+    function isNotRateLimited(userId) {
+      let userData = get(/databases/$(database)/documents/users/$(userId)).data;
+      // If no timestamp yet, allow (first-time users)
+      return !('_lastWriteAt' in userData)
+          || request.time > userData._lastWriteAt + duration.value(1, 's');
     }
     
     // Helper function to validate required string field
@@ -68,10 +104,21 @@ service cloud.firestore {
       
       // ===================
       // PRODUCTS (sub-collection)
+      // Server-side limit: productsCount < productsLimit (from user doc)
       // ===================
       match /products/{productId} {
         allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-        allow create, update: if isAuthenticated() && isOwner(userId)
+        // CREATE: enforce subscription product limit
+        allow create: if isAuthenticated() && isOwner(userId)
+          && hasString(request.resource.data.name)
+          && request.resource.data.name.size() <= 200
+          && isPositive(request.resource.data.price)
+          && request.resource.data.price <= 9999999
+          && isReasonableSize()
+          && canAddProduct(userId)
+          && isNotRateLimited(userId);
+        // UPDATE: no limit check needed (not creating new product)
+        allow update: if isAuthenticated() && isOwner(userId)
           && hasString(request.resource.data.name)
           && request.resource.data.name.size() <= 200
           && isPositive(request.resource.data.price)
@@ -82,10 +129,11 @@ service cloud.firestore {
       
       // ===================
       // BILLS (sub-collection)
+      // Server-side limit: billsThisMonth < billsLimit (from user doc)
       // ===================
       match /bills/{billId} {
         allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-        // Allow create for new bills with field validation
+        // Allow create with field validation AND subscription limit check
         allow create: if isAuthenticated() && isOwner(userId)
           && request.resource.data.total is number
           && request.resource.data.total >= 0
@@ -93,7 +141,9 @@ service cloud.firestore {
           && request.resource.data.items is list
           && request.resource.data.items.size() > 0
           && request.resource.data.items.size() <= 500
-          && isReasonableSize();
+          && isReasonableSize()
+          && canCreateBill(userId)
+          && isNotRateLimited(userId);
         // Bills are immutable - no update
         allow update: if false;
         // Owner can delete for data retention/cleanup
@@ -102,10 +152,20 @@ service cloud.firestore {
       
       // ===================
       // CUSTOMERS (sub-collection)
+      // Note: customer limit is soft (no productsLimit-style field yet).
+      // Free tier limited to 10 customers via client-side check.
+      // Server-side enforcement can be added when customersLimit field is
+      // written to the user document by Cloud Functions.
       // ===================
       match /customers/{customerId} {
         allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-        allow create, update: if isAuthenticated() && isOwner(userId)
+        allow create: if isAuthenticated() && isOwner(userId)
+          && hasString(request.resource.data.name)
+          && request.resource.data.name.size() <= 200
+          && isReasonableSize()
+          && canAddCustomer(userId)
+          && isNotRateLimited(userId);
+        allow update: if isAuthenticated() && isOwner(userId)
           && hasString(request.resource.data.name)
           && request.resource.data.name.size() <= 200
           && isReasonableSize();
@@ -120,7 +180,8 @@ service cloud.firestore {
             && request.resource.data.amount is number
             && request.resource.data.amount > 0
             && request.resource.data.amount <= 99999999
-            && isReasonableSize();
+            && isReasonableSize()
+            && isNotRateLimited(userId);
           allow update: if false;
           // Owner can delete for data retention/cleanup
           allow delete: if isAuthenticated() && isOwner(userId);
@@ -132,7 +193,13 @@ service cloud.firestore {
       // ===================
       match /expenses/{expenseId} {
         allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-        allow create, update: if isAuthenticated() && isOwner(userId)
+        allow create: if isAuthenticated() && isOwner(userId)
+          && request.resource.data.amount is number
+          && request.resource.data.amount > 0
+          && request.resource.data.amount <= 99999999
+          && isReasonableSize()
+          && isNotRateLimited(userId);
+        allow update: if isAuthenticated() && isOwner(userId)
           && request.resource.data.amount is number
           && request.resource.data.amount > 0
           && request.resource.data.amount <= 99999999
@@ -149,7 +216,8 @@ service cloud.firestore {
           && request.resource.data.amount is number
           && request.resource.data.amount > 0
           && request.resource.data.amount <= 99999999
-          && isReasonableSize();
+          && isReasonableSize()
+          && isNotRateLimited(userId);
         // Transactions are immutable - no update
         allow update: if false;
         // Owner can delete for data retention/cleanup
@@ -209,24 +277,30 @@ service cloud.firestore {
     
     // ===================
     // APP HEALTH & PERFORMANCE
-    // Rate-limit: only allow creating docs, not spamming
+    // Only authenticated users can submit; docs capped at 10KB to limit abuse
     // ===================
     match /app_health/{docId} {
-      allow create: if isAuthenticated() && isReasonableSize();
+      allow create: if isAuthenticated() && request.resource.size() < 10000;
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }
     
     match /screen_performance/{docId} {
-      allow create: if isAuthenticated() && isReasonableSize();
+      allow create: if isAuthenticated() && request.resource.size() < 10000;
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
     }
     
     match /error_logs/{docId} {
-      allow create: if isAuthenticated() && isReasonableSize();
+      allow create: if isAuthenticated() && request.resource.size() < 10000;
       allow read: if isAdmin();
       allow update, delete: if isAdmin();
+    }
+    
+    match /error_logs_meta/{docId} {
+      allow create, update: if isAuthenticated() && request.resource.size() < 5000;
+      allow read: if isAdmin();
+      allow delete: if isAdmin();
     }
     
     // ===================
@@ -252,7 +326,12 @@ service cloud.firestore {
     // ADMINS COLLECTION (used by Cloud Functions only)
     // ===================
     match /admins/{adminId} {
-      allow read, write: if isAdmin();
+      allow read: if isAdmin();
+      // Admins can create/update other admins
+      allow create, update: if isAdmin();
+      // Prevent deleting the primary owner admin (self-protection)
+      // Only allow deletion if the target is not the requesting admin
+      allow delete: if isAdmin() && adminId != request.auth.token.email;
     }
     
     // ===================
@@ -266,11 +345,11 @@ service cloud.firestore {
     // USER USAGE TRACKING (per-user backend cost tracking)
     // ===================
     match /user_usage/{userId} {
-      // Users can read/write their own usage doc
+      // Users can only read their own usage doc
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      allow write: if isAuthenticated() && isOwner(userId) && isReasonableSize();
-      // Admins can update (e.g., reset monthly usage)
-      allow update: if isAdmin();
+      // Only Cloud Functions / admin SDK can write usage data
+      // Prevents client-side counter manipulation
+      allow write: if isAdmin();
     }
     
     // ===================

@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:retaillite/core/constants/app_constants.dart';
+import 'package:retaillite/core/utils/platform_utils.dart';
 import 'package:retaillite/main.dart';
 
 /// App health metrics
@@ -61,24 +62,8 @@ class AppHealthService {
   static DateTime? _appStartTime;
   static bool _initialized = false;
 
-  /// Get current platform as string
-  static String get _platform {
-    if (kIsWeb) return 'web';
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return 'android';
-      case TargetPlatform.iOS:
-        return 'ios';
-      case TargetPlatform.windows:
-        return 'windows';
-      case TargetPlatform.macOS:
-        return 'macos';
-      case TargetPlatform.linux:
-        return 'linux';
-      default:
-        return 'unknown';
-    }
-  }
+  /// Get current platform as string (delegates to shared utility)
+  static String get _platform => currentPlatformName;
 
   /// Mark app start time (call at very beginning of main)
   static void markAppStart() {
@@ -200,11 +185,13 @@ class AppHealthService {
       final healthSnapshot = await _firestore
           .collection('app_health')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(1000)
           .get();
 
       final errorSnapshot = await _firestore
           .collection('error_logs')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(1000)
           .get();
 
       // Calculate metrics
@@ -228,14 +215,28 @@ class AppHealthService {
         platforms[platform] = (platforms[platform] ?? 0) + 1;
       }
 
+      // Derive health status from error rate
+      final double errorRate = totalSessions > 0
+          ? (totalErrors / totalSessions * 100)
+          : 0;
+      final String status = (totalErrors <= 5 && errorRate < 10)
+          ? 'healthy'
+          : 'unhealthy';
+
+      // Approximate uptime: sessions spread over 24h
+      final int uptimeHours = totalSessions > 0 ? 24 : 0;
+
       return {
+        // Keys used by ErrorsScreen health card
+        'status': status,
+        'uptimeHours': uptimeHours,
+        'recentErrorCount': totalErrors,
+        // Additional metrics for dashboards
         'sessionsLast24h': totalSessions,
         'errorsLast24h': totalErrors,
         'avgStartupTimeMs': avgStartup,
         'platformDistribution': platforms,
-        'errorRate': totalSessions > 0
-            ? (totalErrors / totalSessions * 100)
-            : 0,
+        'errorRate': errorRate,
       };
     } catch (e) {
       debugPrint('❌ Failed to get health summary: $e');
@@ -251,6 +252,7 @@ class AppHealthService {
       final snapshot = await _firestore
           .collection('app_health')
           .where('timestamp', isLessThan: Timestamp.fromDate(cutoff))
+          .limit(400) // D10: Paginate cleanup to stay within batch limit
           .get();
 
       final batch = _firestore.batch();

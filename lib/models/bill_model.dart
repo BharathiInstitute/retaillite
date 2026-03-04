@@ -157,4 +157,30 @@ class BillModel {
       'date': date,
     };
   }
+
+  BillModel copyWith({
+    String? id,
+    int? billNumber,
+    List<CartItem>? items,
+    double? total,
+    PaymentMethod? paymentMethod,
+    String? customerId,
+    String? customerName,
+    double? receivedAmount,
+    DateTime? createdAt,
+    String? date,
+  }) {
+    return BillModel(
+      id: id ?? this.id,
+      billNumber: billNumber ?? this.billNumber,
+      items: items ?? this.items,
+      total: total ?? this.total,
+      paymentMethod: paymentMethod ?? this.paymentMethod,
+      customerId: customerId ?? this.customerId,
+      customerName: customerName ?? this.customerName,
+      receivedAmount: receivedAmount ?? this.receivedAmount,
+      createdAt: createdAt ?? this.createdAt,
+      date: date ?? this.date,
+    );
+  }
 }

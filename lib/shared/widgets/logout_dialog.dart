@@ -4,6 +4,7 @@ library;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/services/write_retry_queue.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
 /// Shows a logout confirmation dialog.
@@ -12,13 +13,14 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 Future<void> showLogoutDialog(BuildContext context, WidgetRef ref) async {
   // Check if there are pending Firestore writes
   bool hasPendingData = false;
+  final pendingRetryCount = WriteRetryQueue.pendingCount;
   try {
     // Try waiting for pending writes with a very short timeout
     // If it times out, that means there ARE pending writes
     await FirebaseFirestore.instance.waitForPendingWrites().timeout(
       const Duration(milliseconds: 200),
     );
-    hasPendingData = false;
+    hasPendingData = pendingRetryCount > 0;
   } catch (_) {
     hasPendingData = true;
   }
@@ -62,7 +64,9 @@ Future<void> showLogoutDialog(BuildContext context, WidgetRef ref) async {
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
-                      'You have unsynced data! Please connect to the internet and wait for sync to complete before logging out.',
+                      pendingRetryCount > 0
+                          ? 'You have $pendingRetryCount unsynced change${pendingRetryCount == 1 ? '' : 's'}! Please connect to the internet and wait for sync to complete before logging out.'
+                          : 'You have unsynced data! Please connect to the internet and wait for sync to complete before logging out.',
                       style: TextStyle(
                         fontSize: 13,
                         color: Colors.orange.shade900,

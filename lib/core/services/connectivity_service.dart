@@ -54,13 +54,12 @@ class ConnectivityService {
   /// Check if currently offline
   static bool get isOffline => _currentStatus == ConnectivityStatus.offline;
 
-  /// Update status based on connectivity result
+  /// Update status based on connectivity result.
   static void _updateStatus(ConnectivityResult result) {
     final wasOnline = _currentStatus == ConnectivityStatus.online;
 
-    // Consider online if connection type is not none
-    final hasConnection = result != ConnectivityResult.none;
-    _currentStatus = hasConnection
+    // Consider online if connection type is not 'none'
+    _currentStatus = result != ConnectivityResult.none
         ? ConnectivityStatus.online
         : ConnectivityStatus.offline;
 

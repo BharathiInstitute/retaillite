@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/core/theme/responsive_scale.dart';
@@ -469,6 +470,135 @@ void main() {
       await tester.pumpWidget(const MaterialApp(home: Scaffold()));
       final ctx = tester.element(find.byType(Scaffold));
       expect(ResponsiveHelper.productCardHeight(ctx), 110);
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DARK THEME — OVERFLOW SAFETY
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('Dark Theme — Overflow Safety', () {
+    final testWidths = [320.0, 375.0, 600.0, 1024.0, 1920.0];
+
+    for (final width in testWidths) {
+      testWidgets('dark theme: no overflow at ${width.toInt()}px', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(width, 800);
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: ThemeData.dark(useMaterial3: true),
+            home: const Scaffold(
+              body: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    // Long text row — common overflow source
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Very long product name in dark mode — Basmati Rice Premium 10kg',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        Text('₹1,299.00'),
+                      ],
+                    ),
+                    // Table-like row
+                    Row(
+                      children: [
+                        Expanded(flex: 2, child: Text('#BILL-99999')),
+                        Expanded(flex: 3, child: Text('Customer Name Here')),
+                        Expanded(flex: 2, child: Text('₹9,99,999')),
+                      ],
+                    ),
+                    // Card
+                    Card(
+                      child: ListTile(
+                        title: Text('Khata Entry'),
+                        subtitle: Text('Balance: ₹12,345'),
+                        trailing: Icon(Icons.chevron_right),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+
+        // No RenderFlex overflow should occur
+        expect(tester.takeException(), isNull);
+      });
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // DARK THEME — WIDGET CONTRAST (readability)
+  // ═══════════════════════════════════════════════════════════════════════════
+  group('Dark Theme — Widget Rendering', () {
+    testWidgets('dark mode renders without errors', (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: Scaffold(
+            appBar: AppBar(title: const Text('RetailLite')),
+            body: const Column(
+              children: [
+                ListTile(title: Text('Product'), subtitle: Text('₹100')),
+                Divider(),
+                ListTile(
+                  leading: Icon(Icons.shopping_cart),
+                  title: Text('Cart is empty'),
+                ),
+              ],
+            ),
+            floatingActionButton: const FloatingActionButton(
+              onPressed: null,
+              child: Icon(Icons.add),
+            ),
+          ),
+        ),
+      );
+
+      expect(tester.takeException(), isNull);
+      expect(find.text('RetailLite'), findsOneWidget);
+      expect(find.text('Product'), findsOneWidget);
+    });
+
+    testWidgets('dark theme text is visible (not black on black)', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData.dark(useMaterial3: true),
+          home: const Scaffold(body: Text('Hello Dark')),
+        ),
+      );
+
+      final textWidget = tester.widget<Text>(find.text('Hello Dark'));
+      // Default text in dark theme should not be null style
+      // (Flutter applies theme style automatically)
+      expect(textWidget.data, 'Hello Dark');
+      expect(find.text('Hello Dark'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Verify the rendered text has light color on dark background
+      final richText = tester.renderObject<RenderParagraph>(
+        find.byType(RichText).last,
+      );
+      final color = richText.text.style?.color;
+      // Dark theme text should be light (luminance > 0.5)
+      if (color != null) {
+        expect(
+          color.computeLuminance(),
+          greaterThan(0.5),
+          reason: 'Text in dark theme should be light-colored',
+        );
+      }
     });
   });
 }

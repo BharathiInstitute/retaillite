@@ -14,7 +14,10 @@ import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 
 /// Customers list provider — real-time stream from Firestore
-final customersProvider = StreamProvider<List<CustomerModel>>((ref) {
+/// Uses autoDispose to release Firestore listener when no longer watched.
+final customersProvider = StreamProvider.autoDispose<List<CustomerModel>>((
+  ref,
+) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   debugPrint(
     '🧾 customersProvider: isDemoMode=$isDemoMode, DemoDataService.isLoaded=${DemoDataService.isLoaded}',
@@ -30,22 +33,22 @@ final customersProvider = StreamProvider<List<CustomerModel>>((ref) {
 });
 
 /// Single customer provider — real-time stream from Firestore
-final customerProvider = StreamProvider.family<CustomerModel?, String>((
-  ref,
-  customerId,
-) {
-  final isDemoMode = ref.watch(isDemoModeProvider);
+/// Uses autoDispose to release per-customer listener when screen is popped.
+final customerProvider = StreamProvider.autoDispose
+    .family<CustomerModel?, String>((ref, customerId) {
+      final isDemoMode = ref.watch(isDemoModeProvider);
 
-  if (isDemoMode) {
-    return Stream.value(DemoDataService.getCustomer(customerId));
-  }
+      if (isDemoMode) {
+        return Stream.value(DemoDataService.getCustomer(customerId));
+      }
 
-  return OfflineStorageService.customerStream(customerId);
-});
+      return OfflineStorageService.customerStream(customerId);
+    });
 
 /// Customer transactions provider — real-time stream from Firestore
-final customerTransactionsProvider =
-    StreamProvider.family<List<TransactionModel>, String>((ref, customerId) {
+/// Uses autoDispose to release per-customer transaction listener.
+final customerTransactionsProvider = StreamProvider.autoDispose
+    .family<List<TransactionModel>, String>((ref, customerId) {
       final isDemoMode = ref.watch(isDemoModeProvider);
 
       if (isDemoMode) {
@@ -68,6 +71,14 @@ class KhataService {
   Future<String> addCustomer(CustomerModel customer) async {
     if (_isDemoMode) {
       return DemoDataService.addCustomer(customer);
+    }
+
+    // Check customer limit before adding
+    final limits = await UserMetricsService.getUserLimits();
+    if (!limits.canAddCustomer) {
+      throw Exception(
+        'Customer limit reached (${limits.customersLimit}). Upgrade your plan to add more customers.',
+      );
     }
 
     final id = generateSafeId('customer');
@@ -113,15 +124,12 @@ class KhataService {
       return;
     }
 
-    // Update customer balance (subtract payment)
-    await OfflineStorageService.updateCustomerBalance(customerId, -amount);
-
-    // Save payment transaction
-    await OfflineStorageService.saveTransaction(
+    // Atomic: update balance + save transaction in a single WriteBatch
+    await OfflineStorageService.recordPaymentAtomic(
       customerId: customerId,
-      type: 'payment',
       amount: amount,
-      note: note ?? paymentMode,
+      note: note,
+      paymentMode: paymentMode,
     );
   }
 
@@ -144,13 +152,9 @@ class KhataService {
       return;
     }
 
-    // Update customer balance
-    await OfflineStorageService.updateCustomerBalance(customerId, amount);
-
-    // Save purchase transaction
-    await OfflineStorageService.saveTransaction(
+    // Atomic: update balance + save transaction in a single WriteBatch
+    await OfflineStorageService.addCreditAtomic(
       customerId: customerId,
-      type: 'purchase',
       amount: amount,
       billId: billId,
     );
@@ -173,8 +177,9 @@ final khataServiceProvider = Provider<KhataService>((ref) {
 });
 
 /// Per-customer sync status — maps customer ID → hasPendingWrites
-final customersSyncStatusProvider = StreamProvider<Map<String, bool>>((ref) {
-  final isDemoMode = ref.watch(isDemoModeProvider);
-  if (isDemoMode) return Stream.value({});
-  return OfflineStorageService.customersSyncStream();
-});
+final customersSyncStatusProvider =
+    StreamProvider.autoDispose<Map<String, bool>>((ref) {
+      final isDemoMode = ref.watch(isDemoModeProvider);
+      if (isDemoMode) return Stream.value({});
+      return OfflineStorageService.customersSyncStream();
+    });

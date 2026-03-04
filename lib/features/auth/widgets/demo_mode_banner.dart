@@ -122,26 +122,25 @@ class DemoModeBanner extends ConsumerWidget {
   }
 
   void _exitDemoMode(BuildContext context, WidgetRef ref) {
+    final navigator = GoRouter.of(context);
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Exit Demo Mode?'),
         content: const Text(
           'This will clear all demo data and return to the login screen.',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           ElevatedButton(
             onPressed: () async {
-              Navigator.pop(context);
+              Navigator.pop(dialogContext);
               await OfflineStorageService.clearDemoData();
               await ref.read(authNotifierProvider.notifier).exitDemoMode();
-              if (context.mounted) {
-                context.go('/login');
-              }
+              navigator.go('/login');
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.error,

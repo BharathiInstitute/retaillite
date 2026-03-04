@@ -14,18 +14,21 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
+import 'package:go_router/go_router.dart';
+import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/billing/providers/cart_provider.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/features/khata/widgets/add_customer_modal.dart';
 import 'package:retaillite/features/reports/providers/reports_provider.dart';
 
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/customer_model.dart';
+import 'package:in_app_review/in_app_review.dart';
+import 'package:retaillite/shared/widgets/onboarding_checklist.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
 import 'package:retaillite/shared/widgets/app_text_field.dart';
@@ -53,6 +56,21 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
     return double.tryParse(_receivedController.text) ?? 0;
   }
 
+  Future<void> _maybeRequestReview() async {
+    if (kIsWeb) return;
+    try {
+      final limits = await UserMetricsService.getUserLimits();
+      if (limits.billsThisMonth == 3) {
+        final review = InAppReview.instance;
+        if (await review.isAvailable()) {
+          await review.requestReview();
+        }
+      }
+    } catch (_) {
+      // Review request is best-effort — never block billing flow
+    }
+  }
+
   Future<void> _completeBill() async {
     final cart = ref.read(cartProvider);
 
@@ -60,6 +78,16 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Cart is empty')));
+      return;
+    }
+
+    // Validate cash payment: received amount must cover the total
+    if (_selectedMethod == PaymentMethod.cash && _receivedAmount < cart.total) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Received amount must be at least equal to the total'),
+        ),
+      );
       return;
     }
 
@@ -72,8 +100,15 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         if (mounted) {
           setState(() => _isLoading = false);
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Monthly bill limit reached. Upgrade your plan.'),
+            SnackBar(
+              content: const Text(
+                '🚫 Monthly bill limit reached. Upgrade to Pro for 500 bills/month.',
+              ),
+              duration: const Duration(seconds: 5),
+              action: SnackBarAction(
+                label: 'Upgrade',
+                onPressed: () => context.push(AppRoutes.subscription),
+              ),
             ),
           );
         }
@@ -103,7 +138,22 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       );
 
       // Save bill to local storage for Reports
-      await OfflineStorageService.saveBillLocally(bill);
+      // For Udhar payments, atomically save bill + update balance + record transaction
+      if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
+        await OfflineStorageService.saveBillWithUdharAtomic(
+          bill: bill,
+          customerId: _selectedCustomer!.id,
+          amount: cart.total,
+        );
+      } else {
+        await OfflineStorageService.saveBillLocally(bill);
+      }
+
+      // Mark onboarding "first bill" step as done
+      unawaited(markOnboardingBillDone());
+
+      // Request Play Store review after the 3rd bill
+      unawaited(_maybeRequestReview());
 
       // Log analytics event (non-blocking)
       unawaited(
@@ -113,22 +163,6 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           paymentMode: bill.paymentMethod.name,
         ),
       );
-
-      // Update customer khata balance for Udhar payments
-      if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
-        await OfflineStorageService.updateCustomerBalance(
-          _selectedCustomer!.id,
-          cart.total,
-        );
-
-        // Save transaction for customer history
-        await OfflineStorageService.saveTransaction(
-          customerId: _selectedCustomer!.id,
-          type: 'purchase',
-          amount: cart.total,
-          billId: bill.id,
-        );
-      }
 
       if (mounted) {
         // Invalidate reports providers to refresh data
@@ -141,8 +175,6 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         // Invalidate customers if Udhar payment was made
         if (_selectedMethod == PaymentMethod.udhar) {
           ref.invalidate(customersProvider);
-          ref.invalidate(sortedCustomersProvider);
-          ref.invalidate(khataStatsProvider);
         }
 
         ref.read(cartProvider.notifier).clearCart();
@@ -162,10 +194,28 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       }
     } catch (e) {
       if (mounted) {
+        final errorStr = e.toString().toLowerCase();
+        final isLimitError =
+            errorStr.contains('permission-denied') ||
+            errorStr.contains('permission_denied') ||
+            errorStr.contains('missing or insufficient permissions');
+
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to create bill: $e'),
+            content: Text(
+              isLimitError
+                  ? '🚫 Subscription limit reached. Upgrade your plan to continue.'
+                  : 'Failed to create bill: $e',
+            ),
             backgroundColor: AppColors.error,
+            duration: const Duration(seconds: 5),
+            action: isLimitError
+                ? SnackBarAction(
+                    label: 'Upgrade',
+                    textColor: Colors.white,
+                    onPressed: () => context.push(AppRoutes.subscription),
+                  )
+                : null,
           ),
         );
       }

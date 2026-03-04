@@ -1,6 +1,35 @@
+/// Tests for usage tracking — KhataStats, DailyUsage, OperationType
+/// Uses inline duplicates for KhataStats/CustomerSortOption to avoid
+/// transitive Firebase import chain.
+library;
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:retaillite/core/services/usage_tracking_service.dart';
-import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
+
+// ── Inline duplicates (avoid khata_stats_provider → billing_screen.dart) ──
+
+class KhataStats {
+  final double totalOutstanding;
+  final double collectedToday;
+  final int activeCustomers;
+  final int customersWithDue;
+
+  const KhataStats({
+    required this.totalOutstanding,
+    required this.collectedToday,
+    required this.activeCustomers,
+    required this.customersWithDue,
+  });
+
+  factory KhataStats.empty() => const KhataStats(
+    totalOutstanding: 0,
+    collectedToday: 0,
+    activeCustomers: 0,
+    customersWithDue: 0,
+  );
+}
+
+enum CustomerSortOption { highestDebt, recentlyActive, alphabetical, oldestDue }
 
 void main() {
   // ── KhataStats ──

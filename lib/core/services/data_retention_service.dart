@@ -183,17 +183,19 @@ class DataRetentionService {
     int expensesDeleted = 0;
 
     try {
-      // 1. Delete expired bills
+      // 1. Delete expired bills (paginated to avoid OOM)
       final billsSnapshot = await _firestore
           .collection('$_basePath/bills')
           .where('createdAt', isLessThan: Timestamp.fromDate(cutoff))
+          .limit(450)
           .get();
       billsDeleted = await _deleteInBatches(billsSnapshot.docs, dryRun: dryRun);
 
-      // 2. Delete expired expenses
+      // 2. Delete expired expenses (paginated)
       final expensesSnapshot = await _firestore
           .collection('$_basePath/expenses')
           .where('createdAt', isLessThan: Timestamp.fromDate(cutoff))
+          .limit(450)
           .get();
       expensesDeleted = await _deleteInBatches(
         expensesSnapshot.docs,

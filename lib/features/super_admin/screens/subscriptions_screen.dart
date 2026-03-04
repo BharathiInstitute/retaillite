@@ -458,7 +458,7 @@ class SubscriptionsScreen extends ConsumerWidget {
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: users.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  separatorBuilder: (_, _) => const Divider(height: 1),
                   itemBuilder: (context, index) {
                     final user = users[index];
                     return _buildUserTile(context, ref, user);
@@ -605,7 +605,7 @@ class SubscriptionsScreen extends ConsumerWidget {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<SubscriptionStatus>(
-                      value: selectedStatus,
+                      initialValue: selectedStatus,
                       decoration: const InputDecoration(
                         border: OutlineInputBorder(),
                         isDense: true,
@@ -629,8 +629,9 @@ class SubscriptionsScreen extends ConsumerWidget {
                         );
                       }).toList(),
                       onChanged: (val) {
-                        if (val != null)
+                        if (val != null) {
                           setDialogState(() => selectedStatus = val);
+                        }
                       },
                     ),
                     const SizedBox(height: 16),

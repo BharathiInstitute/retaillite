@@ -10,6 +10,10 @@ class SalesSummary {
   final double udharAmount;
   final double avgBillValue;
   final double totalExpenses;
+
+  /// Gross profit = totalSales - COGS (sum of purchasePrice * qty) (4.3)
+  /// Will be 0 if purchase prices are not tracked.
+  final double grossProfit;
   final DateTime startDate;
   final DateTime endDate;
 
@@ -21,6 +25,7 @@ class SalesSummary {
     required this.udharAmount,
     required this.avgBillValue,
     this.totalExpenses = 0,
+    this.grossProfit = 0,
     required this.startDate,
     required this.endDate,
   });

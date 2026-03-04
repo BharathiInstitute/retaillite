@@ -68,7 +68,11 @@ final filteredExpensesProvider = StreamProvider.autoDispose<List<ExpenseModel>>(
     if (isDemoMode) {
       source = Stream.value(List.of(DemoDataService.getExpenses()));
     } else {
-      source = OfflineStorageService.expensesStream();
+      // Push date and payment filters server-side for efficiency
+      source = OfflineStorageService.expensesStream(
+        dateRange: filter.dateRange,
+        paymentMethod: filter.paymentMethod?.name,
+      );
     }
 
     return source.map((expenses) {
@@ -120,7 +124,11 @@ final filteredBillsProvider = StreamProvider.autoDispose<List<BillModel>>((
   if (isDemoMode) {
     source = Stream.value(List.of(DemoDataService.getBills()));
   } else {
-    source = OfflineStorageService.billsStream();
+    // Push date and payment filters server-side for efficiency
+    source = OfflineStorageService.billsStream(
+      dateRange: filter.dateRange,
+      paymentMethod: filter.paymentMethod?.name,
+    );
   }
 
   return source.map((bills) {

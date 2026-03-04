@@ -134,7 +134,7 @@ void main() {
     });
 
     test('formats midnight', () {
-      final date = DateTime(2026, 1, 1, 0);
+      final date = DateTime(2026);
       expect(Formatters.time(date), '12:00 AM');
     });
   });

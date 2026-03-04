@@ -1,6 +1,8 @@
 /// Forgot Password screen — reset via email link
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -22,16 +24,35 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
 
   bool _isLoading = false;
   bool _emailSent = false;
+  int _cooldownSeconds = 0;
+  Timer? _cooldownTimer;
 
   @override
   void dispose() {
     _emailController.dispose();
+    _cooldownTimer?.cancel();
     super.dispose();
+  }
+
+  void _startCooldown() {
+    _cooldownSeconds = 60;
+    _cooldownTimer?.cancel();
+    _cooldownTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (mounted) {
+        setState(() {
+          _cooldownSeconds--;
+          if (_cooldownSeconds <= 0) timer.cancel();
+        });
+      } else {
+        timer.cancel();
+      }
+    });
   }
 
   /// Send password reset email
   Future<void> _handleSendResetEmail() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_cooldownSeconds > 0) return;
 
     setState(() => _isLoading = true);
     ref.read(authNotifierProvider.notifier).clearError();
@@ -44,6 +65,7 @@ class _ForgotPasswordScreenState extends ConsumerState<ForgotPasswordScreen> {
           .sendPasswordResetEmail(email);
 
       if (success && mounted) {
+        _startCooldown();
         setState(() {
           _emailSent = true;
           _isLoading = false;

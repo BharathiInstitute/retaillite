@@ -54,13 +54,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.read(authNotifierProvider.notifier).clearError();
 
     try {
-      final success = await ref
-          .read(authNotifierProvider.notifier)
-          .signInWithGoogle();
-
-      if (success && mounted) {
-        context.go('/billing');
-      }
+      await ref.read(authNotifierProvider.notifier).signInWithGoogle();
+      // Router redirect handles navigation automatically
     } finally {
       if (mounted) {
         setState(() => _isGoogleLoading = false);
@@ -80,34 +75,17 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final email = _emailController.text.trim();
 
-      // Smart detection: check sign-in methods for this email
-      final methods = await ref
-          .read(authNotifierProvider.notifier)
-          .getSignInMethodsForEmail(email);
-
       if (mounted) setState(() => _isCheckingEmail = false);
 
-      if (methods != null &&
-          methods.isNotEmpty &&
-          !methods.contains('password')) {
-        // User signed up with Google but trying email/password login
-        if (mounted) {
-          setState(() => _isLoading = false);
-          ref
-              .read(authNotifierProvider.notifier)
-              .setError(
-                'This account uses Google Sign-In. Please use the "Continue with Google" button above.',
-              );
-        }
-        return;
-      }
-
+      // Attempt sign-in directly — don't enumerate auth methods
+      // to avoid revealing whether an email is registered.
       final success = await ref
           .read(authNotifierProvider.notifier)
           .signIn(email: email, password: _passwordController.text);
 
-      if (success && mounted) {
-        context.go('/billing');
+      // Router redirect handles navigation automatically
+      if (!success && mounted) {
+        // Error already set in auth provider
       }
     } finally {
       if (mounted) {

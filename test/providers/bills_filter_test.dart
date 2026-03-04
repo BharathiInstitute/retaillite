@@ -27,7 +27,7 @@ void main() {
     test('copyWith updates dateRange', () {
       const filter = BillsFilter();
       final range = DateTimeRange(
-        start: DateTime(2026, 1),
+        start: DateTime(2026),
         end: DateTime(2026, 1, 31),
       );
       final updated = filter.copyWith(dateRange: range);
@@ -37,7 +37,7 @@ void main() {
     test('copyWith clearDateRange resets to null', () {
       final filter = BillsFilter(
         dateRange: DateTimeRange(
-          start: DateTime(2026, 1),
+          start: DateTime(2026),
           end: DateTime(2026, 1, 31),
         ),
       );
@@ -79,7 +79,7 @@ void main() {
       final filter = BillsFilter(
         searchQuery: 'test',
         dateRange: DateTimeRange(
-          start: DateTime(2026, 1),
+          start: DateTime(2026),
           end: DateTime(2026, 1, 31),
         ),
         paymentMethod: PaymentMethod.cash,

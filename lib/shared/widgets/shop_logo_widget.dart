@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -37,12 +38,12 @@ class ShopLogoWidget extends StatelessWidget {
 
   Widget _buildLogoImage() {
     if (logoPath!.startsWith('http')) {
-      return Image.network(
-        logoPath!,
+      return CachedNetworkImage(
+        imageUrl: logoPath!,
         width: size,
         height: size,
         fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => _buildFallbackIcon(),
+        errorWidget: (_, url, error) => _buildFallbackIcon(),
       );
     }
     // Local file (non-web only)

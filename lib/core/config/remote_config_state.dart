@@ -4,10 +4,11 @@
 /// Values are set during app initialization and read by widgets.
 library;
 
-import 'package:retaillite/main.dart' show appVersion;
-
 class RemoteConfigState {
   RemoteConfigState._();
+
+  /// App version — set from main.dart at startup
+  static String appVersion = '1.0.0';
 
   /// Announcement message from admin (empty = no announcement)
   static String announcement = '';
@@ -18,7 +19,7 @@ class RemoteConfigState {
   /// Whether a newer version is available
   static bool get hasNewerVersion {
     if (latestVersion.isEmpty) return false;
-    return _isVersionLower(appVersion, latestVersion);
+    return _isVersionLower(RemoteConfigState.appVersion, latestVersion);
   }
 
   /// Compare two semver strings. Returns true if [current] < [minimum].

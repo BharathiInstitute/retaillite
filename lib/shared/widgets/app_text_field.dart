@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 
 class AppTextField extends StatelessWidget {
   final String? label;
@@ -118,7 +119,7 @@ class PhoneTextField extends StatelessWidget {
       keyboardType: TextInputType.phone,
       textInputAction: TextInputAction.done,
       maxLength: 10,
-      prefixText: '+91 ',
+      prefixText: '${AppConstants.countryCode} ',
       prefixIcon: const Icon(Icons.phone_android),
       errorText: errorText,
       inputFormatters: [
@@ -137,6 +138,7 @@ class CurrencyTextField extends StatelessWidget {
   final TextEditingController? controller;
   final String? errorText;
   final void Function(String)? onChanged;
+  final bool readOnly;
 
   const CurrencyTextField({
     super.key,
@@ -144,6 +146,7 @@ class CurrencyTextField extends StatelessWidget {
     this.controller,
     this.errorText,
     this.onChanged,
+    this.readOnly = false,
   });
 
   @override
@@ -155,8 +158,9 @@ class CurrencyTextField extends StatelessWidget {
       keyboardType: const TextInputType.numberWithOptions(decimal: true),
       prefixText: '₹ ',
       errorText: errorText,
+      readOnly: readOnly,
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\\.?\\d{0,2}')),
       ],
       onChanged: onChanged,
     );

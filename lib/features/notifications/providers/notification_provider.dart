@@ -17,7 +17,8 @@ final notificationsStreamProvider =
     });
 
 /// Unread notification count (real-time)
-final unreadNotificationCountProvider = StreamProvider<int>((ref) {
+/// Uses autoDispose to release Firestore listener when no longer watched.
+final unreadNotificationCountProvider = StreamProvider.autoDispose<int>((ref) {
   final authState = ref.watch(authNotifierProvider);
   final userId = authState.user?.id;
 

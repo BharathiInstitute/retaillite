@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/utils/website_url.dart';
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -146,7 +147,7 @@ class AuthLayout extends StatelessWidget {
                 children: [
                   // App name - main focus
                   Text(
-                    'Tulasi Stores',
+                    AppConstants.appName,
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.bold,
@@ -222,7 +223,7 @@ class AuthLayout extends StatelessWidget {
                           children: [
                             // App name
                             const Text(
-                              'Tulasi Stores',
+                              AppConstants.appName,
                               style: TextStyle(
                                 fontSize: 26,
                                 fontWeight: FontWeight.bold,

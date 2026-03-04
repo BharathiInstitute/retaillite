@@ -49,7 +49,7 @@ class ThemeSettingsNotifier extends StateNotifier<ThemeSettingsModel> {
   /// Synchronous load from SharedPreferences — no flash of wrong theme
   void _loadLocalSync() {
     try {
-      // Try loading the full JSON first (new format with jsonEncode)
+      // Load from JSON format (current standard)
       final json = OfflineStorageService.getSetting<Map<String, dynamic>>(
         'theme_settings',
       );
@@ -58,42 +58,6 @@ class ThemeSettingsNotifier extends StateNotifier<ThemeSettingsModel> {
         AppColors.updatePrimary(state.primaryColor);
         debugPrint('✅ Theme settings loaded instantly from local cache (JSON)');
         return;
-      }
-
-      // Fallback 1: read standalone dark mode flags (reliable primitives)
-      final isDark = OfflineStorageService.getSetting<bool>('theme_is_dark');
-      final useSystem = OfflineStorageService.getSetting<bool>(
-        'theme_use_system',
-      );
-      if (isDark != null) {
-        state = ThemeSettingsModel(
-          useDarkMode: isDark,
-          useSystemTheme: useSystem ?? false,
-        );
-        debugPrint(
-          '✅ Theme dark mode loaded from standalone flag (isDark=$isDark)',
-        );
-        return;
-      }
-
-      // Fallback 2: legacy .toString() format — parse raw string from SharedPreferences.
-      // Old code stored maps as {useDarkMode: true, ...} which isn't valid JSON.
-      final rawValue = OfflineStorageService.prefs?.getString('theme_settings');
-      if (rawValue != null && rawValue.isNotEmpty) {
-        final isDarkLegacy = rawValue.contains('useDarkMode: true');
-        final useSystemLegacy = !rawValue.contains('useSystemTheme: false');
-        if (isDarkLegacy || !useSystemLegacy) {
-          state = ThemeSettingsModel(
-            useDarkMode: isDarkLegacy,
-            useSystemTheme: useSystemLegacy,
-          );
-          // Re-save in the correct format so future loads are instant
-          _saveSettings();
-          debugPrint(
-            '✅ Theme loaded from legacy .toString() format (isDark=$isDarkLegacy)',
-          );
-          return;
-        }
       }
     } catch (e) {
       debugPrint('Error loading theme from local cache: $e');
@@ -242,7 +206,14 @@ ThemeData _buildTheme(ThemeSettingsModel settings, Brightness brightness) {
         fontSize: 11 * settings.fontSizeScale,
       ),
     );
-    return GoogleFonts.getTextTheme(settings.fontFamily, scaled);
+    try {
+      return GoogleFonts.getTextTheme(settings.fontFamily, scaled);
+    } catch (e) {
+      debugPrint(
+        '⚠️ Font "${settings.fontFamily}" unavailable, falling back to default: $e',
+      );
+      return scaled;
+    }
   }
 
   // Colors - using direct values for dynamic theme generation

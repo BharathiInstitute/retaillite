@@ -237,11 +237,13 @@ class UserUsageService {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /// Get all user usage data (for admin dashboard)
-  static Future<List<UserUsage>> getAllUserUsage() async {
+  /// D10: Paginated with limit to avoid full-collection read at scale
+  static Future<List<UserUsage>> getAllUserUsage({int limit = 200}) async {
     try {
       final snapshot = await _firestore
           .collection('user_usage')
           .orderBy('estimatedCost', descending: true)
+          .limit(limit)
           .get();
 
       return snapshot.docs.map((d) => UserUsage.fromFirestore(d)).toList();
@@ -323,25 +325,37 @@ class UserUsageService {
     }
   }
 
-  /// Reset usage for new billing period (call monthly)
+  /// Reset usage for new billing period (call monthly).
+  /// Processes in chunks of 400 to stay under Firestore's 500-op batch limit.
   static Future<void> resetMonthlyUsage() async {
     try {
-      final snapshot = await _firestore.collection('user_usage').get();
-      final batch = _firestore.batch();
       final periodStart = DateTime(DateTime.now().year, DateTime.now().month);
+      final baseQuery = _firestore.collection('user_usage');
+      QuerySnapshot snapshot;
+      DocumentSnapshot? lastDoc;
 
-      for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {
-          'firestoreReads': 0,
-          'firestoreWrites': 0,
-          'firestoreDeletes': 0,
-          'functionCalls': 0,
-          'periodStart': Timestamp.fromDate(periodStart),
-          'lastUpdated': FieldValue.serverTimestamp(),
-        });
-      }
+      do {
+        Query query = baseQuery.limit(400);
+        if (lastDoc != null) {
+          query = query.startAfterDocument(lastDoc);
+        }
+        snapshot = await query.get();
+        if (snapshot.docs.isEmpty) break;
 
-      await batch.commit();
+        final batch = _firestore.batch();
+        for (final doc in snapshot.docs) {
+          batch.update(doc.reference, {
+            'firestoreReads': 0,
+            'firestoreWrites': 0,
+            'firestoreDeletes': 0,
+            'functionCalls': 0,
+            'periodStart': Timestamp.fromDate(periodStart),
+            'lastUpdated': FieldValue.serverTimestamp(),
+          });
+        }
+        await batch.commit();
+        lastDoc = snapshot.docs.last;
+      } while (snapshot.docs.length == 400);
     } catch (e) {
       debugPrint('❌ Failed to reset usage: $e');
     }

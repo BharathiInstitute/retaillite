@@ -7,6 +7,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:retaillite/core/services/connectivity_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/utils/platform_utils.dart';
 import 'package:retaillite/main.dart';
 
 /// Error severity levels
@@ -130,7 +131,9 @@ class ErrorLogEntry {
     );
   }
 
-  /// Format all error info into a copyable text report
+  /// Format all error info into a copyable text report with full context.
+  /// This is the single source of truth for error reports shared via
+  /// clipboard, email, or bug tickets.
   String toCopyText() {
     final buf = StringBuffer();
     final severityIcon = severity == ErrorSeverity.critical
@@ -146,6 +149,7 @@ class ErrorLogEntry {
     buf.writeln('App Version:   $appVersion');
     if (buildMode != null) buf.writeln('Build Mode:    $buildMode');
     if (sessionId != null) buf.writeln('Session:       $sessionId');
+    if (errorHash != null) buf.writeln('Error Hash:    $errorHash');
     buf.writeln(
       'Time:          ${timestamp.day}/${timestamp.month}/${timestamp.year} '
       '${timestamp.hour.toString().padLeft(2, '0')}:'
@@ -154,6 +158,7 @@ class ErrorLogEntry {
     );
     if (connectivity != null) buf.writeln('Connectivity:  $connectivity');
     if (lifecycleState != null) buf.writeln('Lifecycle:     $lifecycleState');
+    buf.writeln('Resolved:      ${resolved ? 'Yes' : 'No'}');
     buf.writeln();
 
     buf.writeln('📍 LOCATION');
@@ -182,6 +187,15 @@ class ErrorLogEntry {
     if (stackTrace != null && stackTrace!.isNotEmpty) {
       buf.writeln('📜 STACK TRACE');
       buf.writeln(stackTrace);
+      buf.writeln();
+    }
+
+    // Custom metadata (extra context passed at log time)
+    if (metadata != null && metadata!.isNotEmpty) {
+      buf.writeln('🗂️ METADATA');
+      for (final entry in metadata!.entries) {
+        buf.writeln('${entry.key}: ${entry.value}');
+      }
       buf.writeln();
     }
 
@@ -224,9 +238,125 @@ class ErrorLoggingService {
   static String? _currentScreen;
   static String? _sessionId;
 
+  // ── Pre-Firebase Crash Capture ──
+
+  /// Save a crash that occurred before Firebase was initialized.
+  /// Uses SharedPreferences (already initialized before Firebase).
+  static Future<void> savePreFirebaseCrash(
+    dynamic error,
+    StackTrace? stack,
+  ) async {
+    try {
+      final prefs = OfflineStorageService.prefs;
+      if (prefs == null) {
+        // SharedPreferences not ready yet — last resort: write to debugPrint
+        debugPrint('🔴 PRE-FIREBASE CRASH (no prefs): $error');
+        return;
+      }
+      final entry = {
+        'message': error.toString(),
+        'stackTrace': stack?.toString(),
+        'timestamp': DateTime.now().toIso8601String(),
+        'platform': _platformStatic,
+        'context': 'pre_firebase_init',
+      };
+      final existing = prefs.getStringList(_preFirebaseCrashKey) ?? [];
+      existing.add(jsonEncode(entry));
+      await prefs.setStringList(_preFirebaseCrashKey, existing);
+      debugPrint('📦 Pre-Firebase crash saved locally (${existing.length})');
+    } catch (e) {
+      debugPrint('🔴 Failed to save pre-Firebase crash: $e');
+    }
+  }
+
+  /// Flush pre-Firebase crashes to Firestore (call after Firebase is ready).
+  static Future<void> flushPreFirebaseCrashes() async {
+    try {
+      final prefs = OfflineStorageService.prefs;
+      if (prefs == null) return;
+      final queue = prefs.getStringList(_preFirebaseCrashKey);
+      if (queue == null || queue.isEmpty) return;
+
+      debugPrint('📤 Flushing ${queue.length} pre-Firebase crashes...');
+      for (final jsonStr in queue) {
+        final data = jsonDecode(jsonStr) as Map<String, dynamic>;
+        await logError(
+          error: data['message'] ?? 'Pre-Firebase crash',
+          severity: ErrorSeverity.critical,
+          metadata: {
+            'context': 'pre_firebase_init',
+            'originalTimestamp': data['timestamp'],
+            'originalStackTrace': data['stackTrace'],
+            'platform': data['platform'],
+          },
+        );
+      }
+      await prefs.setStringList(_preFirebaseCrashKey, []);
+      debugPrint('✅ Flushed ${queue.length} pre-Firebase crashes');
+    } catch (e) {
+      debugPrint('❌ Failed to flush pre-Firebase crashes: $e');
+    }
+  }
+
+  // ── Crash Detection (Heartbeat) ──
+
+  /// Mark that the app started (clear clean-exit flag).
+  /// Call at the very start of main().
+  static Future<void> markAppStarted() async {
+    try {
+      final prefs = OfflineStorageService.prefs;
+      if (prefs == null) return;
+
+      // Check if previous session exited cleanly
+      final wasClean = prefs.getBool(_cleanExitKey) ?? true;
+      if (!wasClean) {
+        // Previous session crashed or was killed
+        debugPrint('⚠️ Previous session did not exit cleanly — crash detected');
+        final lastTimestamp = prefs.getString('${_cleanExitKey}_ts');
+        await logError(
+          error: 'Ungraceful shutdown detected (app was killed or crashed)',
+          severity: ErrorSeverity.warning,
+          metadata: {
+            'context': 'crash_detection',
+            'lastHeartbeat': lastTimestamp,
+            'platform': _platformStatic,
+          },
+        );
+      }
+
+      // Set flag to false (will be set to true on clean exit)
+      await prefs.setBool(_cleanExitKey, false);
+      await prefs.setString(
+        '${_cleanExitKey}_ts',
+        DateTime.now().toIso8601String(),
+      );
+    } catch (e) {
+      debugPrint('⚠️ markAppStarted failed: $e');
+    }
+  }
+
+  /// Mark that the app is exiting cleanly.
+  /// Call from AppLifecycleState.detached or dispose.
+  static Future<void> markCleanExit() async {
+    try {
+      final prefs = OfflineStorageService.prefs;
+      if (prefs == null) return;
+      await prefs.setBool(_cleanExitKey, true);
+    } catch (_) {}
+  }
+
+  /// Static platform detection (delegates to shared utility)
+  static String get _platformStatic => currentPlatformName;
+
   /// Offline error queue key
   static const String _offlineQueueKey = 'pending_error_logs';
-  static const int _maxQueueSize = 50;
+  static const int _maxQueueSize = 200;
+
+  /// Pre-Firebase crash storage key (errors before Firebase.initializeApp)
+  static const String _preFirebaseCrashKey = 'pre_firebase_crash';
+
+  /// Clean-exit flag key (for crash detection)
+  static const String _cleanExitKey = 'app_clean_exit';
 
   /// Set current screen for error context
   static void setCurrentScreen(String screenName) {
@@ -238,24 +368,8 @@ class ErrorLoggingService {
     _sessionId = id;
   }
 
-  /// Get current platform as string
-  static String get _platform {
-    if (kIsWeb) return 'web';
-    switch (defaultTargetPlatform) {
-      case TargetPlatform.android:
-        return 'android';
-      case TargetPlatform.iOS:
-        return 'ios';
-      case TargetPlatform.windows:
-        return 'windows';
-      case TargetPlatform.macOS:
-        return 'macos';
-      case TargetPlatform.linux:
-        return 'linux';
-      default:
-        return 'unknown';
-    }
-  }
+  /// Get current platform as string (delegates to shared utility)
+  static String get _platform => currentPlatformName;
 
   /// Get current build mode
   static String get _buildMode {
@@ -320,6 +434,13 @@ class ErrorLoggingService {
       // Try to write to Firestore
       if (ConnectivityService.isOnline) {
         await _firestore.collection('error_logs').add(entry.toFirestore());
+
+        // D1-4: Increment pre-aggregated counters for dashboard reads
+        await _firestore.collection('error_logs_meta').doc('counts').set({
+          'platform': {_platform: FieldValue.increment(1)},
+          'severity': {severity.name: FieldValue.increment(1)},
+        }, SetOptions(merge: true));
+
         // Also flush any queued offline errors
         await flushOfflineQueue();
       } else {
@@ -539,6 +660,9 @@ class ErrorLoggingService {
           .collection('error_logs')
           .where('errorHash', isEqualTo: errorHash)
           .where('resolved', isEqualTo: false)
+          .limit(
+            400,
+          ) // D10: Cap batch size to stay within Firestore batch limit
           .get();
 
       if (snapshot.docs.isEmpty) return 0;
@@ -555,33 +679,35 @@ class ErrorLoggingService {
     }
   }
 
-  /// Get error count by platform (for admin dashboard)
+  /// Get error count by platform (from pre-aggregated counter doc — D1-4)
   static Future<Map<String, int>> getErrorCountByPlatform() async {
     try {
-      final snapshot = await _firestore.collection('error_logs').get();
+      final doc = await _firestore
+          .collection('error_logs_meta')
+          .doc('counts')
+          .get();
+      final data = doc.data();
+      if (data == null) return {};
 
-      final counts = <String, int>{};
-      for (final doc in snapshot.docs) {
-        final platform = (doc.data())['platform'] as String? ?? 'unknown';
-        counts[platform] = (counts[platform] ?? 0) + 1;
-      }
-      return counts;
+      final platformMap = data['platform'] as Map<String, dynamic>? ?? {};
+      return platformMap.map((k, v) => MapEntry(k, (v as num).toInt()));
     } catch (e) {
       return {};
     }
   }
 
-  /// Get error count by severity (for admin dashboard)
+  /// Get error count by severity (from pre-aggregated counter doc — D1-4)
   static Future<Map<String, int>> getErrorCountBySeverity() async {
     try {
-      final snapshot = await _firestore.collection('error_logs').get();
+      final doc = await _firestore
+          .collection('error_logs_meta')
+          .doc('counts')
+          .get();
+      final data = doc.data();
+      if (data == null) return {};
 
-      final counts = <String, int>{};
-      for (final doc in snapshot.docs) {
-        final severity = (doc.data())['severity'] as String? ?? 'error';
-        counts[severity] = (counts[severity] ?? 0) + 1;
-      }
-      return counts;
+      final severityMap = data['severity'] as Map<String, dynamic>? ?? {};
+      return severityMap.map((k, v) => MapEntry(k, (v as num).toInt()));
     } catch (e) {
       return {};
     }
@@ -595,6 +721,7 @@ class ErrorLoggingService {
           .collection('error_logs')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoff))
           .orderBy('timestamp')
+          .limit(5000) // D10: Cap reads for trend chart
           .get();
 
       final counts = <DateTime, int>{};
@@ -619,26 +746,36 @@ class ErrorLoggingService {
     }
   }
 
-  /// Delete old error logs (cleanup)
+  /// Delete old error logs (cleanup) — paginated in batches of 450
   static Future<int> deleteOldLogs({int daysOld = 30}) async {
+    int totalDeleted = 0;
     try {
       final cutoff = DateTime.now().subtract(Duration(days: daysOld));
-      final snapshot = await _firestore
-          .collection('error_logs')
-          .where('timestamp', isLessThan: Timestamp.fromDate(cutoff))
-          .get();
 
-      if (snapshot.docs.isEmpty) return 0;
+      while (true) {
+        final snapshot = await _firestore
+            .collection('error_logs')
+            .where('timestamp', isLessThan: Timestamp.fromDate(cutoff))
+            .limit(450)
+            .get();
 
-      final batch = _firestore.batch();
-      for (final doc in snapshot.docs) {
-        batch.delete(doc.reference);
+        if (snapshot.docs.isEmpty) break;
+
+        final batch = _firestore.batch();
+        for (final doc in snapshot.docs) {
+          batch.delete(doc.reference);
+        }
+        await batch.commit();
+        totalDeleted += snapshot.docs.length;
+
+        // If we got fewer than 450, we're done
+        if (snapshot.docs.length < 450) break;
       }
-      await batch.commit();
-      return snapshot.docs.length;
+
+      return totalDeleted;
     } catch (e) {
       debugPrint('❌ Failed to delete old logs: $e');
-      return 0;
+      return totalDeleted;
     }
   }
 }

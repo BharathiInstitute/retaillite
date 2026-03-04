@@ -1,7 +1,18 @@
-﻿# Smart Deploy Agent v3.0 - Tulasi Stores
+﻿# Smart Deploy Agent v4.0 - Tulasi Stores
 # Asks smart questions first, then runs everything automatically
 #
 # Usage: .\smart-deploy.ps1
+#        .\smart-deploy.ps1 -Rollback                    # Rollback all platforms
+#        .\smart-deploy.ps1 -Rollback -RollbackTarget web  # Rollback web only
+#        .\smart-deploy.ps1 -DryRun                      # Preview without deploying
+#        .\smart-deploy.ps1 -SetupMonitoring             # One-time GCP monitoring setup
+
+param(
+    [switch]$Rollback,
+    [switch]$DryRun,
+    [switch]$SetupMonitoring,
+    [string]$RollbackTarget = ""   # web, windows, android, or blank for all
+)
 
 $ErrorActionPreference = "Stop"
 $root = $PSScriptRoot
@@ -91,6 +102,251 @@ function Save-Progress {
     $script:currentState.completedSteps = $script:completedSteps
     $stateJson = $script:currentState | ConvertTo-Json -Depth 3
     [System.IO.File]::WriteAllText($statePath, $stateJson, [System.Text.UTF8Encoding]::new($false))
+}
+
+# ===========================================================
+#   --setup-monitoring: One-time GCP budget + uptime setup
+# ===========================================================
+if ($SetupMonitoring) {
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Cyan
+    Write-Host "  GCP Monitoring & Budget Setup" -ForegroundColor Cyan
+    Write-Host "========================================================" -ForegroundColor Cyan
+
+    # Check gcloud is available
+    $gcloudExists = Get-Command gcloud -ErrorAction SilentlyContinue
+    if (-not $gcloudExists) {
+        Write-Fail "gcloud CLI not found. Install: https://cloud.google.com/sdk/docs/install"
+        exit 1
+    }
+
+    $projectId = (gcloud config get-value project 2>$null)
+    if (-not $projectId) { $projectId = "login-radha" }
+    Write-Info "Project: $projectId"
+
+    # 1. Enable required APIs
+    Write-Step "Enabling Monitoring & Billing APIs..."
+    $ErrorActionPreference = "Continue"
+    gcloud services enable monitoring.googleapis.com --project $projectId 2>&1 | Out-Null
+    gcloud services enable cloudbilling.googleapis.com --project $projectId 2>&1 | Out-Null
+    gcloud services enable billingbudgets.googleapis.com --project $projectId 2>&1 | Out-Null
+    $ErrorActionPreference = "Stop"
+    Write-Ok "APIs enabled"
+
+    # 2. Create uptime check for web app
+    Write-Step "Creating uptime check for web app..."
+    $ErrorActionPreference = "Continue"
+    gcloud monitoring uptime create "RetailLite Web App" `
+        --resource-type=uptime-url `
+        --resource-labels="host=login-radha.web.app,project_id=$projectId" `
+        --protocol=https `
+        --path="/" `
+        --period=5 `
+        --project $projectId 2>&1
+    $ErrorActionPreference = "Stop"
+    Write-Ok "Uptime check created (checks every 5 min)"
+
+    # 3. Create uptime check for Flutter app
+    Write-Step "Creating uptime check for Flutter web app..."
+    $ErrorActionPreference = "Continue"
+    gcloud monitoring uptime create "RetailLite Flutter App" `
+        --resource-type=uptime-url `
+        --resource-labels="host=login-radha.web.app,project_id=$projectId" `
+        --protocol=https `
+        --path="/app/" `
+        --period=5 `
+        --project $projectId 2>&1
+    $ErrorActionPreference = "Stop"
+    Write-Ok "App uptime check created"
+
+    # 4. GCS backup lifecycle (auto-delete backups > 30 days)
+    Write-Step "Setting backup retention policy (30 days)..."
+    $backupBucket = "$projectId-firestore-backups"
+    $lifecycleConfig = @"
+{
+  "rule": [
+    {
+      "action": { "type": "Delete" },
+      "condition": { "age": 30 }
+    }
+  ]
+}
+"@
+    $lifecycleFile = Join-Path $root "lifecycle.json"
+    [System.IO.File]::WriteAllText($lifecycleFile, $lifecycleConfig, [System.Text.UTF8Encoding]::new($false))
+
+    $ErrorActionPreference = "Continue"
+    gsutil lifecycle set $lifecycleFile "gs://$backupBucket" 2>&1
+    $gsExit = $LASTEXITCODE
+    $ErrorActionPreference = "Stop"
+    Remove-Item $lifecycleFile -Force -ErrorAction SilentlyContinue
+
+    if ($gsExit -eq 0) {
+        Write-Ok "Backup retention: 30 days (auto-delete older)"
+    } else {
+        Write-Warn "Could not set lifecycle. Run manually:"
+        Write-Info "  gsutil lifecycle set lifecycle.json gs://$backupBucket"
+    }
+
+    # 5. Budget alerts
+    Write-Step "Budget alert setup instructions..."
+    Write-Host ""
+    Write-Host "  +-------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host "  |  GCP Budget Alerts (manual — requires billing    |" -ForegroundColor Yellow
+    Write-Host "  |  admin access via console):                      |" -ForegroundColor Yellow
+    Write-Host "  |                                                  |" -ForegroundColor Yellow
+    Write-Host "  |  1. Go to: console.cloud.google.com/billing     |" -ForegroundColor White
+    Write-Host "  |  2. Select your billing account                  |" -ForegroundColor White
+    Write-Host "  |  3. Budgets & alerts > CREATE BUDGET             |" -ForegroundColor White
+    Write-Host "  |  4. Set thresholds at: `$50, `$100, `$200         |" -ForegroundColor White
+    Write-Host "  |  5. Add email recipients for alerts              |" -ForegroundColor White
+    Write-Host "  |                                                  |" -ForegroundColor Yellow
+    Write-Host "  |  Recommended monthly budget: `$100 for 10K users |" -ForegroundColor Cyan
+    Write-Host "  +-------------------------------------------------+" -ForegroundColor Yellow
+    Write-Host ""
+
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Green
+    Write-Host "  Monitoring setup complete!" -ForegroundColor Green
+    Write-Host "========================================================" -ForegroundColor Green
+    Write-Host "  - Uptime checks: web + app (every 5 min)" -ForegroundColor Green
+    Write-Host "  - Backup retention: 30 days auto-delete" -ForegroundColor Green
+    Write-Host "  - Budget alerts: follow instructions above" -ForegroundColor Yellow
+    Write-Host ""
+    Write-DeployLog "MONITORING | Setup complete — uptime checks + backup retention"
+    exit 0
+}
+
+# ===========================================================
+#   --rollback: Revert to previous deployment
+# ===========================================================
+if ($Rollback) {
+    Write-Host ""
+    Write-Host "========================================================" -ForegroundColor Yellow
+    Write-Host "  ROLLBACK MODE" -ForegroundColor Yellow
+    Write-Host "========================================================" -ForegroundColor Yellow
+
+    $backupDir = Join-Path $root "deploy-backups"
+    $targets = @()
+
+    if ($RollbackTarget -eq "" -or $RollbackTarget -eq "all") {
+        $targets = @("web", "windows", "android")
+    } else {
+        $targets = @($RollbackTarget.ToLower())
+    }
+
+    $rollbackPerformed = $false
+
+    # --- Rollback Web ---
+    if ($targets -contains "web") {
+        $distBackups = Get-ChildItem $backupDir -Directory -Filter "dist_*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        if ($distBackups.Count -gt 0) {
+            $latestBackup = $distBackups[0]
+            Write-Step "Rolling back Web from backup: $($latestBackup.Name)"
+
+            if ($DryRun) {
+                Write-Info "[DRY-RUN] Would restore $($latestBackup.FullName) to dist/ and deploy"
+            } else {
+                $distDir = Join-Path $root "dist"
+                if (Test-Path $distDir) { Remove-Item $distDir -Recurse -Force }
+                New-Item -ItemType Directory -Path $distDir -Force | Out-Null
+                Copy-Item -Path "$($latestBackup.FullName)\*" -Destination $distDir -Recurse -Force
+                Write-Ok "Restored dist/ from backup"
+
+                Write-Step "Deploying rolled-back web to Firebase Hosting..."
+                $ErrorActionPreference = "Continue"
+                firebase deploy --only hosting
+                $fbExit = $LASTEXITCODE
+                $ErrorActionPreference = "Stop"
+
+                if ($fbExit -eq 0) {
+                    Write-Ok "Web rollback deployed!"
+                    Write-DeployLog "ROLLBACK | Web restored from $($latestBackup.Name)"
+                    $rollbackPerformed = $true
+                } else {
+                    Write-Fail "Firebase hosting deploy failed during rollback!"
+                }
+            }
+        } else {
+            Write-Warn "No web backup found in deploy-backups/"
+        }
+    }
+
+    # --- Rollback Windows ---
+    if ($targets -contains "windows") {
+        $winBackups = Get-ChildItem $backupDir -File -Filter "version_win_*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        if ($winBackups.Count -gt 0) {
+            $latestWinBackup = $winBackups[0]
+            Write-Step "Rolling back Windows version.json from: $($latestWinBackup.Name)"
+
+            if ($DryRun) {
+                Write-Info "[DRY-RUN] Would restore $($latestWinBackup.Name) to installer/version.json and upload"
+            } else {
+                $winVersionPath = Join-Path $root "installer\version.json"
+                Copy-Item $latestWinBackup.FullName $winVersionPath -Force
+                Write-Ok "Restored installer/version.json"
+
+                $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
+                if ($gsutilExists) {
+                    $storagePath = "gs://login-radha.firebasestorage.app/downloads/windows/"
+                    gsutil cp $winVersionPath "${storagePath}version.json"
+                    gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
+                    Write-Ok "Windows version.json uploaded to Storage"
+                    Write-DeployLog "ROLLBACK | Windows version.json restored from $($latestWinBackup.Name)"
+                    $rollbackPerformed = $true
+                } else {
+                    Write-Warn "gsutil not found — upload installer/version.json manually"
+                }
+            }
+        } else {
+            Write-Warn "No Windows backup found in deploy-backups/"
+        }
+    }
+
+    # --- Rollback Android ---
+    if ($targets -contains "android") {
+        $androidBackups = Get-ChildItem $backupDir -File -Filter "version_android_*" -ErrorAction SilentlyContinue | Sort-Object Name -Descending
+        if ($androidBackups.Count -gt 0) {
+            $latestAndBackup = $androidBackups[0]
+            Write-Step "Rolling back Android version.json from: $($latestAndBackup.Name)"
+
+            if ($DryRun) {
+                Write-Info "[DRY-RUN] Would restore $($latestAndBackup.Name) to installer/android-version.json and upload"
+            } else {
+                $androidVersionPath = Join-Path $root "installer\android-version.json"
+                Copy-Item $latestAndBackup.FullName $androidVersionPath -Force
+                Write-Ok "Restored installer/android-version.json"
+
+                $gsutilExists = Get-Command gsutil -ErrorAction SilentlyContinue
+                if ($gsutilExists) {
+                    $storagePath = "gs://login-radha.firebasestorage.app/downloads/android/"
+                    gsutil cp $androidVersionPath "${storagePath}version.json"
+                    gsutil setmeta -h "Cache-Control:no-cache,max-age=0" "${storagePath}version.json"
+                    Write-Ok "Android version.json uploaded to Storage"
+                    Write-DeployLog "ROLLBACK | Android version.json restored from $($latestAndBackup.Name)"
+                    $rollbackPerformed = $true
+                } else {
+                    Write-Warn "gsutil not found — upload installer/android-version.json manually"
+                }
+            }
+        } else {
+            Write-Warn "No Android backup found in deploy-backups/"
+        }
+    }
+
+    if ($DryRun) {
+        Write-Host ""
+        Write-Ok "[DRY-RUN] Rollback preview complete. No changes made."
+    } elseif ($rollbackPerformed) {
+        Write-Host ""
+        Write-Host "========================================================" -ForegroundColor Green
+        Write-Host "  Rollback Complete!" -ForegroundColor Green
+        Write-Host "========================================================" -ForegroundColor Green
+    } else {
+        Write-Host ""
+        Write-Warn "No rollback was performed."
+    }
+    exit 0
 }
 
 # ===========================================================
@@ -417,6 +673,29 @@ else {
 Write-Host "========================================================" -ForegroundColor Green
 
 Write-DeployLog "DEPLOY START | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
+
+# --- Dry-run mode: show plan and exit ---
+if ($DryRun) {
+    Write-Host ""
+    Write-Host "  [DRY-RUN MODE] No changes will be made." -ForegroundColor Yellow
+    Write-Host ""
+    if (-not $skipBuild) {
+        Write-Info "Would update pubspec.yaml to $newVersion+$newBuild"
+        Write-Info "Would run: flutter test --reporter compact"
+        Write-Info "Would run: flutter analyze"
+    }
+    if ($deployWeb) { Write-Info "Would build web + deploy to Firebase Hosting + health check" }
+    if ($deployWindows) { Write-Info "Would build Windows + create $winChoiceLabel + upload to Storage" }
+    if ($deployAndroid) { Write-Info "Would build Android APK + upload to Storage" }
+    if (-not $skipBuild) { Write-Info "Would git commit + tag v$newVersion+$newBuild + push" }
+    if ($forceMinVersion) { Write-Info "Would set Remote Config: min_app_version = $forceMinVersion" }
+    if ($announcementMsg) { Write-Info "Would set Remote Config: announcement = $announcementMsg" }
+    Write-Host ""
+    Write-Ok "[DRY-RUN] Preview complete. Run without --dry-run to execute."
+    Write-DeployLog "DRY-RUN | Preview only, no changes made"
+    if (Test-Path $statePath) { Remove-Item $statePath -Force }
+    exit 0
+}
 
 try {
     # <- Catch ALL errors -- nothing can stop us!

@@ -15,6 +15,9 @@ import 'package:path_provider/path_provider.dart';
 class ImageSizes {
   static const int logoSize = 200;
   static const int productThumbnailSize = 150;
+
+  /// Maximum file size before resize: 15 MB
+  static const int maxFileSizeBytes = 15 * 1024 * 1024;
 }
 
 /// Service for picking and resizing images
@@ -43,6 +46,14 @@ class ImageService {
         bytes = await File(file.path!).readAsBytes();
       }
       if (bytes == null) return null;
+
+      // Reject files larger than 15 MB to avoid memory issues
+      if (bytes.length > ImageSizes.maxFileSizeBytes) {
+        throw Exception(
+          'Image too large (${(bytes.length / 1024 / 1024).toStringAsFixed(1)} MB). '
+          'Maximum size is ${ImageSizes.maxFileSizeBytes ~/ 1024 ~/ 1024} MB.',
+        );
+      }
 
       // Resize image (use compute on non-web, direct call on web)
       Uint8List resizedBytes;
@@ -98,6 +109,14 @@ class ImageService {
         bytes = await File(file.path!).readAsBytes();
       }
       if (bytes == null) return null;
+
+      // Reject files larger than 15 MB to avoid memory issues
+      if (bytes.length > ImageSizes.maxFileSizeBytes) {
+        throw Exception(
+          'Image too large (${(bytes.length / 1024 / 1024).toStringAsFixed(1)} MB). '
+          'Maximum size is ${ImageSizes.maxFileSizeBytes ~/ 1024 ~/ 1024} MB.',
+        );
+      }
 
       // Resize to product thumbnail size
       Uint8List resizedBytes;
@@ -157,6 +176,14 @@ class ImageService {
         bytes = await File(file.path!).readAsBytes();
       }
       if (bytes == null) return null;
+
+      // Reject files larger than 15 MB to avoid memory issues
+      if (bytes.length > ImageSizes.maxFileSizeBytes) {
+        throw Exception(
+          'Image too large (${(bytes.length / 1024 / 1024).toStringAsFixed(1)} MB). '
+          'Maximum size is ${ImageSizes.maxFileSizeBytes ~/ 1024 ~/ 1024} MB.',
+        );
+      }
 
       // Resize image (use compute on non-web, direct call on web)
       Uint8List resizedBytes;
@@ -351,6 +378,22 @@ class ImageService {
     await file.writeAsBytes(bytes);
 
     return filePath;
+  }
+
+  /// Read image bytes from a file path (cross-platform)
+  /// Returns null if the file doesn't exist or can't be read
+  static Future<Uint8List?> readImageBytes(String path) async {
+    try {
+      if (kIsWeb) return null;
+      final file = File(path);
+      if (file.existsSync()) {
+        return await file.readAsBytes();
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error reading image bytes: $e');
+      return null;
+    }
   }
 
   /// Delete an image file

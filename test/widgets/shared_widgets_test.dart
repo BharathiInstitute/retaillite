@@ -25,7 +25,7 @@ void main() {
     });
 
     testWidgets('disabled button does not respond to tap', (tester) async {
-      final tapped = false;
+      const tapped = false;
       await tester.pumpWidget(testApp(const AppButton(label: 'Disabled')));
       await tester.tap(find.text('Disabled'));
       expect(tapped, isFalse);

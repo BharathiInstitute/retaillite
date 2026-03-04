@@ -255,11 +255,8 @@ void main() {
     });
 
     test('update layer should be upToDate for MSIX', () {
-      const isMsix = true;
       // getUpdateLayer returns upToDate immediately for MSIX
-      const layer = isMsix
-          ? UpdateLayer.upToDate
-          : UpdateLayer.silentInProgress;
+      const layer = UpdateLayer.upToDate; // MSIX always returns upToDate
       expect(layer, UpdateLayer.upToDate);
     });
 

@@ -2,6 +2,7 @@
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:retaillite/features/notifications/models/notification_model.dart';
 
@@ -107,150 +108,57 @@ class NotificationFirestoreService {
     }
   }
 
-  /// Send notification to ALL users (fan-out)
+  /// Send notification to ALL users via Cloud Function (D1-2).
+  /// No longer scans all users on the client — server paginates.
   static Future<int> sendToAllUsers({
     required NotificationModel notification,
   }) async {
-    DocumentReference? globalRef;
     try {
-      // Save to global notifications collection for admin history
-      globalRef = await _firestore
-          .collection('notifications')
-          .add(notification.toFirestore());
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('sendNotificationToAll');
 
-      // Get all user IDs
-      final usersSnap = await _firestore.collection('users').get();
-      debugPrint('📋 Found ${usersSnap.docs.length} users in collection');
-
-      if (usersSnap.docs.isEmpty) {
-        await globalRef.update({
-          'recipientCount': 0,
-          'sentAt': FieldValue.serverTimestamp(),
-          'error': 'No users found in collection',
-        });
-        return 0;
-      }
-
-      var batch = _firestore.batch();
-      int count = 0;
-
-      for (final userDoc in usersSnap.docs) {
-        final userNotifRef = _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('notifications')
-            .doc();
-
-        batch.set(userNotifRef, {
-          ...notification.toUserNotification(),
-          'globalNotificationId': globalRef.id,
-        });
-        count++;
-
-        if (count % 450 == 0) {
-          await batch.commit();
-          batch = _firestore.batch();
-        }
-      }
-
-      if (count % 450 != 0) {
-        await batch.commit();
-      }
-
-      await globalRef.update({
-        'recipientCount': count,
-        'sentAt': FieldValue.serverTimestamp(),
+      final result = await callable.call<Map<String, dynamic>>({
+        'title': notification.title,
+        'body': notification.body,
+        'type': notification.type.name,
+        'sentBy': notification.sentBy,
+        if (notification.data != null) 'data': notification.data,
       });
 
-      debugPrint('✅ Notification sent to $count users');
+      final count = (result.data['recipientCount'] as num?)?.toInt() ?? 0;
+      debugPrint('✅ Notification sent to $count users via CF');
       return count;
     } catch (e, st) {
       debugPrint('❌ Failed to send to all users: $e\n$st');
-      // Mark global doc as failed so it doesn't show "Processing..." forever
-      if (globalRef != null) {
-        try {
-          await globalRef.update({
-            'recipientCount': 0,
-            'sentAt': FieldValue.serverTimestamp(),
-            'error': e.toString(),
-          });
-        } catch (_) {}
-      }
       rethrow;
     }
   }
 
-  /// Send notification to users with a specific plan
+  /// Send notification to users with a specific plan via Cloud Function (D1-2).
   static Future<int> sendToPlanUsers({
     required String plan,
     required NotificationModel notification,
   }) async {
-    DocumentReference? globalRef;
     try {
-      globalRef = await _firestore
-          .collection('notifications')
-          .add(notification.toFirestore());
+      final callable = FirebaseFunctions.instanceFor(
+        region: 'asia-south1',
+      ).httpsCallable('sendNotificationToPlan');
 
-      final usersSnap = await _firestore
-          .collection('users')
-          .where('subscription.plan', isEqualTo: plan)
-          .get();
-
-      debugPrint('📋 Found ${usersSnap.docs.length} users with plan: $plan');
-
-      if (usersSnap.docs.isEmpty) {
-        await globalRef.update({
-          'recipientCount': 0,
-          'sentAt': FieldValue.serverTimestamp(),
-          'error': 'No users found with plan: $plan',
-        });
-        return 0;
-      }
-
-      var batch = _firestore.batch();
-      int count = 0;
-
-      for (final userDoc in usersSnap.docs) {
-        final userNotifRef = _firestore
-            .collection('users')
-            .doc(userDoc.id)
-            .collection('notifications')
-            .doc();
-
-        batch.set(userNotifRef, {
-          ...notification.toUserNotification(),
-          'globalNotificationId': globalRef.id,
-        });
-        count++;
-
-        if (count % 450 == 0) {
-          await batch.commit();
-          batch = _firestore.batch();
-        }
-      }
-
-      if (count % 450 != 0) {
-        await batch.commit();
-      }
-
-      await globalRef.update({
-        'recipientCount': count,
-        'sentAt': FieldValue.serverTimestamp(),
+      final result = await callable.call<Map<String, dynamic>>({
+        'plan': plan,
+        'title': notification.title,
+        'body': notification.body,
+        'type': notification.type.name,
+        'sentBy': notification.sentBy,
+        if (notification.data != null) 'data': notification.data,
       });
 
-      debugPrint('✅ Notification sent to $count $plan users');
+      final count = (result.data['recipientCount'] as num?)?.toInt() ?? 0;
+      debugPrint('✅ Notification sent to $count $plan users via CF');
       return count;
     } catch (e, st) {
       debugPrint('❌ Failed to send to plan users: $e\n$st');
-      if (globalRef != null) {
-        try {
-          await globalRef.update({
-            'recipientCount': 0,
-            'sentAt': FieldValue.serverTimestamp(),
-            'error': e.toString(),
-          });
-        } catch (_) {}
-      }
       rethrow;
     }
   }
@@ -309,16 +217,20 @@ class NotificationFirestoreService {
             'sentAt': FieldValue.serverTimestamp(),
             'error': e.toString(),
           });
-        } catch (_) {}
+        } catch (e) {
+          debugPrint('⚠️ Notification: error-path globalRef update failed: $e');
+        }
       }
       rethrow;
     }
   }
 
   /// Search users by name, email, or shop name (for user picker)
+  /// D10: Client-side search capped at 100 docs. At 10K+ users, migrate to
+  /// Cloud Function with Firestore prefix queries or Algolia/Typesense.
   static Future<List<Map<String, dynamic>>> searchUsers(String query) async {
     try {
-      final snap = await _firestore.collection('users').get();
+      final snap = await _firestore.collection('users').limit(100).get();
       final q = query.toLowerCase();
       return snap.docs
           .where((doc) {
@@ -340,10 +252,11 @@ class NotificationFirestoreService {
     }
   }
 
-  /// Get all users (for user picker)
+  /// Get all users (for user picker — admin only)
+  /// D10: Capped at 100 docs to limit reads. At 10K+ users, paginate or use CF.
   static Future<List<Map<String, dynamic>>> getAllUsers() async {
     try {
-      final snap = await _firestore.collection('users').get();
+      final snap = await _firestore.collection('users').limit(100).get();
       return snap.docs.map((doc) {
         final data = doc.data();
         data['id'] = doc.id;

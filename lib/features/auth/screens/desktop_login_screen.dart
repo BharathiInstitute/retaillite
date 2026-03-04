@@ -4,6 +4,7 @@ library;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
@@ -24,6 +25,59 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
     } finally {
       if (mounted) setState(() => _isSigningIn = false);
     }
+  }
+
+  /// Build countdown + link code display (A19)
+  Widget _buildLinkCodeDisplay(AuthState authState) {
+    final code = authState.desktopLinkCode;
+    final expiresAt = authState.desktopLinkExpiresAt;
+    if (code == null || expiresAt == null) return const SizedBox.shrink();
+
+    return TweenAnimationBuilder<double>(
+      tween: Tween(
+        begin: expiresAt.difference(DateTime.now()).inSeconds.toDouble(),
+        end: 0,
+      ),
+      duration: expiresAt.difference(DateTime.now()),
+      builder: (context, value, child) {
+        final remaining = value.toInt();
+        if (remaining <= 0) {
+          return const Text(
+            'Code expired — tap Sign In to get a new one.',
+            style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+          );
+        }
+        final minutes = remaining ~/ 60;
+        final seconds = remaining % 60;
+        return Column(
+          children: [
+            const SizedBox(height: 16),
+            const Text(
+              'Enter this code in the browser:',
+              style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              code,
+              style: const TextStyle(
+                fontSize: 28,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 6,
+                color: AppColors.textPrimary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Expires in ${minutes}m ${seconds.toString().padLeft(2, '0')}s',
+              style: TextStyle(
+                fontSize: 13,
+                color: remaining < 60 ? AppColors.error : AppColors.textMuted,
+              ),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
@@ -73,7 +127,7 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
 
                 // Title
                 const Text(
-                  'Tulasi Stores',
+                  AppConstants.appName,
                   style: TextStyle(
                     fontSize: 22,
                     fontWeight: FontWeight.bold,
@@ -231,6 +285,9 @@ class _DesktopLoginScreenState extends ConsumerState<DesktopLoginScreen> {
                     ),
                   ),
                 ),
+
+                // Link code + countdown (A19)
+                if (_isSigningIn) _buildLinkCodeDisplay(authState),
               ],
             ),
           ),

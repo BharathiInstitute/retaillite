@@ -1,6 +1,7 @@
 /// Data export service for CSV/PDF generation
 library;
 
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:csv/csv.dart';
@@ -297,11 +298,9 @@ class DataExportService {
     Directory directory;
 
     if (Platform.isAndroid) {
-      // Use external storage on Android
-      directory = Directory('/storage/emulated/0/Download');
-      if (!directory.existsSync()) {
-        directory = await getApplicationDocumentsDirectory();
-      }
+      // Use Downloads via path_provider (scoped storage safe)
+      final extDir = await getExternalStorageDirectory();
+      directory = extDir ?? await getApplicationDocumentsDirectory();
     } else if (Platform.isIOS) {
       directory = await getApplicationDocumentsDirectory();
     } else {
@@ -309,8 +308,8 @@ class DataExportService {
       directory = await getApplicationDocumentsDirectory();
     }
 
-    // Create Tulasi Stores subfolder
-    final exportDir = Directory('${directory.path}/TulasiStores_Exports');
+    // Create RetailLite subfolder
+    final exportDir = Directory('${directory.path}/RetailLite_Exports');
     if (!exportDir.existsSync()) {
       exportDir.createSync(recursive: true);
     }
@@ -407,15 +406,8 @@ class DataExportService {
   }
 
   String _prettyPrintJson(List<Map<String, dynamic>> data) {
-    final buffer = StringBuffer();
-    buffer.writeln('[');
-    for (int i = 0; i < data.length; i++) {
-      buffer.write('  ${data[i]}');
-      if (i < data.length - 1) buffer.write(',');
-      buffer.writeln();
-    }
-    buffer.writeln(']');
-    return buffer.toString();
+    const encoder = JsonEncoder.withIndent('  ');
+    return encoder.convert(data);
   }
 
   String _getMonthName(int month) {

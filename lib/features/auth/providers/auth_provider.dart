@@ -2,6 +2,7 @@
 /// Handles user authentication with Firebase Auth
 library;
 
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math' as math;
 
@@ -13,14 +14,21 @@ import 'package:http/http.dart' as http;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:retaillite/core/config/razorpay_config.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
+import 'package:retaillite/firebase_options.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/features/notifications/services/fcm_token_service.dart';
 import 'package:retaillite/features/notifications/services/notification_service.dart';
 import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
 import 'package:retaillite/models/user_model.dart';
+
+/// Sentinel value for distinguishing "not provided" from "set to null" in copyWith
+const _sentinel = Object();
 
 /// Auth state
 enum AuthStatus { unauthenticated, authenticated }
@@ -37,6 +45,12 @@ class AuthState {
   final bool isLoading;
   final String? error;
 
+  /// Desktop auth: current link code (A19)
+  final String? desktopLinkCode;
+
+  /// Desktop auth: when the link code expires (A19)
+  final DateTime? desktopLinkExpiresAt;
+
   const AuthState({
     this.status = AuthStatus.unauthenticated,
     this.firebaseUser,
@@ -47,29 +61,37 @@ class AuthState {
     this.isDemoMode = false,
     this.isLoading = true,
     this.error,
+    this.desktopLinkCode,
+    this.desktopLinkExpiresAt,
   });
 
   AuthState copyWith({
     AuthStatus? status,
-    User? firebaseUser,
-    UserModel? user,
+    Object? firebaseUser = _sentinel,
+    Object? user = _sentinel,
     bool? isLoggedIn,
     bool? isShopSetupComplete,
     bool? isEmailVerified,
     bool? isDemoMode,
     bool? isLoading,
     String? error,
+    String? desktopLinkCode,
+    DateTime? desktopLinkExpiresAt,
   }) {
     return AuthState(
       status: status ?? this.status,
-      firebaseUser: firebaseUser ?? this.firebaseUser,
-      user: user ?? this.user,
+      firebaseUser: firebaseUser == _sentinel
+          ? this.firebaseUser
+          : firebaseUser as User?,
+      user: user == _sentinel ? this.user : user as UserModel?,
       isLoggedIn: isLoggedIn ?? this.isLoggedIn,
       isShopSetupComplete: isShopSetupComplete ?? this.isShopSetupComplete,
       isEmailVerified: isEmailVerified ?? this.isEmailVerified,
       isDemoMode: isDemoMode ?? this.isDemoMode,
       isLoading: isLoading ?? this.isLoading,
       error: error,
+      desktopLinkCode: desktopLinkCode ?? this.desktopLinkCode,
+      desktopLinkExpiresAt: desktopLinkExpiresAt ?? this.desktopLinkExpiresAt,
     );
   }
 }
@@ -79,9 +101,18 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   final FirebaseAuth _auth = FirebaseAuth.instance;
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
   final Ref _ref;
+  StreamSubscription<User?>? _authSub;
+  bool _profileLoaded = false;
+  bool _authResolved = false;
 
   FirebaseAuthNotifier(this._ref) : super(const AuthState()) {
     _init();
+  }
+
+  @override
+  void dispose() {
+    _authSub?.cancel();
+    super.dispose();
   }
 
   /// Initialize - listen to auth state changes
@@ -89,7 +120,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     // Safety timeout: if authStateChanges doesn't fire within 5 seconds,
     // resolve loading state based on currentUser (prevents stuck loading screen on web)
     Future.delayed(const Duration(seconds: 5), () {
-      if (state.isLoading) {
+      if (state.isLoading && !_profileLoaded && !_authResolved) {
+        _authResolved = true;
         debugPrint('🔐 Auth timeout - resolving from currentUser');
         final user = _auth.currentUser;
         if (user != null) {
@@ -116,11 +148,17 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             debugPrint('🔐 Redirect result check: $e');
           });
     }
-    _auth.authStateChanges().listen((User? user) async {
+    _authSub = _auth.authStateChanges().listen((User? user) async {
       if (user != null) {
+        if (_authResolved) {
+          return; // Prevent double load from timeout + listener race
+        }
+        _authResolved = true;
         debugPrint('🔐 Firebase Auth: User logged in - ${user.email}');
+        _profileLoaded = true;
         await _loadUserProfile(user);
       } else {
+        _authResolved = true;
         debugPrint('🔐 Firebase Auth: User logged out');
         state = const AuthState(isLoading: false);
       }
@@ -225,6 +263,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
                 (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
           ),
         );
+        // Keep Razorpay checkout title up to date with user's shop name
+        RazorpayConfig.setShopName(data['shopName'] as String? ?? '');
         debugPrint(
           '🔐 _loadUserProfile: State set isLoggedIn=true, isShopSetup=$isShopSetupComplete',
         );
@@ -399,26 +439,38 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       state = state.copyWith(isLoading: true);
       debugPrint('🖥️ Desktop: Starting web-based auth flow...');
 
-      // 1. Generate a random 6-character link code
+      // 1. Generate a random 8-character link code (2.7: increased from 6)
       final random = math.Random.secure();
       const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // No ambiguous chars
       final linkCode = List.generate(
-        6,
+        8,
         (_) => chars[random.nextInt(chars.length)],
       ).join();
 
       debugPrint('🖥️ Desktop: Link code: $linkCode');
 
-      // 2. Store pending session in Firestore with TTL
+      // Derive a simple device identifier for session binding (2.7)
+      final deviceId =
+          '${defaultTargetPlatform.name}_${DateTime.now().millisecondsSinceEpoch}';
+
+      // 2. Store pending session in Firestore with TTL + device binding
       final expiresAt = DateTime.now().add(const Duration(minutes: 10));
       await _firestore.collection('desktop_auth_sessions').doc(linkCode).set({
         'status': 'pending',
         'createdAt': FieldValue.serverTimestamp(),
         'expiresAt': Timestamp.fromDate(expiresAt),
+        'deviceId': deviceId,
       });
 
+      // Expose link code + expiry to UI for countdown display (A19)
+      state = state.copyWith(
+        isLoading: true,
+        desktopLinkCode: linkCode,
+        desktopLinkExpiresAt: expiresAt,
+      );
+
       // 3. Open web app in browser
-      const webAppUrl = 'https://stores.tulasierp.com/app/desktop-login';
+      const webAppUrl = 'https://app.retaillite.com/app/desktop-login';
       final fullUrl = Uri.parse('$webAppUrl?code=$linkCode');
 
       if (!await launchUrl(fullUrl, mode: LaunchMode.externalApplication)) {
@@ -429,58 +481,92 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         return false;
       }
 
-      debugPrint('🖥️ Desktop: Opened browser, polling for auth token...');
+      debugPrint('🖥️ Desktop: Opened browser, waiting for auth token...');
 
-      // 4. Poll Firestore for the custom token (max 10 minutes)
-      const pollInterval = Duration(seconds: 3);
-      const maxWait = Duration(minutes: 10);
-      final startTime = DateTime.now();
+      // 4. Listen for auth token via real-time snapshot (not polling)
+      // This uses a single Firestore listener instead of ~200 reads over 10 min.
+      final completer = Completer<bool>();
+      StreamSubscription<DocumentSnapshot>? sessionSub;
 
-      while (DateTime.now().difference(startTime) < maxWait) {
-        await Future.delayed(pollInterval);
-
-        final sessionDoc = await _firestore
-            .collection('desktop_auth_sessions')
-            .doc(linkCode)
-            .get();
-
-        if (!sessionDoc.exists) {
-          debugPrint('🖥️ Desktop: Session deleted (expired)');
-          break;
+      // Safety timeout after 10 minutes
+      final timer = Timer(const Duration(minutes: 10), () {
+        if (!completer.isCompleted) {
+          debugPrint('🖥️ Desktop: Auth timed out');
+          sessionSub?.cancel();
+          _firestore.collection('desktop_auth_sessions').doc(linkCode).delete();
+          state = state.copyWith(
+            isLoading: false,
+            error: 'Sign-in timed out. Please try again.',
+          );
+          completer.complete(false);
         }
+      });
 
-        final data = sessionDoc.data();
-        if (data?['status'] == 'ready' && data?['customToken'] != null) {
-          final customToken = data!['customToken'] as String;
-
-          debugPrint('🖥️ Desktop: Got custom token, signing in...');
-
-          // 5. Sign in with the custom token
-          await _auth.signInWithCustomToken(customToken);
-
-          // 6. Clean up the session document
-          await _firestore
-              .collection('desktop_auth_sessions')
-              .doc(linkCode)
-              .delete();
-
-          debugPrint('✅ Desktop: Signed in successfully!');
-          return true;
-        }
-      }
-
-      // Timed out
-      debugPrint('🖥️ Desktop: Auth timed out');
-      await _firestore
+      sessionSub = _firestore
           .collection('desktop_auth_sessions')
           .doc(linkCode)
-          .delete();
+          .snapshots()
+          .listen(
+            (snapshot) async {
+              if (completer.isCompleted) return;
 
-      state = state.copyWith(
-        isLoading: false,
-        error: 'Sign-in timed out. Please try again.',
-      );
-      return false;
+              if (!snapshot.exists) {
+                debugPrint('🖥️ Desktop: Session deleted (expired)');
+                timer.cancel();
+                unawaited(sessionSub?.cancel());
+                state = state.copyWith(
+                  isLoading: false,
+                  error: 'Session expired. Please try again.',
+                );
+                completer.complete(false);
+                return;
+              }
+
+              final data = snapshot.data();
+              if (data?['status'] == 'ready' && data?['customToken'] != null) {
+                final customToken = data!['customToken'] as String;
+                debugPrint('🖥️ Desktop: Got custom token, signing in...');
+
+                try {
+                  // Sign in with the custom token
+                  await _auth.signInWithCustomToken(customToken);
+
+                  // Clean up the session document
+                  await _firestore
+                      .collection('desktop_auth_sessions')
+                      .doc(linkCode)
+                      .delete();
+
+                  debugPrint('✅ Desktop: Signed in successfully!');
+                  timer.cancel();
+                  unawaited(sessionSub?.cancel());
+                  if (!completer.isCompleted) completer.complete(true);
+                } catch (e) {
+                  debugPrint('🖥️ Desktop: signInWithCustomToken failed: $e');
+                  timer.cancel();
+                  unawaited(sessionSub?.cancel());
+                  state = state.copyWith(
+                    isLoading: false,
+                    error: 'Sign-in failed. Please try again.',
+                  );
+                  if (!completer.isCompleted) completer.complete(false);
+                }
+              }
+            },
+            onError: (e) {
+              debugPrint('🖥️ Desktop: Snapshot listener error: $e');
+              timer.cancel();
+              if (!completer.isCompleted) {
+                state = state.copyWith(
+                  isLoading: false,
+                  error: 'Sign-in failed. Please try again.',
+                );
+                completer.complete(false);
+              }
+            },
+          );
+
+      return await completer.future;
     } catch (e) {
       debugPrint('🖥️ Desktop auth error: $e');
       state = state.copyWith(
@@ -555,10 +641,10 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       String message;
       switch (e.code) {
         case 'user-not-found':
-          message = 'No user found with this email. Please register.';
+          message = 'Invalid email or password.';
           break;
         case 'wrong-password':
-          message = 'Incorrect password. Please try again.';
+          message = 'Invalid email or password.';
           break;
         case 'invalid-credential':
           message = 'Invalid email or password.';
@@ -596,7 +682,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   Future<bool> _signInWithRestApi(String email, String password) async {
     try {
       // Use the web API key from Firebase options
-      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
       final url = Uri.parse(
         'https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$apiKey',
       );
@@ -624,7 +710,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         String message;
         switch (errorMessage) {
           case 'EMAIL_NOT_FOUND':
-            message = 'No user found with this email. Please register.';
+            message = 'Invalid email or password.';
             break;
           case 'INVALID_PASSWORD':
           case 'INVALID_LOGIN_CREDENTIALS':
@@ -817,7 +903,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     required bool emailVerified,
   }) async {
     try {
-      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
       final url = Uri.parse(
         'https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=$apiKey',
       );
@@ -951,7 +1037,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Windows-only: Send password reset email via REST API
   Future<bool> _sendPasswordResetWithRestApi(String email) async {
     try {
-      const apiKey = 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48';
+      final apiKey = DefaultFirebaseOptions.currentPlatform.apiKey;
       final url = Uri.parse(
         'https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=$apiKey',
       );
@@ -1010,13 +1096,17 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       // 2. Sign out of Firebase Auth first
       try {
         await GoogleSignIn().signOut();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('⚠️ Google sign-out failed (non-fatal): $e');
+      }
       await _auth.signOut();
 
       // 3. Cleanup (fire-and-forget — none of these should block logout)
       if (userId != null) {
         try {
-          await FCMTokenService.removeToken(userId);
+          await FCMTokenService.removeToken(
+            userId,
+          ).timeout(const Duration(seconds: 5));
         } catch (e) {
           debugPrint('🔐 FCM cleanup skipped: $e');
         }
@@ -1024,7 +1114,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       WindowsNotificationService.stopListening();
       try {
         await OfflineStorageService.clearUserLocalSettings();
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('⚠️ Sign-out: clearUserLocalSettings failed: $e');
+      }
       _ref.read(themeSettingsProvider.notifier).resetToDefault();
       // Skip clearPersistence — it fails with active listeners and
       // calling terminate() breaks Firestore for the auth state listener.
@@ -1033,6 +1125,54 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       debugPrint('🔐 Error signing out: $e');
       // Force reset state even if something failed
       state = const AuthState(isLoading: false);
+    }
+  }
+
+  /// Delete account and ALL user data (DPDP Act + Google Play policy)
+  ///
+  /// Calls Cloud Function which recursively deletes:
+  /// - All sub-collections (bills, products, customers, transactions, etc.)
+  /// - Storage files (profile images, shop logos)
+  /// - User document
+  /// - Firebase Auth account
+  ///
+  /// This is IRREVERSIBLE.
+  Future<bool> deleteAccount() async {
+    final user = _auth.currentUser;
+    if (user == null) return false;
+
+    try {
+      state = state.copyWith(isLoading: true);
+
+      // Re-authenticate to verify identity (Firebase requires recent auth for account deletion)
+      // The caller should ensure re-authentication before calling this.
+
+      // Call Cloud Function to delete all data
+      final functions = FirebaseFunctions.instanceFor(region: 'asia-south1');
+      await functions.httpsCallable('deleteUserAccount').call();
+
+      // Clean up local state
+      try {
+        await OfflineStorageService.clearUserLocalSettings();
+      } catch (e) {
+        debugPrint('⚠️ Delete account: clearUserLocalSettings failed: $e');
+      }
+
+      _ref.read(themeSettingsProvider.notifier).resetToDefault();
+      WindowsNotificationService.stopListening();
+
+      // Clear auth state
+      state = const AuthState(isLoading: false);
+
+      debugPrint('✅ Account deleted successfully');
+      return true;
+    } catch (e) {
+      debugPrint('❌ Account deletion failed: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Failed to delete account: ${e.toString().split('\n').first}',
+      );
+      return false;
     }
   }
 
@@ -1068,6 +1208,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           .collection('users')
           .doc(user.uid)
           .set(data, SetOptions(merge: true));
+
+      // Generate referral code for this new user (idempotent — skips if exists)
+      unawaited(ReferralService.getOrCreateCode());
 
       state = state.copyWith(
         isShopSetupComplete: true,
@@ -1163,6 +1306,37 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   void updateLocalUserSettings(UserSettings newSettings) {
     if (state.user != null) {
       state = state.copyWith(user: state.user!.copyWith(settings: newSettings));
+    }
+  }
+
+  /// Toggle a notification preference and persist to Firestore (S6)
+  Future<bool> toggleNotifPref(String key, bool value) async {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return false;
+
+    try {
+      await _firestore.collection('users').doc(uid).update({
+        'settings.$key': value,
+      });
+
+      final currentUser = state.user;
+      if (currentUser != null) {
+        final newSettings = switch (key) {
+          'lowStockAlerts' => currentUser.settings.copyWith(
+            lowStockAlerts: value,
+          ),
+          'subscriptionAlerts' => currentUser.settings.copyWith(
+            subscriptionAlerts: value,
+          ),
+          'dailySummary' => currentUser.settings.copyWith(dailySummary: value),
+          _ => currentUser.settings,
+        };
+        updateLocalUserSettings(newSettings);
+      }
+      return true;
+    } catch (e) {
+      debugPrint('🔐 Error toggling notification pref $key: $e');
+      return false;
     }
   }
 
@@ -1326,62 +1500,6 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     state = state.copyWith(error: message);
   }
 
-  /// Get sign-in methods for an email (for smart login detection - Option C)
-  /// Returns list like ['password'], ['google.com'], or ['google.com', 'password']
-  ///
-  /// NOTE: fetchSignInMethodsForEmail is deprecated when Email Enumeration
-  /// Protection is enabled in Firebase. This method first tries a reliable
-  /// Firestore lookup (authProvider field), then falls back to the deprecated
-  /// Firebase method as a secondary check.
-  Future<List<String>?> getSignInMethodsForEmail(String email) async {
-    try {
-      // Primary: Firestore-based lookup (reliable, not affected by deprecation)
-      final provider = await getAuthProviderForEmail(email);
-      if (provider != null) {
-        switch (provider) {
-          case 'google':
-            return ['google.com'];
-          case 'email':
-            return ['password'];
-          default:
-            return [provider];
-        }
-      }
-      // No user found in Firestore
-      return [];
-    } catch (e) {
-      debugPrint('🔐 Error fetching sign-in methods: $e');
-      return null;
-    }
-  }
-
-  /// Check auth provider for an email via Firestore
-  /// Returns: 'google', 'email', or null (not found)
-  /// This is NOT affected by Firebase's Email Enumeration Protection
-  Future<String?> getAuthProviderForEmail(String email) async {
-    try {
-      // Skip if user is not authenticated — Firestore rules require auth
-      if (_auth.currentUser == null) {
-        debugPrint('🔐 Skipping auth provider check (not authenticated)');
-        return null;
-      }
-
-      final query = await _firestore
-          .collection('users')
-          .where('email', isEqualTo: email.trim().toLowerCase())
-          .limit(1)
-          .get();
-
-      if (query.docs.isNotEmpty) {
-        return query.docs.first.data()['authProvider'] as String?;
-      }
-      return null;
-    } catch (e) {
-      debugPrint('🔐 Error checking auth provider: $e');
-      return null;
-    }
-  }
-
   /// Look up a user's verified phone number from Firestore by email
   /// Used for phone-based password reset
   Future<String?> getPhoneForEmail(String email) async {
@@ -1437,12 +1555,15 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
     try {
       // Normalize phone to E.164 format (+91XXXXXXXXXX)
-      final normalizedPhone = phone.startsWith('+91') ? phone : '+91$phone';
+      final normalizedPhone = phone.startsWith(AppConstants.countryCode)
+          ? phone
+          : '${AppConstants.countryCode}$phone';
 
       final query = await _firestore
           .collection('users')
           .where('phone', isEqualTo: normalizedPhone)
           .where('phoneVerified', isEqualTo: true)
+          .limit(2) // D10: Only need to know if ≥1 other user has this phone
           .get();
 
       // Check if any result belongs to a different user
@@ -1457,7 +1578,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       return false;
     } catch (e) {
       debugPrint('🔐 Error checking phone uniqueness: $e');
-      return false; // Don't block on error — fail open
+      return true; // Fail closed — block on error to prevent duplicate registrations
     }
   }
 

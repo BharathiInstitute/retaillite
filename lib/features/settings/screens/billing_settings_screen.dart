@@ -2,6 +2,7 @@
 /// Mirrors Web Billing Tab
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,10 +10,10 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/core/design/app_colors.dart';
+import 'package:retaillite/core/services/error_logging_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/core/services/image_service.dart';
-import 'dart:io';
 
 class BillingSettingsScreen extends ConsumerStatefulWidget {
   const BillingSettingsScreen({super.key});
@@ -30,8 +31,8 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
 
   bool _taxEnabled = true;
   bool _taxInclusive = false;
-  String? _invoiceLogoPath;
-  String? _upiQrPath;
+  Uint8List? _invoiceLogoBytes;
+  Uint8List? _upiQrBytes;
   String? _upiValidationError;
 
   @override
@@ -78,14 +79,28 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
   Future<void> _pickInvoiceLogo() async {
     final imagePath = await ImageService.pickAndResizeLogo();
     if (imagePath != null && mounted) {
-      setState(() => _invoiceLogoPath = imagePath);
+      try {
+        final bytes = await ImageService.readImageBytes(imagePath);
+        setState(() {
+          _invoiceLogoBytes = bytes;
+        });
+      } catch (_) {
+        // Could not read bytes — ignore
+      }
     }
   }
 
   Future<void> _pickUpiQr() async {
     final imagePath = await ImageService.pickAndResizeLogo();
     if (imagePath != null && mounted) {
-      setState(() => _upiQrPath = imagePath);
+      try {
+        final bytes = await ImageService.readImageBytes(imagePath);
+        setState(() {
+          _upiQrBytes = bytes;
+        });
+      } catch (_) {
+        // Could not read bytes — ignore
+      }
     }
   }
 
@@ -224,12 +239,11 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                             borderRadius: BorderRadius.circular(8),
                           ),
                           child:
-                              _invoiceLogoPath != null &&
-                                  File(_invoiceLogoPath!).existsSync()
+                              _invoiceLogoBytes != null
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    File(_invoiceLogoPath!),
+                                  child: Image.memory(
+                                    _invoiceLogoBytes!,
                                     fit: BoxFit.cover,
                                   ),
                                 )
@@ -534,11 +548,11 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                         boxShadow: AppShadows.small,
                       ),
                       child:
-                          _upiQrPath != null && File(_upiQrPath!).existsSync()
+                          _upiQrBytes != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(_upiQrPath!),
+                              child: Image.memory(
+                                _upiQrBytes!,
                                 fit: BoxFit.cover,
                               ),
                             )
@@ -618,8 +632,14 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
             ),
           );
         }
-      } catch (_) {
-        // Non-fatal: settings saved locally
+      } catch (e, st) {
+        debugPrint('⚠️ Billing settings Firestore sync failed: $e');
+        ErrorLoggingService.logError(
+          error: e,
+          stackTrace: st,
+          severity: ErrorSeverity.warning,
+          metadata: {'context': 'Billing settings Firestore sync'},
+        ).ignore();
       }
     }
 

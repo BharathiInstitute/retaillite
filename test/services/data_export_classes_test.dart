@@ -95,7 +95,7 @@ void main() {
   group('DateTimeRange.includes', () {
     test('includes date within range', () {
       final range = DateTimeRange(
-        start: DateTime(2026, 1),
+        start: DateTime(2026),
         end: DateTime(2026, 1, 31),
       );
       expect(range.includes(DateTime(2026, 1, 15)), isTrue);
@@ -103,15 +103,15 @@ void main() {
 
     test('includes start date', () {
       final range = DateTimeRange(
-        start: DateTime(2026, 1),
+        start: DateTime(2026),
         end: DateTime(2026, 1, 31),
       );
-      expect(range.includes(DateTime(2026, 1)), isTrue);
+      expect(range.includes(DateTime(2026)), isTrue);
     });
 
     test('excludes date before range', () {
       final range = DateTimeRange(
-        start: DateTime(2026, 1),
+        start: DateTime(2026),
         end: DateTime(2026, 1, 31),
       );
       expect(range.includes(DateTime(2025, 12, 31)), isFalse);
@@ -119,7 +119,7 @@ void main() {
 
     test('excludes date after range', () {
       final range = DateTimeRange(
-        start: DateTime(2026, 1),
+        start: DateTime(2026),
         end: DateTime(2026, 1, 31),
       );
       expect(range.includes(DateTime(2026, 2)), isFalse);

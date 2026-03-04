@@ -3,6 +3,7 @@
 library;
 
 import 'dart:math';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/core/theme/responsive_scale.dart';
@@ -124,46 +125,34 @@ class ResponsiveUtils {
   }
 
   /// Build a safe network image with loading + error states
+  /// Uses CachedNetworkImage for disk/memory caching.
   static Widget safeNetworkImage({
     required String url,
     BoxFit fit = BoxFit.cover,
     double? width,
     double? height,
   }) {
-    return Image.network(
-      url,
+    return CachedNetworkImage(
+      imageUrl: url,
       fit: fit,
       width: width,
       height: height,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) return child;
-        return Container(
-          width: width,
-          height: height,
-          color: Colors.grey.shade100,
-          child: Center(
-            child: CircularProgressIndicator(
-              strokeWidth: 2,
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded /
-                        loadingProgress.expectedTotalBytes!
-                  : null,
-            ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          width: width,
-          height: height,
-          color: Colors.grey.shade200,
-          child: Icon(
-            Icons.image_not_supported_outlined,
-            color: Colors.grey.shade400,
-            size: 24,
-          ),
-        );
-      },
+      placeholder: (context, url) => Container(
+        width: width,
+        height: height,
+        color: Colors.grey.shade100,
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+      ),
+      errorWidget: (context, url, error) => Container(
+        width: width,
+        height: height,
+        color: Colors.grey.shade200,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          color: Colors.grey.shade400,
+          size: 24,
+        ),
+      ),
     );
   }
 

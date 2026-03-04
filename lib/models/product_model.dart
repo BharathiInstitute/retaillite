@@ -1,7 +1,10 @@
-/// Product model for Tulasi Stores app
+/// Product model for RetailLite app
 library;
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
+/// Sentinel value for distinguishing "not provided" from "set to null" in copyWith
+const _sentinel = Object();
 
 /// Product unit types
 enum ProductUnit {
@@ -108,24 +111,28 @@ class ProductModel {
   ProductModel copyWith({
     String? name,
     double? price,
-    double? purchasePrice,
+    Object? purchasePrice = _sentinel,
     int? stock,
-    int? lowStockAlert,
-    String? barcode,
-    String? imageUrl,
-    String? category,
+    Object? lowStockAlert = _sentinel,
+    Object? barcode = _sentinel,
+    Object? imageUrl = _sentinel,
+    Object? category = _sentinel,
     ProductUnit? unit,
   }) {
     return ProductModel(
       id: id,
       name: name ?? this.name,
       price: price ?? this.price,
-      purchasePrice: purchasePrice ?? this.purchasePrice,
+      purchasePrice: purchasePrice == _sentinel
+          ? this.purchasePrice
+          : purchasePrice as double?,
       stock: stock ?? this.stock,
-      lowStockAlert: lowStockAlert ?? this.lowStockAlert,
-      barcode: barcode ?? this.barcode,
-      imageUrl: imageUrl ?? this.imageUrl,
-      category: category ?? this.category,
+      lowStockAlert: lowStockAlert == _sentinel
+          ? this.lowStockAlert
+          : lowStockAlert as int?,
+      barcode: barcode == _sentinel ? this.barcode : barcode as String?,
+      imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
+      category: category == _sentinel ? this.category : category as String?,
       unit: unit ?? this.unit,
       createdAt: createdAt,
       updatedAt: DateTime.now(),

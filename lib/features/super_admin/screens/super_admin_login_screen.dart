@@ -25,6 +25,11 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
   String? _accessError;
+  int _failedAttempts = 0;
+  DateTime? _lockoutUntil;
+
+  static const _maxAttempts = 5;
+  static const _lockoutDuration = Duration(seconds: 30);
 
   @override
   void dispose() {
@@ -58,6 +63,15 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
   Future<void> _handleLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
+    // Rate limit: block after too many failed attempts
+    if (_lockoutUntil != null && DateTime.now().isBefore(_lockoutUntil!)) {
+      final remaining = _lockoutUntil!.difference(DateTime.now()).inSeconds;
+      setState(() {
+        _accessError = 'Too many failed attempts. Try again in ${remaining}s.';
+      });
+      return;
+    }
+
     final email = _emailController.text.trim();
 
     setState(() {
@@ -68,10 +82,15 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
     // Check if email is in authorized list (Firestore + fallback)
     final isAuthorized = await _isAuthorizedEmailAsync(email);
     if (!isAuthorized) {
+      _failedAttempts++;
+      if (_failedAttempts >= _maxAttempts) {
+        _lockoutUntil = DateTime.now().add(_lockoutDuration);
+        _failedAttempts = 0;
+      }
       setState(() {
         _isLoading = false;
         _accessError =
-            'Access denied. This email is not authorized for super admin access.';
+            'Invalid credentials. Please check your email and password.';
       });
       return;
     }
@@ -84,7 +103,14 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
           .signIn(email: email, password: _passwordController.text);
 
       if (success && mounted) {
+        _failedAttempts = 0; // Reset on successful login
         context.go('/super-admin');
+      } else {
+        _failedAttempts++;
+        if (_failedAttempts >= _maxAttempts) {
+          _lockoutUntil = DateTime.now().add(_lockoutDuration);
+          _failedAttempts = 0;
+        }
       }
     } finally {
       if (mounted) {

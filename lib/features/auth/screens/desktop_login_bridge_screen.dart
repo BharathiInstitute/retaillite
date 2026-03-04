@@ -10,6 +10,7 @@ library;
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/auth/widgets/auth_social_section.dart';
@@ -168,7 +169,7 @@ class _DesktopLoginBridgeScreenState
                 const SizedBox(height: 12),
                 const Text(
                   'You can close this browser window.\n'
-                  'Your Tulasi Stores desktop app will sign in automatically.',
+                  'Your ${AppConstants.appName} desktop app will sign in automatically.',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 14,
@@ -219,7 +220,7 @@ class _DesktopLoginBridgeScreenState
                 ),
                 const SizedBox(height: 16),
                 const Text(
-                  'Tulasi Stores',
+                  AppConstants.appName,
                   style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.bold,
@@ -227,7 +228,7 @@ class _DesktopLoginBridgeScreenState
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                const Text(
                   'Sign in to link your Windows desktop app',
                   style: TextStyle(
                     fontSize: 14,

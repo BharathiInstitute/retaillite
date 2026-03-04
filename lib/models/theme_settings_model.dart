@@ -79,7 +79,8 @@ class ThemeSettingsModel {
       fontFamily: json['fontFamily'] as String? ?? 'Inter',
       fontSizeScale: (json['fontSizeScale'] as num?)?.toDouble() ?? 1.0,
       useDarkMode: json['useDarkMode'] as bool? ?? false,
-      useSystemTheme: json['useSystemTheme'] as bool? ?? true,
+      useSystemTheme:
+          json['useSystemTheme'] as bool? ?? false, // Match constructor default
     );
   }
 }

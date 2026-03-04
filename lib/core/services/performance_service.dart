@@ -108,9 +108,10 @@ class PerformanceService {
   static final List<Breadcrumb> _breadcrumbs = [];
   static const int _maxBreadcrumbs = 50;
 
-  /// Screen timing cache for batch upload
+  /// Screen timing cache for batch upload (capped at 100)
   static final List<ScreenTiming> _screenTimings = [];
   static final List<NetworkTiming> _networkTimings = [];
+  static const int _maxTimings = 100;
 
   /// Current screen being tracked
   static String? _currentScreen;
@@ -214,6 +215,11 @@ class PerformanceService {
 
     _screenTimings.add(timing);
 
+    // Cap list to prevent unbounded growth if uploads fail
+    if (_screenTimings.length > _maxTimings) {
+      _screenTimings.removeRange(0, _screenTimings.length - _maxTimings);
+    }
+
     if (kDebugMode) {
       final color = loadTime.inMilliseconds > 500 ? '🟡' : '🟢';
       debugPrint(
@@ -297,6 +303,11 @@ class PerformanceService {
       if (_networkTimings.length >= 10) {
         unawaited(_uploadNetworkTimings());
       }
+
+      // Cap list to prevent unbounded growth if uploads fail
+      if (_networkTimings.length > _maxTimings) {
+        _networkTimings.removeRange(0, _networkTimings.length - _maxTimings);
+      }
     }
   }
 
@@ -331,6 +342,7 @@ class PerformanceService {
       final snapshot = await _firestore
           .collection('screen_performance')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(2000)
           .get();
 
       if (snapshot.docs.isEmpty) {
@@ -380,6 +392,7 @@ class PerformanceService {
       final snapshot = await _firestore
           .collection('network_metrics')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(2000)
           .get();
 
       if (snapshot.docs.isEmpty) {
@@ -451,6 +464,7 @@ class PerformanceService {
       final healthSnapshot = await _firestore
           .collection('app_health')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+          .limit(2000)
           .get();
 
       // Get users who had errors
@@ -458,6 +472,7 @@ class PerformanceService {
           .collection('error_logs')
           .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
           .where('severity', isEqualTo: 'critical')
+          .limit(2000)
           .get();
 
       final totalUsers = healthSnapshot.docs

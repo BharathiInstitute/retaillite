@@ -1,12 +1,14 @@
 /// Main billing screen
 library;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/services/barcode_scanner_service.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/core/utils/formatters.dart';
+import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/billing/providers/cart_provider.dart';
 import 'package:retaillite/features/billing/widgets/payment_modal.dart';
 import 'package:retaillite/features/billing/screens/pos_web_screen.dart';
@@ -16,6 +18,8 @@ import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/product_model.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/loading_states.dart';
+import 'package:retaillite/shared/widgets/nps_survey_dialog.dart';
+import 'package:retaillite/shared/widgets/onboarding_checklist.dart';
 
 class BillingScreen extends ConsumerStatefulWidget {
   const BillingScreen({super.key});
@@ -27,6 +31,24 @@ class BillingScreen extends ConsumerStatefulWidget {
 class _BillingScreenState extends ConsumerState<BillingScreen> {
   final _searchController = TextEditingController();
   String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    // Check NPS survey eligibility once after the first frame
+    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeShowNps());
+  }
+
+  Future<void> _maybeShowNps() async {
+    if (!mounted) return;
+    final user = ref.read(currentUserProvider);
+    if (user == null) return;
+    await NpsSurveyDialog.showIfEligible(
+      context,
+      uid: user.id,
+      accountCreatedAt: user.createdAt,
+    );
+  }
 
   @override
   void dispose() {
@@ -338,14 +360,25 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
       },
       child: Scaffold(
         resizeToAvoidBottomInset: true,
-        body: GestureDetector(
-          onTap: () => FocusScope.of(context).unfocus(),
-          behavior: HitTestBehavior.translucent,
-          child: isDesktop
-              ? const PosWebScreen()
-              : useTabletLayout
-              ? _buildTabletLayout(productsAsync, cart)
-              : _buildMobileLayout(productsAsync, cart),
+        body: Stack(
+          children: [
+            GestureDetector(
+              onTap: () => FocusScope.of(context).unfocus(),
+              behavior: HitTestBehavior.translucent,
+              child: isDesktop
+                  ? const PosWebScreen()
+                  : useTabletLayout
+                  ? _buildTabletLayout(productsAsync, cart)
+                  : _buildMobileLayout(productsAsync, cart),
+            ),
+            // Onboarding checklist overlay on desktop / tablet
+            if (isDesktop || useTabletLayout)
+              const Positioned(
+                top: 16,
+                right: 16,
+                child: OnboardingChecklist(),
+              ),
+          ],
         ),
         // Mobile + narrow tablet: sticky cart bar at bottom
         bottomNavigationBar: useMobileLayout && cart.isNotEmpty
@@ -361,7 +394,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   Widget _buildTabletLayout(
-    AsyncValue<List<dynamic>> productsAsync,
+    AsyncValue<List<ProductModel>> productsAsync,
     CartState cart,
   ) {
     final l10n = context.l10n;
@@ -377,9 +410,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
               Expanded(
                 child: productsAsync.when(
                   data: (products) {
-                    final filtered = _filterProducts(
-                      products.cast<ProductModel>(),
-                    );
+                    final filtered = _filterProducts(products);
                     final spacing = ResponsiveHelper.spacing(context);
                     final cols = ResponsiveHelper.gridColumns(context);
                     return GridView.builder(
@@ -505,24 +536,41 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                                   Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.remove_circle_outline,
-                                          size: 20,
+                                      Semantics(
+                                        label:
+                                            'Decrease quantity of ${item.name}',
+                                        button: true,
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.remove_circle_outline,
+                                            size: 20,
+                                          ),
+                                          onPressed: () => ref
+                                              .read(cartProvider.notifier)
+                                              .decrementQuantity(
+                                                item.productId,
+                                              ),
                                         ),
-                                        onPressed: () => ref
-                                            .read(cartProvider.notifier)
-                                            .decrementQuantity(item.productId),
                                       ),
-                                      Text('${item.quantity}'),
-                                      IconButton(
-                                        icon: const Icon(
-                                          Icons.add_circle_outline,
-                                          size: 20,
+                                      Semantics(
+                                        label: 'Quantity: ${item.quantity}',
+                                        child: Text('${item.quantity}'),
+                                      ),
+                                      Semantics(
+                                        label:
+                                            'Increase quantity of ${item.name}',
+                                        button: true,
+                                        child: IconButton(
+                                          icon: const Icon(
+                                            Icons.add_circle_outline,
+                                            size: 20,
+                                          ),
+                                          onPressed: () => ref
+                                              .read(cartProvider.notifier)
+                                              .incrementQuantity(
+                                                item.productId,
+                                              ),
                                         ),
-                                        onPressed: () => ref
-                                            .read(cartProvider.notifier)
-                                            .incrementQuantity(item.productId),
                                       ),
                                     ],
                                   ),
@@ -563,10 +611,14 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                       SizedBox(
                         width: double.infinity,
                         height: ResponsiveHelper.buttonHeight(context),
-                        child: ElevatedButton.icon(
-                          onPressed: _showPaymentModal,
-                          icon: const Icon(Icons.payment),
-                          label: Text(l10n.pay.toUpperCase()),
+                        child: Semantics(
+                          label: 'Pay ${Formatters.currency(cart.total)}',
+                          button: true,
+                          child: ElevatedButton.icon(
+                            onPressed: _showPaymentModal,
+                            icon: const Icon(Icons.payment),
+                            label: Text(l10n.pay.toUpperCase()),
+                          ),
                         ),
                       ),
                     ],
@@ -580,53 +632,67 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   Widget _buildProductCard(ProductModel product) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: () => ref.read(cartProvider.notifier).addProduct(product),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: product.imageUrl != null
-                    ? Image.network(product.imageUrl!, fit: BoxFit.cover)
-                    : const Center(
-                        child: Icon(Icons.inventory_2_outlined, size: 40),
-                      ),
+    return Semantics(
+      label:
+          '${product.name}, ${Formatters.currency(product.price)}'
+          '${product.isOutOfStock ? ', out of stock' : ''}'
+          '${product.isLowStock ? ', low stock' : ''}',
+      button: true,
+      hint: 'Double tap to add to cart',
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: () => ref.read(cartProvider.notifier).addProduct(product),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Container(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: product.imageUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: product.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, url, error) => const Center(
+                            child: Icon(Icons.broken_image_outlined, size: 40),
+                          ),
+                        )
+                      : const Center(
+                          child: Icon(Icons.inventory_2_outlined, size: 40),
+                        ),
+                ),
               ),
-            ),
-            Padding(
-              padding: const EdgeInsets.all(8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    product.name,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    Formatters.currency(product.price),
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.bold,
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      product.name,
+                      style: const TextStyle(fontWeight: FontWeight.w500),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    Text(
+                      Formatters.currency(product.price),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.primary,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
   }
 
   Widget _buildMobileLayout(
-    AsyncValue<List<dynamic>> productsAsync,
+    AsyncValue<List<ProductModel>> productsAsync,
     CartState cart,
   ) {
     final l10n = context.l10n;
@@ -640,7 +706,7 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
         Expanded(
           child: productsAsync.when(
             data: (products) {
-              final filtered = _filterProducts(products.cast<ProductModel>());
+              final filtered = _filterProducts(products);
               return GridView.builder(
                 padding: const EdgeInsets.fromLTRB(
                   12,
@@ -673,81 +739,95 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
   }
 
   Widget _buildMobileProductCard(ProductModel product) {
-    return Card(
-      clipBehavior: Clip.antiAlias,
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      child: InkWell(
-        onTap: () => ref.read(cartProvider.notifier).addProduct(product),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            // Product image - compact
-            Expanded(
-              flex: 3,
-              child: Container(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: product.imageUrl != null
-                    ? Image.network(product.imageUrl!, fit: BoxFit.cover)
-                    : const Center(
-                        child: Icon(Icons.inventory_2_outlined, size: 32),
-                      ),
-              ),
-            ),
-            // Content - compact with text truncation
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.all(8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      product.name,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 12,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Flexible(
-                          child: Text(
-                            Formatters.currency(product.price),
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.bold,
-                              color: Theme.of(context).colorScheme.primary,
-                            ),
-                            overflow: TextOverflow.ellipsis,
+    return Semantics(
+      label:
+          '${product.name}, ${Formatters.currency(product.price)}'
+          '${product.isOutOfStock ? ', out of stock' : ''}'
+          '${product.isLowStock ? ', low stock' : ''}',
+      button: true,
+      hint: 'Double tap to add to cart',
+      child: Card(
+        clipBehavior: Clip.antiAlias,
+        elevation: 1,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        child: InkWell(
+          onTap: () => ref.read(cartProvider.notifier).addProduct(product),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // Product image - compact
+              Expanded(
+                flex: 3,
+                child: Container(
+                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                  child: product.imageUrl != null
+                      ? CachedNetworkImage(
+                          imageUrl: product.imageUrl!,
+                          fit: BoxFit.cover,
+                          errorWidget: (_, url, error) => const Center(
+                            child: Icon(Icons.broken_image_outlined, size: 32),
                           ),
+                        )
+                      : const Center(
+                          child: Icon(Icons.inventory_2_outlined, size: 32),
                         ),
-                        Container(
-                          width: 24,
-                          height: 24,
-                          decoration: BoxDecoration(
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.primary.withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.add,
-                            color: Theme.of(context).colorScheme.primary,
-                            size: 16,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
                 ),
               ),
-            ),
-          ],
+              // Content - compact with text truncation
+              Expanded(
+                flex: 2,
+                child: Padding(
+                  padding: const EdgeInsets.all(8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        product.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Flexible(
+                            child: Text(
+                              Formatters.currency(product.price),
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Theme.of(context).colorScheme.primary,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Container(
+                            width: 24,
+                            height: 24,
+                            decoration: BoxDecoration(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.add,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 16,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

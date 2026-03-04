@@ -2,10 +2,12 @@
 /// Supports demo mode with local in-memory data
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
+import 'package:retaillite/features/products/providers/products_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/expense_model.dart';
 import 'package:retaillite/models/sales_summary_model.dart';
@@ -57,60 +59,76 @@ final salesSummaryProvider = StreamProvider.autoDispose<SalesSummary>((ref) {
   final range = getEffectiveDateRange(period, offset, customRange);
   final billsStream = _getBillsStreamForRange(range, isDemoMode);
 
-  // Combine bills stream with on-demand expenses fetch
-  return billsStream.asyncMap((bills) async {
-    double totalSales = 0;
-    double cashAmount = 0;
-    double upiAmount = 0;
-    double udharAmount = 0;
+  // Also watch expenses stream so summary updates when expenses change
+  Stream<List<ExpenseModel>> expensesStream;
+  if (isDemoMode) {
+    expensesStream = Stream.value(DemoDataService.getExpenses());
+  } else {
+    expensesStream = OfflineStorageService.expensesStream();
+  }
 
-    for (final bill in bills) {
-      totalSales += bill.total;
-      switch (bill.paymentMethod) {
-        case PaymentMethod.cash:
-          cashAmount += bill.total;
-          break;
-        case PaymentMethod.upi:
-          upiAmount += bill.total;
-          break;
-        case PaymentMethod.udhar:
-          udharAmount += bill.total;
-          break;
-        case PaymentMethod.unknown:
-          break;
-      }
-    }
+  // Combine bills and expenses streams
+  return billsStream.asyncExpand((bills) {
+    return expensesStream.map((allExpenses) {
+      double totalSales = 0;
+      double cashAmount = 0;
+      double upiAmount = 0;
+      double udharAmount = 0;
 
-    // Compute expenses for the same period
-    double totalExpenses = 0;
-    try {
-      List<ExpenseModel> expenses;
-      if (isDemoMode) {
-        expenses = DemoDataService.getExpenses();
-      } else {
-        expenses = await OfflineStorageService.getCachedExpensesAsync();
+      for (final bill in bills) {
+        totalSales += bill.total;
+        switch (bill.paymentMethod) {
+          case PaymentMethod.cash:
+            cashAmount += bill.total;
+            break;
+          case PaymentMethod.upi:
+            upiAmount += bill.total;
+            break;
+          case PaymentMethod.udhar:
+            udharAmount += bill.total;
+            break;
+          case PaymentMethod.unknown:
+            break;
+        }
       }
-      for (final expense in expenses) {
+
+      // Compute expenses for the same period (filtered from stream)
+      double totalExpenses = 0;
+      for (final expense in allExpenses) {
         if (!expense.createdAt.isBefore(range.start) &&
             !expense.createdAt.isAfter(range.end)) {
           totalExpenses += expense.amount;
         }
       }
-    } catch (_) {
-      // Expense fetch failure shouldn't break the summary
-    }
 
-    return SalesSummary(
-      totalSales: totalSales,
-      billCount: bills.length,
-      cashAmount: cashAmount,
-      upiAmount: upiAmount,
-      udharAmount: udharAmount,
-      avgBillValue: bills.isNotEmpty ? totalSales / bills.length : 0,
-      totalExpenses: totalExpenses,
-      startDate: range.start,
-      endDate: range.end,
-    );
+      // Compute COGS-based gross profit (4.3)
+      // Uses product purchase prices to calculate cost of goods sold.
+      double cogs = 0;
+      final products = ref.read(productsProvider).valueOrNull ?? [];
+      final productMap = {for (final p in products) p.id: p};
+      for (final bill in bills) {
+        for (final item in bill.items) {
+          final product = productMap[item.productId];
+          if (product != null && product.purchasePrice != null) {
+            cogs += product.purchasePrice! * item.quantity;
+          }
+        }
+      }
+      final grossProfit = totalSales - cogs;
+
+      return SalesSummary(
+        totalSales: totalSales,
+        billCount: bills.length,
+        cashAmount: cashAmount,
+        upiAmount: upiAmount,
+        udharAmount: udharAmount,
+        avgBillValue: bills.isNotEmpty ? totalSales / bills.length : 0,
+        totalExpenses: totalExpenses,
+        grossProfit: grossProfit,
+        startDate: range.start,
+        endDate: range.end,
+      );
+    });
   });
 });
 
@@ -126,10 +144,15 @@ final periodBillsProvider = StreamProvider.autoDispose<List<BillModel>>((ref) {
 });
 
 /// Top products for the selected period — derives from period bills stream
-final topProductsProvider = Provider<AsyncValue<List<ProductSale>>>((ref) {
+/// Includes Stopwatch-based performance monitoring for large datasets.
+final topProductsProvider = Provider.autoDispose<AsyncValue<List<ProductSale>>>((
+  ref,
+) {
   final periodBillsAsync = ref.watch(periodBillsProvider);
 
   return periodBillsAsync.whenData((bills) {
+    final sw = Stopwatch()..start();
+
     // Aggregate product sales
     final Map<String, ProductSale> productSales = {};
     for (final bill in bills) {
@@ -156,6 +179,14 @@ final topProductsProvider = Provider<AsyncValue<List<ProductSale>>>((ref) {
     // Sort by quantity and return top 10
     final sorted = productSales.values.toList()
       ..sort((a, b) => b.quantitySold.compareTo(a.quantitySold));
+
+    sw.stop();
+    if (sw.elapsedMilliseconds > 100) {
+      debugPrint(
+        '⚠️ topProductsProvider: aggregation took ${sw.elapsedMilliseconds}ms '
+        'for ${bills.length} bills — consider server-side pre-aggregation',
+      );
+    }
 
     return sorted.take(10).toList();
   });

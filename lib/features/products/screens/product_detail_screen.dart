@@ -18,19 +18,10 @@ class ProductDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final productsAsync = ref.watch(productsProvider);
+    final productAsync = ref.watch(productByIdProvider(productId));
 
-    return productsAsync.when(
-      data: (products) {
-        // Find the product
-        ProductModel? product;
-        for (final p in products) {
-          if (p.id == productId) {
-            product = p;
-            break;
-          }
-        }
-
+    return productAsync.when(
+      data: (product) {
         if (product == null) {
           return Scaffold(
             appBar: AppBar(title: const Text('Product Details')),
@@ -169,7 +160,11 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
       builder: (context) => AlertDialog(
         title: const Text('Delete Product?'),
         content: Text(
-          'Are you sure you want to delete "${widget.product.name}"? This action cannot be undone.',
+          'Are you sure you want to delete "${widget.product.name}"?\n\n'
+          'This product may appear in existing bills. '
+          'Deleting it won\'t remove it from past bills, but it will '
+          'no longer be available for new sales.\n\n'
+          'This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -187,17 +182,28 @@ class _ProductDetailViewState extends ConsumerState<_ProductDetailView> {
 
     if (confirm != true) return;
 
-    final service = ref.read(productsServiceProvider);
-    await service.deleteProduct(widget.product.id);
+    try {
+      final service = ref.read(productsServiceProvider);
+      await service.deleteProduct(widget.product.id);
 
-    if (mounted) {
-      context.pop();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Product deleted'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+      if (mounted) {
+        context.pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Product deleted'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to delete product: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 

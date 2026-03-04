@@ -8,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:intl/intl.dart';
@@ -57,7 +58,7 @@ class ReceiptService {
         pageFormat: pageFormat,
         build: (context) => _buildReceipt(
           bill: bill,
-          shopName: shopName ?? 'Tulasi Stores',
+          shopName: shopName ?? AppConstants.defaultShopName,
           shopAddress: shopAddress,
           shopPhone: shopPhone,
           gstNumber: gstNumber,
@@ -140,7 +141,7 @@ class ReceiptService {
         }
       } else if (!kIsWeb) {
         final file = File(path);
-        if (await file.exists()) {
+        if (file.existsSync()) {
           bytes = await file.readAsBytes();
         }
       }
@@ -427,7 +428,7 @@ class ReceiptService {
         ),
         pw.SizedBox(height: 4),
         pw.Text(
-          'Powered by Tulasi Stores',
+          'Powered by ${AppConstants.appName}',
           style: const pw.TextStyle(fontSize: 7, color: PdfColors.grey600),
           textAlign: pw.TextAlign.center,
         ),

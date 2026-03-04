@@ -5,6 +5,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
 /// Banner shown at the top of the app when email is not verified
@@ -24,6 +25,21 @@ class _EmailVerificationBannerState
   bool _otpSent = false;
   final _otpController = TextEditingController();
   String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    // Check if previously dismissed within 24 hours
+    final dismissedAt = OfflineStorageService.prefs?.getInt(
+      'email_verify_dismissed_at',
+    );
+    if (dismissedAt != null) {
+      final elapsed = DateTime.now().millisecondsSinceEpoch - dismissedAt;
+      if (elapsed < const Duration(hours: 24).inMilliseconds) {
+        _dismissed = true;
+      }
+    }
+  }
 
   @override
   void dispose() {
@@ -136,9 +152,9 @@ class _EmailVerificationBannerState
                       ? null
                       : () async {
                           setState(() => _sendingOtp = true);
-                          setDialogState(() {});
+                          if (dialogContext.mounted) setDialogState(() {});
                           await _sendOtp();
-                          if (mounted) {
+                          if (mounted && dialogContext.mounted) {
                             setDialogState(() {});
                           }
                         },
@@ -156,16 +172,19 @@ class _EmailVerificationBannerState
                       : () async {
                           final otp = _otpController.text.trim();
                           if (otp.length != 6) {
-                            setDialogState(
-                              () => _errorMessage = 'Please enter 6-digit code',
-                            );
+                            if (dialogContext.mounted) {
+                              setDialogState(
+                                () =>
+                                    _errorMessage = 'Please enter 6-digit code',
+                              );
+                            }
                             return;
                           }
                           setState(() {
                             _verifying = true;
                             _errorMessage = null;
                           });
-                          setDialogState(() {});
+                          if (dialogContext.mounted) setDialogState(() {});
 
                           final email =
                               ref.read(authNotifierProvider).user?.email ?? '';
@@ -193,7 +212,7 @@ class _EmailVerificationBannerState
                               _errorMessage = ref
                                   .read(authNotifierProvider)
                                   .error;
-                              setDialogState(() {});
+                              if (dialogContext.mounted) setDialogState(() {});
                             }
                           }
                         },
@@ -323,7 +342,13 @@ class _EmailVerificationBannerState
           const SizedBox(width: 6),
           // Dismiss
           InkWell(
-            onTap: () => setState(() => _dismissed = true),
+            onTap: () {
+              setState(() => _dismissed = true);
+              OfflineStorageService.prefs?.setInt(
+                'email_verify_dismissed_at',
+                DateTime.now().millisecondsSinceEpoch,
+              );
+            },
             borderRadius: BorderRadius.circular(16),
             child: Container(
               padding: const EdgeInsets.all(4),

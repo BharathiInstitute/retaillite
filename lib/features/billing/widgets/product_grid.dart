@@ -7,7 +7,7 @@ import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/models/product_model.dart';
 
 class ProductGrid extends StatelessWidget {
-  final List<dynamic> products;
+  final List<ProductModel> products;
   final Function(ProductModel) onProductTap;
   final bool isSliver;
 
@@ -42,8 +42,8 @@ class ProductGrid extends StatelessWidget {
         ),
         delegate: SliverChildBuilderDelegate(
           (context, index) => _ProductTile(
-            product: products[index] as ProductModel,
-            onTap: () => onProductTap(products[index] as ProductModel),
+            product: products[index],
+            onTap: () => onProductTap(products[index]),
           ),
           childCount: products.length,
         ),
@@ -60,8 +60,8 @@ class ProductGrid extends StatelessWidget {
       ),
       itemCount: products.length,
       itemBuilder: (context, index) => _ProductTile(
-        product: products[index] as ProductModel,
-        onTap: () => onProductTap(products[index] as ProductModel),
+        product: products[index],
+        onTap: () => onProductTap(products[index]),
       ),
     );
   }

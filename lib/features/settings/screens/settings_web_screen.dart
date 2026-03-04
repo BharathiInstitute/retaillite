@@ -1,11 +1,11 @@
-import 'dart:async';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
@@ -13,14 +13,8 @@ import 'package:retaillite/models/theme_settings_model.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
-import 'package:retaillite/core/services/thermal_printer_service.dart';
-import 'package:retaillite/core/services/payment_link_service.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
-import 'package:retaillite/shared/widgets/logout_dialog.dart';
-import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
-import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
 
 /// Settings tab enum
 enum SettingsTab { general, account, hardware, billing }
@@ -41,18 +35,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _contactNumberController;
   late TextEditingController _shopAddressController;
   late TextEditingController _emailController;
-  late TextEditingController _upiIdController;
-  late TextEditingController _billingFooterController;
-  late TextEditingController _gstController;
-
-  // WiFi printer state (Windows only)
-  late TextEditingController _wifiIpController;
-  late TextEditingController _wifiPortController;
-  bool _isWifiConnecting = false;
-
-  // USB printer state (Windows only)
-  List<String> _windowsPrinters = [];
-  bool _isLoadingUsbPrinters = false;
+  late TextEditingController _termsController;
 
   @override
   void initState() {
@@ -63,37 +46,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _contactNumberController = TextEditingController(text: user?.phone ?? '');
     _shopAddressController = TextEditingController(text: user?.address ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
-    _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
-    _upiIdController.addListener(_onUpiIdChanged);
-    _billingFooterController = TextEditingController(
-      text: user?.settings.receiptFooter ?? 'Thank you for shopping!',
+    _termsController = TextEditingController(
+      text:
+          '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.',
     );
-    _gstController = TextEditingController(text: user?.gstNumber ?? '');
-
-    // WiFi/USB printer controllers (Windows only)
-    _wifiIpController = TextEditingController(
-      text: (!kIsWeb && Platform.isWindows)
-          ? WifiPrinterService.getSavedIp()
-          : '',
-    );
-    _wifiPortController = TextEditingController(
-      text: (!kIsWeb && Platform.isWindows)
-          ? WifiPrinterService.getSavedPort().toString()
-          : '9100',
-    );
-
-    // Load USB printers on Windows
-    if (!kIsWeb && Platform.isWindows && UsbPrinterService.isAvailable) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        unawaited(_loadWindowsPrinters());
-      });
-    }
-  }
-
-  void _onUpiIdChanged() {
-    final id = _upiIdController.text.trim();
-    PaymentLinkService.setUpiId(id);
-    setState(() {});
   }
 
   @override
@@ -103,11 +59,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _contactNumberController.dispose();
     _shopAddressController.dispose();
     _emailController.dispose();
-    _upiIdController.dispose();
-    _billingFooterController.dispose();
-    _gstController.dispose();
-    _wifiIpController.dispose();
-    _wifiPortController.dispose();
+    _termsController.dispose();
     super.dispose();
   }
 
@@ -125,134 +77,52 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   void _navigateToTab(SettingsTab tab) {
+    if (tab == SettingsTab.hardware || tab == SettingsTab.billing) {
+      _showComingSoonDialog(tab.name);
+    }
     context.go('/settings/${tab.name}');
   }
 
-  /// Instantly update a user setting in Firestore + local state
-  Future<void> _updateUserSetting(String key, dynamic value) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'settings.$key': value,
-      });
-      final authNotifier = ref.read(authNotifierProvider.notifier);
-      final currentUser = ref.read(currentUserProvider);
-      if (currentUser != null) {
-        final newSettings = switch (key) {
-          'gstEnabled' => currentUser.settings.copyWith(
-            gstEnabled: value as bool,
+  bool _hasShownComingSoon = false;
+
+  void _showComingSoonDialog([String? tabName]) {
+    if (_hasShownComingSoon) return;
+    _hasShownComingSoon = true;
+    final featureName = tabName == 'billing' ? 'Billing' : 'Hardware';
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(
+            Icons.construction,
+            size: 48,
+            color: AppColors.warning,
           ),
-          'taxRate' => currentUser.settings.copyWith(taxRate: value as double),
-          'receiptFooter' => currentUser.settings.copyWith(
-            receiptFooter: value as String,
+          title: const Text('Coming Soon'),
+          content: Text(
+            '$featureName settings are under development. These features will be available in a future update.',
           ),
-          _ => currentUser.settings,
-        };
-        authNotifier.updateLocalUserSettings(newSettings);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
-      }
-    }
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _hasShownComingSoon = false;
+                context.go('/settings/general');
+              },
+              child: const Text('Go Back'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   bool _isSyncing = false;
+  bool _isSaving = false;
   bool _isUploadingLogo = false;
   bool _isUploadingProfileImage = false;
-
-  // ─── WiFi Printer Methods (Windows) ───
-
-  Future<void> _connectWifiPrinter() async {
-    final ip = _wifiIpController.text.trim();
-    final port = int.tryParse(_wifiPortController.text.trim()) ?? 9100;
-
-    if (ip.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please enter a printer IP address')),
-      );
-      return;
-    }
-
-    setState(() => _isWifiConnecting = true);
-
-    final success = await WifiPrinterService.connect(ip, port);
-
-    if (success) {
-      await WifiPrinterService.saveWifiPrinter(ip, port);
-      ref
-          .read(printerProvider.notifier)
-          .connectPrinter('WiFi Printer', '$ip:$port');
-    }
-
-    if (mounted) {
-      setState(() => _isWifiConnecting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Connected to $ip:$port'
-                : 'Failed to connect to $ip:$port',
-          ),
-          backgroundColor: success ? AppColors.success : AppColors.error,
-        ),
-      );
-    }
-  }
-
-  Future<void> _disconnectWifiPrinter() async {
-    await WifiPrinterService.disconnect();
-    await ref.read(printerProvider.notifier).disconnectPrinter();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('WiFi printer disconnected')),
-      );
-    }
-  }
-
-  // ─── USB Printer Methods (Windows) ───
-
-  Future<void> _loadWindowsPrinters() async {
-    setState(() => _isLoadingUsbPrinters = true);
-    final printers = await UsbPrinterService.getWindowsPrinters();
-    if (mounted) {
-      setState(() {
-        _windowsPrinters = printers;
-        _isLoadingUsbPrinters = false;
-      });
-
-      // Check if saved printer is still available in the system
-      final savedName = UsbPrinterService.getSavedPrinterName();
-      if (savedName.isNotEmpty) {
-        final isAvailable = printers.contains(savedName);
-        final notifier = ref.read(printerProvider.notifier);
-        if (isAvailable) {
-          notifier.connectPrinter('USB: $savedName', savedName);
-        } else {
-          notifier.setConnectionStatus(false);
-        }
-      }
-    }
-  }
-
-  Future<void> _selectUsbPrinter(String name) async {
-    await UsbPrinterService.saveUsbPrinter(name);
-    ref.read(printerProvider.notifier).connectPrinter('USB: $name', name);
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Selected USB printer: $name'),
-          backgroundColor: AppColors.success,
-        ),
-      );
-    }
-  }
 
   bool get _isMobileView =>
       ResponsiveHelper.isMobile(context) || ResponsiveHelper.isTablet(context);
@@ -328,17 +198,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   Future<void> _saveSettings() async {
-    // Save UPI ID locally (always works)
-    final upiId = _upiIdController.text.trim();
-    if (upiId.isNotEmpty && PaymentLinkService.isValidUpiId(upiId)) {
-      PaymentLinkService.setUpiId(upiId);
-    }
-
-    // Try to save shop info to Firebase
-    bool success = false;
-    String? errorDetail;
+    setState(() => _isSaving = true);
     try {
-      success = await ref
+      final success = await ref
           .read(authNotifierProvider.notifier)
           .updateShopInfo(
             shopName: _shopNameController.text.trim(),
@@ -346,30 +208,31 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             phone: _contactNumberController.text.trim(),
             address: _shopAddressController.text.trim(),
             email: _emailController.text.trim(),
-            gstNumber: _gstController.text.trim(),
-            upiId: upiId.isNotEmpty ? upiId : null,
           );
-      if (!success) {
-        errorDetail = 'updateShopInfo returned false';
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              success
+                  ? 'Settings saved successfully!'
+                  : 'Failed to save settings',
+            ),
+            backgroundColor: success ? AppColors.primary : AppColors.error,
+          ),
+        );
       }
     } catch (e) {
-      debugPrint('❌ _saveSettings error: $e');
-      errorDetail = e.toString();
-      success = false;
-    }
-
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            success
-                ? 'Settings saved successfully!'
-                : 'Saved locally. Cloud sync failed: ${errorDetail ?? "unknown"}',
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving settings: $e'),
+            backgroundColor: AppColors.error,
           ),
-          backgroundColor: success ? AppColors.primary : AppColors.warning,
-          duration: Duration(seconds: success ? 3 : 6),
-        ),
-      );
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -394,32 +257,23 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         final separator = logoPath.contains('?') ? '&' : '?';
         final cacheBustedUrl =
             '$logoPath${separator}t=${DateTime.now().millisecondsSinceEpoch}';
-        return Image.network(
-          cacheBustedUrl,
+        return CachedNetworkImage(
+          imageUrl: cacheBustedUrl,
           width: 64,
           height: 64,
           fit: BoxFit.cover,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return SizedBox(
-              width: 64,
-              height: 64,
-              child: Center(
-                child: SizedBox(
-                  width: 20,
-                  height: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    value: loadingProgress.expectedTotalBytes != null
-                        ? loadingProgress.cumulativeBytesLoaded /
-                              loadingProgress.expectedTotalBytes!
-                        : null,
-                  ),
-                ),
+          placeholder: (_, url) => const SizedBox(
+            width: 64,
+            height: 64,
+            child: Center(
+              child: SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2),
               ),
-            );
-          },
-          errorBuilder: (_, error, _) {
+            ),
+          ),
+          errorWidget: (_, url, error) {
             debugPrint('Logo load error: $error');
             return const Icon(Icons.store, size: 28, color: Colors.grey);
           },
@@ -689,9 +543,15 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         actions: [
           TextButton.icon(
-            onPressed: _saveSettings,
-            icon: const Icon(Icons.save, size: 18),
-            label: const Text('Save'),
+            onPressed: _isSaving ? null : _saveSettings,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save, size: 18),
+            label: Text(_isSaving ? 'Saving...' : 'Save'),
             style: TextButton.styleFrom(foregroundColor: AppColors.primary),
           ),
           const SizedBox(width: 8),
@@ -757,59 +617,12 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           const SizedBox(height: 8),
           ...SettingsTab.values.map((tab) => _buildNavItem(tab)),
           const Spacer(),
-          // Super Admin button (only visible to admins)
-          if (ref.watch(isSuperAdminProvider))
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              child: Material(
-                color: Colors.deepPurple.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(8),
-                child: InkWell(
-                  onTap: () => context.go('/super-admin'),
-                  borderRadius: BorderRadius.circular(8),
-                  child: const Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.admin_panel_settings,
-                          size: 20,
-                          color: Colors.deepPurple,
-                        ),
-                        SizedBox(width: 12),
-                        Text(
-                          'Super Admin',
-                          style: TextStyle(
-                            color: Colors.deepPurple,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          // App Version
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            child: Text(
-              'v$appVersion+$appBuildNumber',
-              style: TextStyle(
-                fontSize: 11,
-                color: Theme.of(
-                  context,
-                ).colorScheme.onSurfaceVariant.withValues(alpha: 0.5),
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
           // Logout button
           Padding(
             padding: const EdgeInsets.all(16),
             child: TextButton.icon(
               onPressed: () {
-                showLogoutDialog(context, ref);
+                ref.read(authNotifierProvider.notifier).signOut();
               },
               icon: const Icon(Icons.logout, size: 20),
               label: const Text('Log Out'),
@@ -948,9 +761,18 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           ),
           // Save button
           ElevatedButton.icon(
-            onPressed: _saveSettings,
-            icon: const Icon(Icons.save, size: 18),
-            label: const Text('Save Changes'),
+            onPressed: _isSaving ? null : _saveSettings,
+            icon: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white,
+                    ),
+                  )
+                : const Icon(Icons.save, size: 18),
+            label: Text(_isSaving ? 'Saving...' : 'Save Changes'),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
@@ -1103,7 +925,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             children: [
               _buildFieldLabel('GST Number'),
               _buildTextField(
-                controller: _gstController,
+                value: user?.gstNumber ?? '',
                 hint: '22AAAAA0000A1Z5',
               ),
               const SizedBox(height: 8),
@@ -1306,53 +1128,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Notification Preferences
-        _SectionCard(
-          icon: Icons.notifications_active,
-          iconColor: Colors.deepPurple,
-          title: 'Notification Preferences',
-          child: Column(
-            children: [
-              _buildNotifToggleRow(
-                icon: Icons.inventory_2_outlined,
-                iconColor: Colors.orange,
-                title: 'Low Stock Alerts',
-                subtitle:
-                    'Get notified when product stock falls below threshold',
-                value:
-                    ref.watch(currentUserProvider)?.settings.lowStockAlerts ??
-                    true,
-                onChanged: (v) => _toggleNotifPref('lowStockAlerts', v),
-              ),
-              const Divider(height: 24),
-              _buildNotifToggleRow(
-                icon: Icons.credit_card,
-                iconColor: Colors.blue,
-                title: 'Subscription Alerts',
-                subtitle: 'Reminders before your subscription expires',
-                value:
-                    ref
-                        .watch(currentUserProvider)
-                        ?.settings
-                        .subscriptionAlerts ??
-                    true,
-                onChanged: (v) => _toggleNotifPref('subscriptionAlerts', v),
-              ),
-              const Divider(height: 24),
-              _buildNotifToggleRow(
-                icon: Icons.bar_chart,
-                iconColor: Colors.green,
-                title: 'Daily Sales Summary',
-                subtitle: 'Receive a summary of your daily sales at 9 PM',
-                value:
-                    ref.watch(currentUserProvider)?.settings.dailySummary ??
-                    true,
-                onChanged: (v) => _toggleNotifPref('dailySummary', v),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
+        // Quick Actions & Support
         _SectionCard(
           icon: Icons.flash_on,
           iconColor: const Color(0xFFF97316),
@@ -1586,281 +1362,40 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color:
-                  (printerState.printerType.isThermal
-                          ? (printerState.isConnected
-                                ? AppColors.success
-                                : AppColors.error)
-                          : AppColors.info)
-                      .withValues(alpha: 0.12),
+              color: AppColors.success.withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
-            child: Text(
-              printerState.printerType == PrinterTypeOption.system
-                  ? 'System Print Dialog'
-                  : printerState.isConnected
-                  ? 'Connected'
-                  : 'Not Connected',
-              style: TextStyle(
-                color: printerState.printerType == PrinterTypeOption.system
-                    ? AppColors.info
-                    : printerState.isConnected
-                    ? AppColors.success
-                    : AppColors.error,
-                fontSize: 12,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: const BoxDecoration(
+                    color: AppColors.success,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Text(
+                  'Connected',
+                  style: TextStyle(
+                    color: AppColors.success,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
             ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Printer type info
-              _buildFieldLabel('Printer Type'),
-              const SizedBox(height: 8),
-              if (!kIsWeb && Platform.isWindows) ...[
-                // On Windows desktop: show selectable printer type options
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _buildToggleChip(
-                      '🖥️ System',
-                      printerState.printerType == PrinterTypeOption.system,
-                      onTap: () => ref
-                          .read(printerProvider.notifier)
-                          .setPrinterType(PrinterTypeOption.system),
-                    ),
-                    _buildToggleChip(
-                      '📶 WiFi',
-                      printerState.printerType == PrinterTypeOption.wifi,
-                      onTap: () => ref
-                          .read(printerProvider.notifier)
-                          .setPrinterType(PrinterTypeOption.wifi),
-                    ),
-                    _buildToggleChip(
-                      '🔌 USB',
-                      printerState.printerType == PrinterTypeOption.usb,
-                      onTap: () => ref
-                          .read(printerProvider.notifier)
-                          .setPrinterType(PrinterTypeOption.usb),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  printerState.printerType.description,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-
-                // WiFi Printer Configuration
-                if (printerState.printerType == PrinterTypeOption.wifi) ...[
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.wifi,
-                        color: WifiPrinterService.isConnected
-                            ? AppColors.success
-                            : Colors.grey,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Text(
-                        WifiPrinterService.isConnected
-                            ? 'Connected: ${WifiPrinterService.connectedAddress}'
-                            : 'Enter printer IP and port',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w500,
-                          color: WifiPrinterService.isConnected
-                              ? AppColors.success
-                              : AppColors.textMuted,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: TextField(
-                          controller: _wifiIpController,
-                          decoration: const InputDecoration(
-                            labelText: 'IP Address',
-                            hintText: '192.168.1.100',
-                            isDense: true,
-                            prefixIcon: Icon(Icons.router, size: 20),
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
-                          controller: _wifiPortController,
-                          decoration: const InputDecoration(
-                            labelText: 'Port',
-                            hintText: '9100',
-                            isDense: true,
-                          ),
-                          keyboardType: TextInputType.number,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: _isWifiConnecting
-                              ? null
-                              : _connectWifiPrinter,
-                          icon: _isWifiConnecting
-                              ? const SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                )
-                              : const Icon(Icons.link),
-                          label: Text(
-                            _isWifiConnecting ? 'Connecting...' : 'Connect',
-                          ),
-                        ),
-                      ),
-                      if (WifiPrinterService.isConnected) ...[
-                        const SizedBox(width: 12),
-                        OutlinedButton.icon(
-                          onPressed: _disconnectWifiPrinter,
-                          icon: const Icon(Icons.link_off),
-                          label: const Text('Disconnect'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.error,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ],
-
-                // USB Printer Configuration
-                if (printerState.printerType == PrinterTypeOption.usb) ...[
-                  const SizedBox(height: 16),
-                  const Divider(),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.usb,
-                        color:
-                            UsbPrinterService.getSavedPrinterName().isNotEmpty
-                            ? AppColors.success
-                            : Colors.grey,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          UsbPrinterService.getSavedPrinterName().isNotEmpty
-                              ? 'Selected: ${UsbPrinterService.getSavedPrinterName()}'
-                              : 'Select a printer from the list',
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color:
-                                UsbPrinterService.getSavedPrinterName()
-                                    .isNotEmpty
-                                ? AppColors.success
-                                : AppColors.textMuted,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: _isLoadingUsbPrinters
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.refresh),
-                        onPressed: _isLoadingUsbPrinters
-                            ? null
-                            : _loadWindowsPrinters,
-                        tooltip: 'Refresh printer list',
-                      ),
-                    ],
-                  ),
-                  if (_windowsPrinters.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    ..._windowsPrinters.map((name) {
-                      final savedName = UsbPrinterService.getSavedPrinterName();
-                      return ListTile(
-                        leading: Icon(
-                          Icons.print,
-                          color: name == savedName ? AppColors.success : null,
-                        ),
-                        title: Text(name, style: const TextStyle(fontSize: 13)),
-                        trailing: name == savedName
-                            ? const Icon(
-                                Icons.check_circle,
-                                color: AppColors.success,
-                              )
-                            : TextButton(
-                                onPressed: () => _selectUsbPrinter(name),
-                                child: const Text('Select'),
-                              ),
-                        contentPadding: EdgeInsets.zero,
-                        dense: true,
-                      );
-                    }),
-                  ] else if (!_isLoadingUsbPrinters) ...[
-                    const SizedBox(height: 8),
-                    const Text(
-                      'No printers found. Click refresh to scan.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: AppColors.textMuted,
-                      ),
-                    ),
-                  ],
-                ],
-              ] else ...[
-                // On web: show read-only printer type
-                Text(
-                  printerState.printerType.label,
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
-                ),
-                Text(
-                  printerState.printerType.description,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textMuted,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Tip: Change printer type on the mobile app or desktop. Web uses the browser print dialog.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppColors.info.withValues(alpha: 0.8),
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ],
+              _buildFieldLabel('Select Printer'),
+              _buildDropdown(
+                printerState.printerName ?? 'Epson TM-T82 (Bluetooth)',
+                ['Epson TM-T82 (Bluetooth)', 'None'],
+              ),
               const SizedBox(height: 20),
               _responsiveFields([
                 Column(
@@ -1870,21 +1405,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildToggleChip(
-                          '58mm',
-                          printerState.paperSizeIndex == 0,
-                          onTap: () => ref
-                              .read(printerProvider.notifier)
-                              .setPaperSize(0),
-                        ),
+                        _buildToggleChip('58mm', false),
                         const SizedBox(width: 8),
-                        _buildToggleChip(
-                          '80mm',
-                          printerState.paperSizeIndex == 1,
-                          onTap: () => ref
-                              .read(printerProvider.notifier)
-                              .setPaperSize(1),
-                        ),
+                        _buildToggleChip('80mm', true),
                       ],
                     ),
                   ],
@@ -1892,48 +1415,31 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildFieldLabel('Font Size'),
+                    _buildFieldLabel('Density'),
                     const SizedBox(height: 8),
-                    Row(
-                      children: [
-                        ...PrinterFontSize.values.map(
-                          (f) => Padding(
-                            padding: const EdgeInsets.only(right: 8),
-                            child: _buildToggleChip(
-                              f.label,
-                              printerState.fontSizeIndex == f.value,
-                              onTap: () => ref
-                                  .read(printerProvider.notifier)
-                                  .setFontSize(f.value),
-                            ),
-                          ),
-                        ),
-                      ],
+                    Slider(
+                      value: 0.7,
+                      onChanged: null,
+                      activeColor: AppColors.primary,
+                    ),
+                    const Text(
+                      'Coming soon',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textMuted,
+                      ),
                     ),
                   ],
                 ),
               ]),
-              const SizedBox(height: 20),
-
-              // Auto-print toggle
-              _buildPreferenceToggle(
-                'Auto-Print Receipts',
-                'Automatically print receipt after completing a bill.',
-                printerState.autoPrint,
-                onChanged: (v) =>
-                    ref.read(printerProvider.notifier).setAutoPrint(v),
-              ),
               const SizedBox(height: 16),
-
-              // Receipt Footer
-              _buildFieldLabel('Receipt Footer'),
-              const SizedBox(height: 8),
-              _buildTextField(
-                value: printerState.receiptFooter.isEmpty
-                    ? 'Thank you for shopping!'
-                    : printerState.receiptFooter,
-                onChanged: (v) =>
-                    ref.read(printerProvider.notifier).setReceiptFooter(v),
+              Align(
+                alignment: Alignment.centerRight,
+                child: OutlinedButton.icon(
+                  onPressed: () {},
+                  icon: const Icon(Icons.print, size: 18),
+                  label: const Text('Test Print'),
+                ),
               ),
             ],
           ),
@@ -2288,10 +1794,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                         DropdownMenuItem(value: 90, child: Text('90 days')),
                         DropdownMenuItem(value: 180, child: Text('180 days')),
                         DropdownMenuItem(value: 365, child: Text('1 year')),
-                        DropdownMenuItem(
-                          value: -1,
-                          child: Text('Keep forever'),
-                        ),
                       ],
                       onChanged: (value) {
                         if (value != null) {
@@ -2300,29 +1802,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                       },
                     ),
                   ),
-                  if (appSettings.retentionDays == -1)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.warning_amber_rounded,
-                            size: 16,
-                            color: Colors.orange.shade700,
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'High storage usage — data will never be auto-deleted',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.orange.shade700,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
                   const SizedBox(height: 24),
 
                   // Existing toggles
@@ -2365,7 +1844,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                                 ),
                               ),
                               Text(
-                                "If your hardware isn't connecting, try restarting the Tulasi Stores app or re-pairing your Bluetooth device.",
+                                "If your hardware isn't connecting, try restarting the RetailLite app or re-pairing your Bluetooth device.",
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: AppColors.textSecondary,
@@ -2403,60 +1882,29 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  GestureDetector(
-                    onTap: _pickShopLogo,
-                    child: Tooltip(
-                      message: 'Click to upload shop logo',
-                      child: Container(
-                        width: 80,
-                        height: 80,
-                        decoration: BoxDecoration(
-                          color: Theme.of(
-                            context,
-                          ).colorScheme.surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(8),
-                          boxShadow: AppShadows.small,
-                          image:
-                              user?.shopLogoPath != null &&
-                                  user!.shopLogoPath!.startsWith('http')
-                              ? DecorationImage(
-                                  image: NetworkImage(user.shopLogoPath!),
-                                  fit: BoxFit.cover,
-                                )
-                              : null,
+                  Container(
+                    width: 80,
+                    height: 80,
+                    decoration: BoxDecoration(
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: AppShadows.small,
+                    ),
+                    child: const Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.camera_alt, size: 24, color: Colors.grey),
+                        SizedBox(height: 4),
+                        Text(
+                          'Logo',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: AppColors.textMuted,
+                          ),
                         ),
-                        child: _isUploadingLogo
-                            ? const Center(
-                                child: SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                  ),
-                                ),
-                              )
-                            : (user?.shopLogoPath == null ||
-                                  !user!.shopLogoPath!.startsWith('http'))
-                            ? const Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Icon(
-                                    Icons.add_a_photo,
-                                    size: 24,
-                                    color: Colors.grey,
-                                  ),
-                                  SizedBox(height: 4),
-                                  Text(
-                                    'Logo',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: AppColors.textMuted,
-                                    ),
-                                  ),
-                                ],
-                              )
-                            : null,
-                      ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 16),
@@ -2534,8 +1982,32 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     ),
                     Switch(
                       value: user?.settings.gstEnabled ?? true,
-                      onChanged: (v) {
-                        _updateUserSetting('gstEnabled', v);
+                      onChanged: (v) async {
+                        final uid = ref.read(currentUserProvider)?.id;
+                        if (uid == null) return;
+                        try {
+                          await FirebaseFirestore.instance
+                              .collection('users')
+                              .doc(uid)
+                              .update({'settings.gstEnabled': v});
+                          final notifier = ref.read(
+                            authNotifierProvider.notifier,
+                          );
+                          final current = ref.read(currentUserProvider);
+                          if (current != null) {
+                            notifier.updateLocalUserSettings(
+                              current.settings.copyWith(gstEnabled: v),
+                            );
+                          }
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Failed to update GST setting'),
+                              ),
+                            );
+                          }
+                        }
                       },
                       activeThumbColor: AppColors.primary,
                     ),
@@ -2549,7 +2021,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   children: [
                     _buildFieldLabel('GSTIN'),
                     _buildTextField(
-                      controller: _gstController,
+                      value: user?.gstNumber ?? '',
                       hint: '22AAAAA0000A1Z5',
                     ),
                   ],
@@ -2558,27 +2030,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Default Tax Rate'),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).cardColor,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: AppShadows.small,
-                      ),
-                      child: DropdownButton<double>(
-                        value: user?.settings.taxRate ?? 5.0,
-                        isExpanded: true,
-                        underline: const SizedBox(),
-                        items: const [
-                          DropdownMenuItem(value: 5.0, child: Text('5%')),
-                          DropdownMenuItem(value: 12.0, child: Text('12%')),
-                          DropdownMenuItem(value: 18.0, child: Text('18%')),
-                          DropdownMenuItem(value: 28.0, child: Text('28%')),
-                        ],
-                        onChanged: (v) {
-                          if (v != null) _updateUserSetting('taxRate', v);
-                        },
-                      ),
+                    _buildDropdown(
+                      '${(user?.settings.taxRate ?? 5.0).toStringAsFixed(0)}%',
+                      ['5%', '12%', '18%', '28%'],
                     ),
                   ],
                 ),
@@ -2586,15 +2040,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               const SizedBox(height: 16),
               const Row(
                 children: [
-                  Icon(
-                    Icons.info_outline,
-                    size: 14,
-                    color: AppColors.textMuted,
-                  ),
-                  SizedBox(width: 4),
+                  Checkbox(value: false, onChanged: null),
                   Text(
-                    'Tax is calculated on the bill subtotal',
-                    style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+                    'Prices are inclusive of tax (coming soon)',
+                    style: TextStyle(color: AppColors.textMuted),
                   ),
                 ],
               ),
@@ -2618,10 +2067,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   hintText: 'Enter terms and conditions...',
                   filled: true,
                 ),
-                controller: _billingFooterController,
-                onChanged: (v) {
-                  _updateUserSetting('receiptFooter', v);
-                },
+                controller: _termsController,
               ),
               const SizedBox(height: 8),
               const Row(
@@ -2643,190 +2089,102 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         const SizedBox(height: 24),
 
-        // UPI Payment Setup
+        // Digital Payment Setup
         _SectionCard(
-          icon: Icons.account_balance_wallet,
+          icon: Icons.payment,
           iconColor: AppColors.success,
-          title: 'UPI Payment Setup',
+          title: 'Digital Payment Setup',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
                   const Text(
-                    'Business UPI ID',
+                    'UPI QR Code',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
-                  if (PaymentLinkService.isValidUpiId(
-                    _upiIdController.text.trim(),
-                  ))
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFDCFCE7),
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'ACTIVE',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppColors.success,
-                          fontWeight: FontWeight.bold,
-                        ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFDCFCE7),
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: const Text(
+                      'ACTIVE',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: AppColors.success,
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
+                  ),
                 ],
               ),
               const SizedBox(height: 12),
+              Row(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      boxShadow: AppShadows.small,
+                    ),
+                    child: const Icon(Icons.qr_code_2, size: 40),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildTextField(value: 'retailstore@upi'),
+                        const SizedBox(height: 4),
+                        TextButton(
+                          onPressed: () {},
+                          child: const Text(
+                            'Generate New QR',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 20),
+              const Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Razorpay Integration',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                  Switch(value: false, onChanged: null),
+                ],
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'Coming soon',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
+              ),
+              const SizedBox(height: 12),
               _buildTextField(
-                controller: _upiIdController,
-                hint: 'e.g. myshop@ybl',
+                value: '',
+                hint: 'Key ID (rzp_live_...)',
+                enabled: false,
               ),
               const SizedBox(height: 8),
-
-              // Validation feedback
-              if (_upiIdController.text.trim().isNotEmpty &&
-                  !PaymentLinkService.isValidUpiId(
-                    _upiIdController.text.trim(),
-                  ))
-                const Row(
-                  children: [
-                    Icon(Icons.error_outline, size: 14, color: AppColors.error),
-                    SizedBox(width: 4),
-                    Text(
-                      'Invalid format. Use: name@provider',
-                      style: TextStyle(fontSize: 11, color: AppColors.error),
-                    ),
-                  ],
-                ),
-
-              // Setup guide
-              InkWell(
-                onTap: () => _showUpiGuideDialog(context),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Icon(
-                        Icons.help_outline,
-                        size: 16,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'How to get a Business UPI ID (free)',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Theme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+              _buildTextField(value: '', hint: 'Key Secret', enabled: false),
+              const SizedBox(height: 8),
+              const Text(
+                'Enable to send payment links via SMS/Email.',
+                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
               ),
-              const SizedBox(height: 16),
-
-              // Auto-generated QR Code
-              if (PaymentLinkService.isValidUpiId(
-                _upiIdController.text.trim(),
-              )) ...[
-                const Text(
-                  'Auto-Generated QR Code',
-                  style: TextStyle(fontWeight: FontWeight.w600),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Print this or show on screen for customers to scan',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: AppShadows.small,
-                      ),
-                      child: QrImageView(
-                        data: PaymentLinkService.generateUpiQrData(
-                          upiId: _upiIdController.text.trim(),
-                          payeeName: user?.shopName,
-                        ),
-                        size: 120,
-                        backgroundColor: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _upiIdController.text.trim(),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            user?.shopName ?? 'Your Shop',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textSecondary,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          const Text(
-                            '₹0 per transaction — forever free',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: AppColors.success,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-              if (!PaymentLinkService.isValidUpiId(
-                _upiIdController.text.trim(),
-              )) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.info.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: const Row(
-                    children: [
-                      Icon(Icons.info_outline, color: AppColors.info, size: 20),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Enter your Business UPI ID above to auto-generate a QR code for invoices.',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),
@@ -2835,74 +2193,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   // ============ HELPER WIDGETS ============
-
-  void _showUpiGuideDialog(BuildContext ctx) {
-    showDialog(
-      context: ctx,
-      builder: (dialogCtx) => AlertDialog(
-        title: Row(
-          children: [
-            Icon(Icons.account_balance_wallet, color: AppColors.primary),
-            const SizedBox(width: 8),
-            const Expanded(child: Text('Get Business UPI')),
-          ],
-        ),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Business UPI gives you unlimited free transactions per day.',
-                style: TextStyle(fontSize: 13, color: AppColors.textSecondary),
-              ),
-              const SizedBox(height: 16),
-              const Text(
-                '🥇 PhonePe Business (Recommended)',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const Text('• Download from Play Store / App Store'),
-              const Text('• Enter PAN + link bank account'),
-              const Text('• Setup time: ~5 minutes'),
-              const Text('• Cost: ₹0 forever'),
-              const SizedBox(height: 12),
-              const Text(
-                '🥈 Google Pay for Business',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const Text('• Download from Play Store'),
-              const Text('• Links to existing Google account'),
-              const Text('• Setup time: ~10 minutes'),
-              const Text('• Cost: ₹0 forever'),
-              const SizedBox(height: 12),
-              const Text(
-                '🥉 BharatPe',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
-              const Text('• Download from Play Store'),
-              const Text('• Free QR stand delivered to shop'),
-              const Text('• Setup time: ~15 minutes'),
-              const Text('• Cost: ₹0 forever'),
-              const SizedBox(height: 16),
-              Text(
-                'After setup, copy your Business UPI ID and paste it in settings.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.primary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogCtx),
-            child: const Text('Got it'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Get font size label from scale value
   String _getFontSizeLabel(double scale) {
@@ -2937,14 +2227,13 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     bool obscure = false,
     int maxLines = 1,
     bool enabled = true,
-    ValueChanged<String>? onChanged,
   }) {
-    return TextField(
-      controller: controller ?? TextEditingController(text: value ?? ''),
+    return TextFormField(
+      controller: controller,
+      initialValue: controller == null ? (value ?? '') : null,
       obscureText: obscure,
       maxLines: maxLines,
       enabled: enabled,
-      onChanged: onChanged,
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
@@ -2973,7 +2262,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         items: items
             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
             .toList(),
-        onChanged: (v) {},
+        onChanged: null, // Read-only display
       ),
     );
   }
@@ -3068,20 +2357,20 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('About Tulasi Stores'),
+        title: const Text('About ${AppConstants.appName}'),
         content: const Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Tulasi Stores',
+              AppConstants.appName,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
             Text('Version 1.0.0'),
             SizedBox(height: 16),
             Text('Simple POS for Small Retailers'),
             SizedBox(height: 16),
-            Text('© 2026 Tulasi Stores', style: TextStyle(color: Colors.grey)),
+            Text('© 2026 RetailLite', style: TextStyle(color: Colors.grey)),
           ],
         ),
         actions: [
@@ -3168,31 +2457,24 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildToggleChip(
-    String label,
-    bool isSelected, {
-    VoidCallback? onTap,
-  }) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
+  Widget _buildToggleChip(String label, bool isSelected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isSelected
+            ? AppColors.primary.withValues(alpha: 0.1)
+            : Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(8),
+        border: isSelected ? Border.all(color: AppColors.primary) : null,
+        boxShadow: isSelected ? null : AppShadows.small,
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
           color: isSelected
-              ? AppColors.primary.withValues(alpha: 0.1)
-              : Theme.of(context).cardColor,
-          borderRadius: BorderRadius.circular(8),
-          border: isSelected ? Border.all(color: AppColors.primary) : null,
-          boxShadow: isSelected ? null : AppShadows.small,
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected
-                ? AppColors.primary
-                : Theme.of(context).colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
+              ? AppColors.primary
+              : Theme.of(context).colorScheme.onSurface,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -3203,7 +2485,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     String description,
     bool value, {
     String? badge,
-    ValueChanged<bool>? onChanged,
   }) {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3254,81 +2535,11 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         Switch(
           value: value,
-          onChanged: onChanged ?? (v) {},
+          onChanged: null, // Read-only display
           activeThumbColor: AppColors.primary,
         ),
       ],
     );
-  }
-
-  Widget _buildNotifToggleRow({
-    required IconData icon,
-    required Color iconColor,
-    required String title,
-    required String subtitle,
-    required bool value,
-    required ValueChanged<bool> onChanged,
-  }) {
-    return Row(
-      children: [
-        Icon(icon, color: iconColor, size: 22),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-              Text(
-                subtitle,
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Switch(
-          value: value,
-          onChanged: onChanged,
-          activeThumbColor: AppColors.primary,
-        ),
-      ],
-    );
-  }
-
-  Future<void> _toggleNotifPref(String key, bool value) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'settings.$key': value,
-      });
-
-      // Update local state
-      final authNotifier = ref.read(authNotifierProvider.notifier);
-      final currentUser = ref.read(currentUserProvider);
-      if (currentUser != null) {
-        final newSettings = switch (key) {
-          'lowStockAlerts' => currentUser.settings.copyWith(
-            lowStockAlerts: value,
-          ),
-          'subscriptionAlerts' => currentUser.settings.copyWith(
-            subscriptionAlerts: value,
-          ),
-          'dailySummary' => currentUser.settings.copyWith(dailySummary: value),
-          _ => currentUser.settings,
-        };
-        authNotifier.updateLocalUserSettings(newSettings);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
-      }
-    }
   }
 }
 

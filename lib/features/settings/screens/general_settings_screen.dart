@@ -2,8 +2,6 @@
 /// Mirrors Web General Tab
 library;
 
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/app_colors.dart';
@@ -406,36 +404,12 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
   }
 
   Future<void> _toggleNotifPref(String key, bool value) async {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
-    if (uid == null) return;
-
-    try {
-      await FirebaseFirestore.instance.collection('users').doc(uid).update({
-        'settings.$key': value,
-      });
-
-      // Update local state
-      final authNotifier = ref.read(authNotifierProvider.notifier);
-      final currentUser = ref.read(currentUserProvider);
-      if (currentUser != null) {
-        final newSettings = switch (key) {
-          'lowStockAlerts' => currentUser.settings.copyWith(
-            lowStockAlerts: value,
-          ),
-          'subscriptionAlerts' => currentUser.settings.copyWith(
-            subscriptionAlerts: value,
-          ),
-          'dailySummary' => currentUser.settings.copyWith(dailySummary: value),
-          _ => currentUser.settings,
-        };
-        authNotifier.updateLocalUserSettings(newSettings);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Failed to update: $e')));
-      }
+    final authNotifier = ref.read(authNotifierProvider.notifier);
+    final success = await authNotifier.toggleNotifPref(key, value);
+    if (!success && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Failed to update preference')),
+      );
     }
   }
 
