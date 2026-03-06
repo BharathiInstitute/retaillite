@@ -8,14 +8,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:retaillite/core/design/app_colors.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
-import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/theme_settings_model.dart';
 
 /// Current theme settings - rebuilds on user change
 final themeSettingsProvider =
     StateNotifierProvider<ThemeSettingsNotifier, ThemeSettingsModel>((ref) {
-      // Watch auth state so theme reloads when a different user logs in
-      ref.watch(authNotifierProvider.select((s) => s.firebaseUser?.uid));
+      // Theme reload is triggered by ref.invalidate() from auth provider
+      // after login/logout — NOT by watching authNotifierProvider
+      // (watching auth causes a provider rebuild cycle that resets auth state).
       return ThemeSettingsNotifier();
     });
 
@@ -71,7 +71,7 @@ class ThemeSettingsNotifier extends StateNotifier<ThemeSettingsModel> {
           await OfflineStorageService.getSettingFromCloud<Map<String, dynamic>>(
             'theme_settings',
           );
-      if (cloudData != null) {
+      if (cloudData != null && mounted) {
         final cloudSettings = ThemeSettingsModel.fromJson(cloudData);
         // Only update if different from current state
         if (cloudSettings != state) {
@@ -103,13 +103,16 @@ class ThemeSettingsNotifier extends StateNotifier<ThemeSettingsModel> {
 
   Future<void> _saveSettings() async {
     try {
+      if (!mounted) return;
       // Save full theme as JSON (for all settings)
       await OfflineStorageService.saveSetting('theme_settings', state.toJson());
+      if (!mounted) return;
       // Also save standalone dark mode flags for instant loading on refresh
       await OfflineStorageService.saveSetting(
         'theme_is_dark',
         state.useDarkMode,
       );
+      if (!mounted) return;
       await OfflineStorageService.saveSetting(
         'theme_use_system',
         state.useSystemTheme,

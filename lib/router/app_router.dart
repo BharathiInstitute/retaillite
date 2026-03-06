@@ -85,7 +85,7 @@ class AppRoutes {
 /// WITHOUT recreating the entire GoRouter instance.
 class _AuthChangeNotifier extends ChangeNotifier {
   _AuthChangeNotifier(Ref ref) {
-    ref.listen<AuthState>(authNotifierProvider, (_, _) {
+    ref.listen<AuthState>(authNotifierProvider, (prev, next) {
       notifyListeners();
     });
   }
@@ -160,18 +160,19 @@ final routerProvider = Provider<GoRouter>((ref) {
 
       // Auth is resolved — leave the loading screen
       if (isLoadingRoute) {
-        if (!isLoggedIn) return AppRoutes.login;
-        if (!isShopSetupComplete && !isSuperAdminUser) {
-          return AppRoutes.shopSetup;
+        final destination = !isLoggedIn
+            ? AppRoutes.login
+            : (!isShopSetupComplete && !isSuperAdminUser)
+            ? AppRoutes.shopSetup
+            : (pendingRedirect ?? restoredLocation);
+        if (!isLoggedIn || (isShopSetupComplete || isSuperAdminUser)) {
+          pendingRedirect = null;
         }
-        // Restore the route we captured before going to /loading
-        final target = pendingRedirect ?? restoredLocation;
-        pendingRedirect = null;
         // If the restored target is a super-admin route, only allow if admin
-        if (target.startsWith('/super-admin') && !isSuperAdminUser) {
+        if (destination.startsWith('/super-admin') && !isSuperAdminUser) {
           return AppRoutes.billing;
         }
-        return target;
+        return destination;
       }
 
       final isAuthRoute =
@@ -232,9 +233,12 @@ final routerProvider = Provider<GoRouter>((ref) {
 
     routes: [
       // Loading route — shown while Firebase Auth initializes
+      // Uses _LoadingGuard to actively watch auth state and force GoRouter
+      // to re-evaluate redirect when auth resolves (workaround for
+      // refreshListenable not always firing on web).
       GoRoute(
         path: AppRoutes.loading,
-        builder: (context, state) => const SplashScreen(message: 'Loading...'),
+        builder: (context, state) => const _LoadingGuard(),
       ),
 
       // Auth routes (outside shell)
@@ -438,5 +442,56 @@ class _ErrorRouteObserver extends NavigatorObserver {
       // Log screen view to Firebase Analytics
       AnalyticsService.logScreenView(name);
     }
+  }
+}
+
+/// Loading screen wrapper that actively watches auth state.
+/// When auth resolves (isLoading becomes false), it forces GoRouter to
+/// re-evaluate its redirect, navigating away from the loading screen.
+/// This is needed because GoRouter's refreshListenable can miss state
+/// changes that happen during async stream callbacks on web.
+class _LoadingGuard extends ConsumerStatefulWidget {
+  const _LoadingGuard();
+
+  @override
+  ConsumerState<_LoadingGuard> createState() => _LoadingGuardState();
+}
+
+class _LoadingGuardState extends ConsumerState<_LoadingGuard> {
+  @override
+  void initState() {
+    super.initState();
+    // Also poll as a safety net in case ref.listen doesn't trigger
+    _pollAuth();
+  }
+
+  void _pollAuth() {
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      final authState = ref.read(authNotifierProvider);
+      if (!authState.isLoading) {
+        ref.read(routerProvider).refresh();
+      } else {
+        _pollAuth(); // Keep polling
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isLoading = ref.watch(
+      authNotifierProvider.select((s) => s.isLoading),
+    );
+
+    // When auth resolves, force GoRouter to re-evaluate redirect
+    if (!isLoading) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          ref.read(routerProvider).refresh();
+        }
+      });
+    }
+
+    return const SplashScreen(message: 'Loading...');
   }
 }

@@ -54,8 +54,14 @@ final isPrimaryOwnerProvider = Provider<bool>((ref) {
       AdminFirestoreService.primaryOwnerEmail;
 });
 
+/// Seed gate — all admin providers depend on this
+final _adminSeedProvider = FutureProvider<void>((ref) async {
+  await AdminFirestoreService.ensureAdminSeeded();
+});
+
 /// Dashboard statistics provider
 final adminStatsProvider = FutureProvider<AdminStats>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
   return AdminFirestoreService.getAdminStats();
 });
 
@@ -65,6 +71,7 @@ final allUsersProvider =
       ref,
       params,
     ) async {
+      await ref.watch(_adminSeedProvider.future);
       return AdminFirestoreService.getAllUsers(
         limit: params.limit,
         searchQuery: params.searchQuery,
@@ -74,11 +81,13 @@ final allUsersProvider =
 
 /// Simple all users provider (for initial load)
 final usersListProvider = FutureProvider<List<AdminUser>>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
   return AdminFirestoreService.getAllUsers();
 });
 
 /// Recent users for dashboard
 final recentUsersProvider = FutureProvider<List<AdminUser>>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
   return AdminFirestoreService.getRecentUsers();
 });
 

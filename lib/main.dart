@@ -43,27 +43,33 @@ int appBuildNumber = 0; // overwritten at startup
 bool _firebaseReady = false;
 
 void main() {
-  // CRITICAL: Initialize binding FIRST, before anything else
-  WidgetsFlutterBinding.ensureInitialized();
+  // Wrap EVERYTHING in runZonedGuarded to catch ALL async errors
+  // AND keep all runApp calls in the same zone (prevents zone mismatch).
+  runZonedGuarded(
+    () {
+      // CRITICAL: Initialize binding FIRST, before anything else
+      WidgetsFlutterBinding.ensureInitialized();
 
-  // Mark app start time for health metrics
-  AppHealthService.markAppStart();
+      // Mark app start time for health metrics
+      AppHealthService.markAppStart();
 
-  // Show splash screen immediately while initializing
-  runApp(const SplashScreen(message: 'Starting...'));
+      // Show splash screen immediately while initializing
+      runApp(const SplashScreen(message: 'Starting...'));
 
-  // Wrap in runZonedGuarded to catch ALL async errors,
-  // including those thrown before Firebase is ready.
-  runZonedGuarded(() => _initializeApp(), (error, stack) {
-    debugPrint('🔴 runZonedGuarded caught: $error');
-    if (_firebaseReady) {
-      // Firebase is up — use normal error pipeline
-      ErrorHandler.report(error, stack);
-    } else {
-      // Firebase NOT ready — save locally for next startup
-      ErrorLoggingService.savePreFirebaseCrash(error, stack);
-    }
-  });
+      // Initialize app (async)
+      _initializeApp();
+    },
+    (error, stack) {
+      debugPrint('🔴 runZonedGuarded caught: $error');
+      if (_firebaseReady) {
+        // Firebase is up — use normal error pipeline
+        ErrorHandler.report(error, stack);
+      } else {
+        // Firebase NOT ready — save locally for next startup
+        ErrorLoggingService.savePreFirebaseCrash(error, stack);
+      }
+    },
+  );
 }
 
 /// Initialize all services and launch main app

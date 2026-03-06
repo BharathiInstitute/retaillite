@@ -10,6 +10,54 @@ class AdminFirestoreService {
   AdminFirestoreService._();
 
   static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  static Future<void>? _seedFuture;
+
+  /// Ensure the /admins collection is populated.
+  /// The primary owner (kehsaram001@gmail.com) is hardcoded in Firestore
+  /// security rules as a fallback, so they can always bootstrap.
+  /// Uses a shared Future so parallel callers don't race.
+  static Future<void> ensureAdminSeeded() {
+    _seedFuture ??= _doSeed();
+    return _seedFuture!;
+  }
+
+  static Future<void> _doSeed() async {
+    try {
+      // Check if admins collection already has the primary owner doc
+      final doc = await _firestore
+          .collection('admins')
+          .doc(primaryOwnerEmail)
+          .get();
+      if (doc.exists) return;
+    } catch (_) {
+      // May fail if not primary owner and collection doesn't exist yet
+    }
+
+    // Seed the admins collection directly (primary owner has rule-level access)
+    try {
+      debugPrint('🔑 AdminFirestore: Seeding admins collection...');
+      final batch = _firestore.batch();
+      const emails = [
+        primaryOwnerEmail,
+        'admin@retaillite.com',
+        'bharathiinstitute1@gmail.com',
+        'bharahiinstitute1@gmail.com',
+        'shivamsingh8556@gmail.com',
+        'admin@lite.app',
+        'kehsihba@gmail.com',
+      ];
+      for (final email in emails) {
+        batch.set(_firestore.collection('admins').doc(email), {
+          'email': email,
+          'addedAt': FieldValue.serverTimestamp(),
+        });
+      }
+      await batch.commit();
+      debugPrint('✅ AdminFirestore: Seeded ${emails.length} admins');
+    } catch (e) {
+      debugPrint('⚠️ AdminFirestore: Seed failed: $e');
+    }
+  }
 
   /// Get all users for admin dashboard
   static Future<List<AdminUser>> getAllUsers({
@@ -74,7 +122,7 @@ class AdminFirestoreService {
 
   /// Get admin dashboard statistics — reads from aggregation counter doc
   /// (`app_config/stats`) kept up to date by the `onSubscriptionWrite` CF.
-  /// Falls back to count() aggregation queries for activity metrics.
+  /// Falls back to live count queries if the stats doc is missing/stale.
   static Future<AdminStats> getAdminStats() async {
     try {
       final now = DateTime.now();
@@ -127,12 +175,28 @@ class AdminFirestoreService {
 
       final sd = statsDoc.data() as Map<String, dynamic>? ?? {};
 
+      int totalUsers = (sd['totalUsers'] as int?) ?? 0;
+      int freeUsers = (sd['freeUsers'] as int?) ?? 0;
+      int proUsers = (sd['proUsers'] as int?) ?? 0;
+      int businessUsers = (sd['businessUsers'] as int?) ?? 0;
+      double mrr = ((sd['mrr'] as num?) ?? 0).toDouble();
+
+      // If stats doc is missing or empty, do a live recount
+      if (totalUsers == 0) {
+        final recalculated = await recalculateStats();
+        totalUsers = recalculated.totalUsers;
+        freeUsers = recalculated.freeUsers;
+        proUsers = recalculated.proUsers;
+        businessUsers = recalculated.businessUsers;
+        mrr = recalculated.mrr;
+      }
+
       return AdminStats(
-        totalUsers: (sd['totalUsers'] as int?) ?? 0,
-        freeUsers: (sd['freeUsers'] as int?) ?? 0,
-        proUsers: (sd['proUsers'] as int?) ?? 0,
-        businessUsers: (sd['businessUsers'] as int?) ?? 0,
-        mrr: ((sd['mrr'] as num?) ?? 0).toDouble(),
+        totalUsers: totalUsers,
+        freeUsers: freeUsers,
+        proUsers: proUsers,
+        businessUsers: businessUsers,
+        mrr: mrr,
         activeToday: counts[0].count ?? 0,
         activeThisWeek: counts[1].count ?? 0,
         activeThisMonth: counts[2].count ?? 0,
@@ -141,6 +205,85 @@ class AdminFirestoreService {
       );
     } catch (e) {
       debugPrint('❌ AdminFirestore: Failed to get stats: $e');
+      return const AdminStats();
+    }
+  }
+
+  /// Recalculate stats by scanning the users collection and writing
+  /// the result to `app_config/stats`. Use when stats doc is missing or stale.
+  static Future<AdminStats> recalculateStats() async {
+    try {
+      final snapshot = await _firestore.collection('users').get();
+
+      int total = 0;
+      int free = 0;
+      int pro = 0;
+      int business = 0;
+      double mrr = 0;
+      final Map<String, int> platformCounts = {};
+      int billingUsers = 0;
+      int productUsers = 0;
+      int khataUsers = 0;
+
+      for (final doc in snapshot.docs) {
+        total++;
+        final data = doc.data();
+        final sub = data['subscription'] as Map<String, dynamic>? ?? {};
+        final plan = (sub['plan'] as String?) ?? 'free';
+        final status = (sub['status'] as String?) ?? '';
+
+        switch (plan) {
+          case 'pro':
+            pro++;
+            if (status == 'active') mrr += 299;
+          case 'business':
+            business++;
+            if (status == 'active') mrr += 999;
+          default:
+            free++;
+        }
+
+        // Platform
+        final activity = data['activity'] as Map<String, dynamic>? ?? {};
+        final platform = ((activity['platform'] as String?) ?? 'unknown')
+            .toLowerCase();
+        platformCounts[platform] = (platformCounts[platform] ?? 0) + 1;
+
+        // Feature usage
+        final limits = data['limits'] as Map<String, dynamic>? ?? {};
+        if (((limits['billsThisMonth'] as num?) ?? 0) > 0) billingUsers++;
+        if (((limits['productsCount'] as num?) ?? 0) > 0) productUsers++;
+        if (((limits['customersCount'] as num?) ?? 0) > 0) khataUsers++;
+      }
+
+      // Write the recalculated stats to Firestore
+      await _firestore.collection('app_config').doc('stats').set({
+        'totalUsers': total,
+        'freeUsers': free,
+        'proUsers': pro,
+        'businessUsers': business,
+        'mrr': mrr,
+        'platformCounts': platformCounts,
+        'featureUsageCounts': {
+          'billing': billingUsers,
+          'products': productUsers,
+          'khata': khataUsers,
+        },
+        'updatedAt': FieldValue.serverTimestamp(),
+        'recalculatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      debugPrint('✅ AdminFirestore: Recalculated stats — $total users');
+
+      return AdminStats(
+        totalUsers: total,
+        freeUsers: free,
+        proUsers: pro,
+        businessUsers: business,
+        mrr: mrr,
+      );
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to recalculate stats: $e');
       return const AdminStats();
     }
   }

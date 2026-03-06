@@ -9,6 +9,7 @@ import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
 import 'package:retaillite/models/theme_settings_model.dart';
+import 'package:retaillite/shared/widgets/onboarding_checklist.dart';
 
 class GeneralSettingsScreen extends ConsumerStatefulWidget {
   const GeneralSettingsScreen({super.key});
@@ -342,6 +343,30 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
                   onChanged: (v) => _toggleNotifPref('dailySummary', v),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(height: 24),
+
+          // Setup Guide
+          _buildSectionHeader(theme, 'Help'),
+          Card(
+            child: ListTile(
+              leading: const Icon(Icons.checklist, color: Colors.blue),
+              title: const Text('Setup Guide'),
+              subtitle: const Text('Revisit the getting started checklist'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                await reopenOnboarding();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text(
+                        'Setup guide reopened — go to Billing to see it.',
+                      ),
+                    ),
+                  );
+                }
+              },
             ),
           ),
         ],

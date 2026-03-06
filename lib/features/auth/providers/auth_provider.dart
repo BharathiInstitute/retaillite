@@ -22,6 +22,7 @@ import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/firebase_options.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
+import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/notifications/services/fcm_token_service.dart';
 import 'package:retaillite/features/notifications/services/notification_service.dart';
 import 'package:retaillite/features/notifications/services/windows_notification_service.dart';
@@ -104,6 +105,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   StreamSubscription<User?>? _authSub;
   bool _profileLoaded = false;
   bool _authResolved = false;
+  bool _pendingReauth = false;
+  bool _signOutTriggered = false;
+  bool _profileLoadInProgress = false;
 
   FirebaseAuthNotifier(this._ref) : super(const AuthState()) {
     _init();
@@ -115,27 +119,51 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     super.dispose();
   }
 
+  /// Rebuild settings/theme providers so they pick up the new user's data.
+  /// Called after login and logout instead of having those providers watch auth.
+  /// Deferred to a microtask so it doesn't run in the middle of a state setter.
+  void _refreshSettingsProviders() {
+    Future.microtask(() {
+      _ref.invalidate(settingsProvider);
+      _ref.invalidate(themeSettingsProvider);
+    });
+  }
+
   /// Initialize - listen to auth state changes
   void _init() {
     // Safety timeout: if authStateChanges doesn't fire within 5 seconds,
-    // resolve loading state based on currentUser (prevents stuck loading screen on web)
-    Future.delayed(const Duration(seconds: 5), () {
+    // resolve loading state based on currentUser
+    Future.delayed(const Duration(seconds: 5), () async {
       if (state.isLoading && !_profileLoaded && !_authResolved) {
         _authResolved = true;
-        debugPrint('🔐 Auth timeout - resolving from currentUser');
         final user = _auth.currentUser;
-        if (user != null) {
-          _loadUserProfile(user);
-        } else {
+        try {
+          if (user != null) {
+            await _loadUserProfile(user);
+          } else {
+            state = const AuthState(isLoading: false);
+          }
+        } catch (e) {
+          debugPrint('🔐 Auth timeout handler error: $e');
           state = const AuthState(isLoading: false);
         }
       }
     });
 
+    // Ultimate safety net: if still loading after 10 seconds, force-resolve
+    Future.delayed(const Duration(seconds: 10), () {
+      if (state.isLoading) {
+        state = const AuthState(isLoading: false);
+      }
+    });
+
     // Handle redirect result when page returns from Google sign-in (Layer 3 fallback)
+    // On web, getRedirectResult() can block authStateChanges from firing its first event,
+    // so we add a timeout to prevent it from hanging indefinitely.
     if (kIsWeb) {
       _auth
           .getRedirectResult()
+          .timeout(const Duration(seconds: 5))
           .then((result) async {
             if (result.user != null) {
               debugPrint(
@@ -148,21 +176,36 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             debugPrint('🔐 Redirect result check: $e');
           });
     }
-    _authSub = _auth.authStateChanges().listen((User? user) async {
-      if (user != null) {
-        if (_authResolved) {
-          return; // Prevent double load from timeout + listener race
+    _authSub = _auth.authStateChanges().listen(
+      (User? user) async {
+        if (user != null) {
+          if (_authResolved && !_pendingReauth) {
+            return; // Prevent double load from timeout + listener race
+          }
+          _authResolved = true;
+          _pendingReauth = false;
+          _profileLoaded = true;
+          await _loadUserProfile(user);
+        } else {
+          // On web, Firebase can emit a spurious null after a valid user event.
+          // Only treat as logout if we haven't successfully loaded a profile,
+          // or if a deliberate sign-out was triggered.
+          if (_profileLoaded && !_signOutTriggered) {
+            return;
+          }
+          _authResolved = true;
+          _signOutTriggered = false;
+          state = const AuthState(isLoading: false);
         }
-        _authResolved = true;
-        debugPrint('🔐 Firebase Auth: User logged in - ${user.email}');
-        _profileLoaded = true;
-        await _loadUserProfile(user);
-      } else {
-        _authResolved = true;
-        debugPrint('🔐 Firebase Auth: User logged out');
-        state = const AuthState(isLoading: false);
-      }
-    });
+      },
+      onError: (Object error) {
+        debugPrint('🔐 authStateChanges stream error: $error');
+        if (state.isLoading) {
+          _authResolved = true;
+          state = const AuthState(isLoading: false);
+        }
+      },
+    );
   }
 
   /// Ensure Firestore user document exists (called after redirect sign-in)
@@ -183,6 +226,14 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           'subscription': {
             'plan': 'free',
             'startDate': FieldValue.serverTimestamp(),
+          },
+          'limits': {
+            'productsCount': 0,
+            'productsLimit': 100,
+            'billsThisMonth': 0,
+            'billsLimit': 50,
+            'customersCount': 0,
+            'customersLimit': 10,
           },
         });
         debugPrint('✅ Created Firestore doc for redirect user: ${user.email}');
@@ -207,6 +258,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
   /// Load user profile from Firestore
   Future<void> _loadUserProfile(User firebaseUser) async {
+    if (_profileLoadInProgress) return; // Prevent concurrent loads
+    _profileLoadInProgress = true;
     try {
       debugPrint('🔐 _loadUserProfile: START for ${firebaseUser.uid}');
       final doc = await _firestore
@@ -223,8 +276,26 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
       if (doc.exists) {
         final data = doc.data()!;
+        // Fall back to shopName presence — covers legacy users whose
+        // Firestore doc never got the boolean set.
         final isShopSetupComplete =
-            data['isShopSetupComplete'] as bool? ?? false;
+            (data['isShopSetupComplete'] as bool? ?? false) ||
+            (data['shopName'] as String? ?? '').isNotEmpty;
+
+        // Backfill limits for users missing productsLimit (required by Firestore rules)
+        final limits = data['limits'] as Map<String, dynamic>?;
+        if (limits == null || limits['productsLimit'] == null) {
+          _firestore.collection('users').doc(firebaseUser.uid).set({
+            'limits': {
+              'productsCount': limits?['productsCount'] ?? 0,
+              'productsLimit': 100,
+              'billsThisMonth': limits?['billsThisMonth'] ?? 0,
+              'billsLimit': 50,
+              'customersCount': limits?['customersCount'] ?? 0,
+              'customersLimit': 10,
+            },
+          }, SetOptions(merge: true));
+        }
 
         // Load this user's cloud settings into local SharedPreferences
         debugPrint('🔐 _loadUserProfile: Loading cloud settings...');
@@ -265,6 +336,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         );
         // Keep Razorpay checkout title up to date with user's shop name
         RazorpayConfig.setShopName(data['shopName'] as String? ?? '');
+        _refreshSettingsProviders();
         debugPrint(
           '🔐 _loadUserProfile: State set isLoggedIn=true, isShopSetup=$isShopSetupComplete',
         );
@@ -300,6 +372,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             createdAt: DateTime.now(),
           ),
         );
+        _refreshSettingsProviders();
       }
     } catch (e) {
       debugPrint('🔐 Error loading user profile: $e');
@@ -310,6 +383,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         isLoading: false,
         error: 'Failed to load user profile',
       );
+      _refreshSettingsProviders();
+    } finally {
+      _profileLoadInProgress = false;
     }
   }
 
@@ -319,6 +395,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Desktop: Try GoogleSignIn package, fall back to helpful message
   Future<bool> signInWithGoogle() async {
     try {
+      // Allow authStateChanges listener to process this new sign-in
+      _pendingReauth = true;
+      _profileLoaded = false;
       if (kIsWeb) {
         return await _googleSignInWeb();
       } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
@@ -617,6 +696,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
     try {
       state = state.copyWith(isLoading: true);
+      // Allow authStateChanges listener to process this new sign-in
+      _pendingReauth = true;
+      _profileLoaded = false;
       final loginEmail = (email ?? phone)!.trim();
 
       // On Windows desktop, use REST API to bypass buggy platform channel
@@ -631,8 +713,17 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
       if (credential.user != null) {
         debugPrint('✅ User signed in: ${credential.user!.email}');
+        // Load profile directly — authStateChanges may not fire reliably
+        // for re-sign-in with the same user (especially on web).
+        // _profileLoadInProgress guard prevents double-loading if the
+        // stream listener already started _loadUserProfile.
+        _authResolved = true;
+        _pendingReauth = false;
+        _profileLoaded = true;
+        await _loadUserProfile(credential.user!);
         return true;
       }
+      _pendingReauth = false;
       return false;
     } on FirebaseAuthException catch (e) {
       debugPrint(
@@ -1090,7 +1181,11 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       // Capture userId before clearing state
       final userId = state.firebaseUser?.uid;
 
-      // 1. Immediately mark as logged out to prevent re-triggers
+      // 1. Mark as deliberate sign-out and reset auth state
+      _signOutTriggered = true;
+      _profileLoaded = false;
+      _authResolved = false;
+      _pendingReauth = false;
       state = const AuthState(isLoading: false);
 
       // 2. Sign out of Firebase Auth first
@@ -1117,7 +1212,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       } catch (e) {
         debugPrint('⚠️ Sign-out: clearUserLocalSettings failed: $e');
       }
-      _ref.read(themeSettingsProvider.notifier).resetToDefault();
+      _refreshSettingsProviders();
       // Skip clearPersistence — it fails with active listeners and
       // calling terminate() breaks Firestore for the auth state listener.
       // Firestore cache will be replaced on next login anyway.
@@ -1125,6 +1220,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       debugPrint('🔐 Error signing out: $e');
       // Force reset state even if something failed
       state = const AuthState(isLoading: false);
+      _refreshSettingsProviders();
     }
   }
 

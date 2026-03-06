@@ -160,7 +160,7 @@ class CurrencyTextField extends StatelessWidget {
       errorText: errorText,
       readOnly: readOnly,
       inputFormatters: [
-        FilteringTextInputFormatter.allow(RegExp(r'^\d*\\.?\\d{0,2}')),
+        FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
       ],
       onChanged: onChanged,
     );

@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/data_retention_service.dart';
-import 'package:retaillite/features/auth/providers/auth_provider.dart';
 
 /// App settings state
 class AppSettings {
@@ -47,8 +46,9 @@ class AppSettings {
 final settingsProvider = StateNotifierProvider<SettingsNotifier, AppSettings>((
   ref,
 ) {
-  // Watch auth state so settings reload when a different user logs in
-  ref.watch(authNotifierProvider.select((s) => s.firebaseUser?.uid));
+  // Settings reload is triggered by ref.invalidate() from auth provider
+  // after login/logout — NOT by watching authNotifierProvider
+  // (watching auth causes a provider rebuild cycle that resets auth state).
   return SettingsNotifier();
 });
 

@@ -15,9 +15,12 @@ service cloud.firestore {
     
     // Helper function to check if user is a super admin
     // Uses dynamic admins collection — no redeploy needed to add/remove admins
+    // Falls back to primary owner email for bootstrapping when collection is empty
     function isAdmin() {
-      return request.auth != null && 
-        exists(/databases/$(database)/documents/admins/$(request.auth.token.email));
+      return request.auth != null && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.token.email))
+        || request.auth.token.email == 'kehsaram001@gmail.com'
+      );
     }
 
     // ── Subscription Limit Helpers ──

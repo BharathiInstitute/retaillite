@@ -35,6 +35,8 @@ class AuthLayout extends StatelessWidget {
     filled: true,
     fillColor: AppColors.surface, // white
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    prefixIconColor: AppColors.textSecondary,
+    suffixIconColor: AppColors.textSecondary,
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppSizes.radiusMd),
       borderSide: const BorderSide(color: AppColors.border),

@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/super_admin/services/admin_firestore_service.dart';
 import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 import 'package:retaillite/core/theme/responsive_helper.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
@@ -70,7 +71,17 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
               ),
         actions: [
           IconButton(
+            icon: const Icon(Icons.sync),
+            tooltip: 'Recalculate Stats',
+            onPressed: () async {
+              await AdminFirestoreService.recalculateStats();
+              ref.invalidate(adminStatsProvider);
+              ref.invalidate(recentUsersProvider);
+            },
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: 'Refresh',
             onPressed: () {
               ref.invalidate(adminStatsProvider);
               ref.invalidate(recentUsersProvider);

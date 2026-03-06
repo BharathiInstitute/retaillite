@@ -390,7 +390,7 @@ void main() {
       final resolved = makeEntry(resolved: true);
       expect(resolved.toCopyText(), contains('Resolved:      Yes'));
 
-      final unresolved = makeEntry(resolved: false);
+      final unresolved = makeEntry();
       expect(unresolved.toCopyText(), contains('Resolved:      No'));
     });
 
