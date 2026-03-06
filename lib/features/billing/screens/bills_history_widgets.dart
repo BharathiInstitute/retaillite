@@ -21,47 +21,54 @@ class _BillRow extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          // Type
+          // Type (hidden on tablet/compact)
+          if (!compact)
+            Expanded(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.receipt, size: 14, color: AppColors.primaryDark),
+                  const SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Bill',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.primaryDark,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+          // Reference (Bill No.)
           Expanded(
+            flex: 2,
             child: Row(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.receipt, size: 14, color: AppColors.primaryDark),
-                const SizedBox(width: 4),
                 Flexible(
                   child: Text(
-                    'Bill',
+                    '#INV-${DateTime.now().year}-${bill.billNumber.toString().padLeft(4, '0')}',
                     style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.primaryDark,
+                      fontWeight: FontWeight.w600,
+                      color: Theme.of(context).colorScheme.onSurface,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
+                if (hasPendingWrites)
+                  Padding(
+                    padding: const EdgeInsets.only(left: 4),
+                    child: SyncBadge(hasPendingWrites: hasPendingWrites),
+                  ),
               ],
             ),
           ),
-
-          // Reference (Bill No.)
-          Expanded(
-            flex: 2,
-            child: Text(
-              '#INV-${DateTime.now().year}-${bill.billNumber.toString().padLeft(4, '0')}',
-              style: TextStyle(
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (hasPendingWrites)
-            Padding(
-              padding: const EdgeInsets.only(left: 4),
-              child: SyncBadge(hasPendingWrites: hasPendingWrites),
-            ),
 
           // Date & Time
           Expanded(
@@ -84,22 +91,23 @@ class _BillRow extends ConsumerWidget {
             ),
           ),
 
-          // Details (Customer Name with Avatar)
-          Expanded(
-            flex: 2,
-            child: Row(
-              children: [
-                _CustomerAvatar(name: bill.customerName ?? 'Walk-in'),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    bill.customerName ?? 'Walk-in Customer',
-                    overflow: TextOverflow.ellipsis,
+          // Details (Customer Name with Avatar) — hidden on tablet/compact
+          if (!compact)
+            Expanded(
+              flex: 2,
+              child: Row(
+                children: [
+                  _CustomerAvatar(name: bill.customerName ?? 'Walk-in'),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      bill.customerName ?? 'Walk-in Customer',
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
 
           // Amount
           Expanded(
@@ -204,29 +212,33 @@ class _ExpenseRow extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Type
-          Expanded(
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-                decoration: BoxDecoration(
-                  color: Colors.orange.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  '💰 Expense',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w500,
-                    color: Colors.orange,
+          // Type (hidden on tablet/compact)
+          if (!compact)
+            Expanded(
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 3,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Text(
+                    '💰 Expense',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: Colors.orange,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
               ),
             ),
-          ),
 
           // Reference (Category)
           Expanded(
@@ -273,17 +285,18 @@ class _ExpenseRow extends StatelessWidget {
             ),
           ),
 
-          // Details (Description)
-          Expanded(
-            flex: 2,
-            child: Text(
-              expense.description ?? '-',
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+          // Details (Description) — hidden on tablet/compact
+          if (!compact)
+            Expanded(
+              flex: 2,
+              child: Text(
+                expense.description ?? '-',
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
 
           // Amount
           Expanded(

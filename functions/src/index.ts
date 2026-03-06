@@ -1885,8 +1885,8 @@ export const redeemReferralCode = functions
         }
 
         const code = String(data.code || "").toUpperCase().trim();
-        if (code.length !== 6) {
-            throw new functions.https.HttpsError("invalid-argument", "Code must be 6 characters");
+        if (code.length !== 8) {
+            throw new functions.https.HttpsError("invalid-argument", "Code must be 8 characters");
         }
 
         const db = admin.firestore();
@@ -1959,11 +1959,24 @@ export const processReferralReward = functions
             : new Date();
         const newExpiry = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000);
 
+        // Extend referee (subscriber) subscription by 30 days too
+        const refereeSub: FirebaseFirestore.Timestamp | undefined =
+            userDoc.data()?.subscription?.expiresAt;
+        const refereeBase = refereeSub
+            ? new Date(Math.max(refereeSub.toDate().getTime(), Date.now()))
+            : new Date();
+        const refereeNewExpiry = new Date(refereeBase.getTime() + 30 * 24 * 60 * 60 * 1000);
+
         const batch = db.batch();
 
         // Update referrer
         batch.update(db.collection("users").doc(referrerId), {
             "subscription.expiresAt": admin.firestore.Timestamp.fromDate(newExpiry),
+        });
+
+        // Update referee
+        batch.update(db.collection("users").doc(userId), {
+            "subscription.expiresAt": admin.firestore.Timestamp.fromDate(refereeNewExpiry),
         });
 
         // Audit trail
@@ -1972,6 +1985,7 @@ export const processReferralReward = functions
             referrerId,
             refereeId: userId,
             rewardDays: 30,
+            bothRewarded: true,
             rewardedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
@@ -1979,14 +1993,24 @@ export const processReferralReward = functions
         const notifRef = db.collection("users").doc(referrerId).collection("notifications").doc();
         batch.set(notifRef, {
             title: "🎁 Referral Reward! +30 Days Free",
-            body: "Your friend just upgraded! Your subscription has been extended by 30 days.",
+            body: "Your friend just upgraded! You both get 30 extra days of Pro.",
+            type: "referral",
+            read: false,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        // In-app notification for referee
+        const refereeNotifRef = db.collection("users").doc(userId).collection("notifications").doc();
+        batch.set(refereeNotifRef, {
+            title: "🎁 Welcome Bonus! +30 Days Free",
+            body: "Thanks for using a referral code! You got 30 extra days of Pro.",
             type: "referral",
             read: false,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         await batch.commit();
-        console.log(`🎁 Referral reward granted: ${referrerId} gets +30 days for referring ${userId}`);
+        console.log(`🎁 Referral reward granted: both ${referrerId} and ${userId} get +30 days`);
     });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2275,8 +2299,9 @@ export const sendNotificationToAll = functions
             throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
         }
         const db = admin.firestore();
-        const callerDoc = await db.collection("users").doc(context.auth.uid).get();
-        if (!callerDoc.data()?.isAdmin) {
+        const callerEmail = context.auth.token.email || "";
+        const adminDoc = await db.collection("admins").doc(callerEmail).get();
+        if (!adminDoc.exists) {
             throw new functions.https.HttpsError("permission-denied", "Admin access required");
         }
 
@@ -2361,8 +2386,9 @@ export const sendNotificationToPlan = functions
             throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
         }
         const db = admin.firestore();
-        const callerDoc = await db.collection("users").doc(context.auth.uid).get();
-        if (!callerDoc.data()?.isAdmin) {
+        const callerEmail = context.auth.token.email || "";
+        const adminDoc = await db.collection("admins").doc(callerEmail).get();
+        if (!adminDoc.exists) {
             throw new functions.https.HttpsError("permission-denied", "Admin access required");
         }
 
@@ -2483,8 +2509,9 @@ export const scheduledFirestoreBackup = functions
                 await new Promise(resolve => setTimeout(resolve, 10000)); // wait 10s
 
                 try {
-                    const [operation] = await firestoreClient.checkExportDocumentsProgress(operationName);
-                    if (operation.done) {
+                    const operation = await firestoreClient.checkExportDocumentsProgress(operationName);
+                    const op = Array.isArray(operation) ? operation[0] : operation;
+                    if ((op as any).done) {
                         completed = true;
                         console.log(`✅ Firestore backup completed: ${operationName}`);
                         await admin.firestore().collection("_admin").doc("last_backup").update({

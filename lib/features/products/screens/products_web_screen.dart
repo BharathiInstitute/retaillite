@@ -629,28 +629,33 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
   }
 
   Future<void> _handleImportCsv() async {
-    // Reuse import logic
+    // Step 1: Pick and parse CSV file
+    final CsvImportResult result;
     try {
-      final result = await ProductCsvService.importProducts();
-      // final l10n = context.l10n; // Future: use for i18n
-
-      if (result.imported == 0 && result.errors.isEmpty) {
-        return;
+      result = await ProductCsvService.importProducts();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Import failed: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
       }
+      return;
+    }
 
-      if (result.hasErrors) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result.errors.first),
-              backgroundColor: AppColors.warning,
-            ),
-          );
-        }
-        return;
-      }
+    // User cancelled file picker
+    if (result.imported == 0 && result.errors.isEmpty) return;
 
-      // Check product limit before importing
+    // CSV had only errors (missing columns, empty file, etc.)
+    if (result.imported == 0 && result.hasErrors) {
+      if (mounted) _showImportResultDialog(0, 0, result.skipped, result.errors);
+      return;
+    }
+
+    // Check product limit before importing
+    try {
       final limits = await UserMetricsService.getUserLimits();
       final remaining = limits.productsLimit - limits.productsCount;
       if (result.products.length > remaining) {
@@ -662,28 +667,205 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
         }
         return;
       }
+    } catch (_) {
+      // If limits check fails, proceed anyway
+    }
 
-      final service = ref.read(productsServiceProvider);
-      final added = await service.addProductsBatch(result.products);
+    if (!mounted) return;
 
+    // Step 2: Show progress dialog and start batch upload
+    final progressNotifier = ValueNotifier<int>(0);
+    final total = result.products.length;
+    int lastKnownAdded = 0;
+
+    // Start upload immediately (runs in background while dialog is open)
+    final service = ref.read(productsServiceProvider);
+    final uploadFuture = service.addProductsBatch(
+      result.products,
+      onProgress: (added, t) {
+        lastKnownAdded = added;
+        progressNotifier.value = added;
+      },
+    );
+
+    // Show progress dialog
+    if (mounted) {
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) {
+          // Wait for upload to finish, then close dialog
+          uploadFuture
+              .then((_) {
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              })
+              .catchError((Object _) {
+                if (dialogContext.mounted) Navigator.of(dialogContext).pop();
+              });
+
+          return ValueListenableBuilder<int>(
+            valueListenable: progressNotifier,
+            builder: (context, addedSoFar, _) {
+              final progress = total > 0 ? addedSoFar / total : 0.0;
+              return AlertDialog(
+                title: const Row(
+                  children: [
+                    SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2.5),
+                    ),
+                    SizedBox(width: 12),
+                    Text('Importing Products...'),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    LinearProgressIndicator(value: progress),
+                    const SizedBox(height: 12),
+                    Text(
+                      '$addedSoFar / $total products uploaded',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                    if (result.skipped > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${result.skipped} rows skipped',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.warning,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      );
+    }
+
+    // Dialog closed — show result
+    progressNotifier.dispose();
+
+    try {
+      final added = await uploadFuture;
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Imported $added products'),
-            backgroundColor: AppColors.success,
-          ),
-        );
+        _showImportResultDialog(added, total, result.skipped, result.errors);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Import failed: $e'),
-            backgroundColor: AppColors.error,
-          ),
-        );
+        _showImportResultDialog(lastKnownAdded, total, result.skipped, [
+          ...result.errors,
+          'Upload failed: $e',
+        ]);
       }
     }
+  }
+
+  void _showImportResultDialog(
+    int added,
+    int total,
+    int skipped,
+    List<String> errors,
+  ) {
+    final hasErrors = errors.isNotEmpty;
+    final allFailed = added == 0 && hasErrors;
+
+    showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        icon: Icon(
+          allFailed
+              ? Icons.error_outline
+              : hasErrors
+              ? Icons.warning_amber_rounded
+              : Icons.check_circle_outline,
+          color: allFailed
+              ? AppColors.error
+              : hasErrors
+              ? AppColors.warning
+              : AppColors.success,
+          size: 48,
+        ),
+        title: Text(
+          allFailed
+              ? 'Import Failed'
+              : hasErrors
+              ? 'Import Completed with Warnings'
+              : 'Import Successful',
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (added > 0)
+              _resultRow(
+                Icons.check,
+                '$added products added',
+                AppColors.success,
+              ),
+            if (skipped > 0)
+              _resultRow(
+                Icons.skip_next,
+                '$skipped rows skipped',
+                AppColors.warning,
+              ),
+            if (errors.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Errors:',
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.error,
+                ),
+              ),
+              const SizedBox(height: 4),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 150),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (final err in errors)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Text(
+                            '• $err',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppColors.error),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('OK'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _resultRow(IconData icon, String text, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Text(text, style: TextStyle(color: color)),
+        ],
+      ),
+    );
   }
 }
 

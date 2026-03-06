@@ -250,6 +250,15 @@ service cloud.firestore {
       }
       
       // ===================
+      // SUBSCRIPTION AUDIT (admin-only audit trail)
+      // ===================
+      match /subscription_audit/{auditId} {
+        allow read: if isAdmin();
+        allow create: if isAdmin();
+        allow update, delete: if false;
+      }
+
+      // ===================
       // COUNTERS (sub-collection for atomic bill numbering etc.)
       // ===================
       match /counters/{counterId} {
@@ -387,6 +396,15 @@ service cloud.firestore {
       
       // Only authenticated users or admins can delete sessions
       allow delete: if isAuthenticated();
+    }
+    
+    // ===================
+    // REFERRAL REWARDS (created by Cloud Functions)
+    // Users can read rewards where they are the referrer (for count display)
+    // ===================
+    match /referral_rewards/{rewardId} {
+      allow read: if isAuthenticated() && resource.data.referrerId == request.auth.uid;
+      allow write: if false;
     }
     
     // Deny all other access by default

@@ -347,19 +347,23 @@ class AdminFirestoreService {
         'limits.billsLimit': subscription.billsLimit,
       });
 
-      // Write audit log
-      await _firestore
-          .collection('users')
-          .doc(userId)
-          .collection('subscription_audit')
-          .add({
-            'oldPlan': oldSub?['plan'] ?? 'unknown',
-            'newPlan': subscription.plan,
-            'oldBillsLimit': oldSub?['billsLimit'],
-            'newBillsLimit': subscription.billsLimit,
-            'changedAt': FieldValue.serverTimestamp(),
-            'changedBy': 'admin',
-          });
+      // Write audit log (non-fatal — don't fail the update if audit fails)
+      try {
+        await _firestore
+            .collection('users')
+            .doc(userId)
+            .collection('subscription_audit')
+            .add({
+              'oldPlan': oldSub?['plan'] ?? 'unknown',
+              'newPlan': subscription.plan.name,
+              'oldBillsLimit': oldSub?['billsLimit'],
+              'newBillsLimit': subscription.billsLimit,
+              'changedAt': FieldValue.serverTimestamp(),
+              'changedBy': 'admin',
+            });
+      } catch (e) {
+        debugPrint('⚠️ AdminFirestore: Audit log failed (non-fatal): $e');
+      }
 
       return true;
     } catch (e) {

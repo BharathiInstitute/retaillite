@@ -1,7 +1,7 @@
 {
-    "buildNumber":  35,
+    "buildNumber":  39,
     "forceUpdate":  true,
-    "version":  "8.0.0",
+    "version":  "8.1.0",
     "downloadUrl":  "https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fandroid%2FTulasiStores.apk?alt=media",
-    "changelog":  "* full testes"
+    "changelog":  "Bug fixes and improvements"
 }

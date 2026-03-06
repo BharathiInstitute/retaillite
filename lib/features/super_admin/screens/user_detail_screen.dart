@@ -421,7 +421,7 @@ class UserDetailScreen extends ConsumerWidget {
               child: OutlinedButton.icon(
                 icon: const Icon(Icons.refresh),
                 label: const Text('Reset Monthly Limits'),
-                onPressed: () => _resetLimits(context, user),
+                onPressed: () => _resetLimits(context, user, ref),
               ),
             ),
           ],
@@ -435,9 +435,10 @@ class UserDetailScreen extends ConsumerWidget {
     AdminUser user,
     WidgetRef ref,
   ) {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogCtx) => AlertDialog(
         title: const Text('Change Subscription'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -456,7 +457,7 @@ class UserDetailScreen extends ConsumerWidget {
                     ? const Icon(Icons.check, color: Colors.green)
                     : null,
                 onTap: () async {
-                  Navigator.pop(context);
+                  Navigator.pop(dialogCtx);
                   final newSubscription = UserSubscription(
                     plan: plan,
                     startedAt: DateTime.now(),
@@ -469,20 +470,16 @@ class UserDetailScreen extends ConsumerWidget {
                         user.id,
                         newSubscription,
                       );
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          success
-                              ? 'Subscription updated!'
-                              : 'Failed to update',
-                        ),
-                        backgroundColor: success ? Colors.green : Colors.red,
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        success ? 'Subscription updated!' : 'Failed to update',
                       ),
-                    );
-                    if (success) {
-                      ref.invalidate(userDetailProvider(user.id));
-                    }
+                      backgroundColor: success ? Colors.green : Colors.red,
+                    ),
+                  );
+                  if (success) {
+                    ref.invalidate(userDetailProvider(user.id));
                   }
                 },
               ),
@@ -491,7 +488,7 @@ class UserDetailScreen extends ConsumerWidget {
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogCtx),
             child: const Text('Cancel'),
           ),
         ],
@@ -499,7 +496,8 @@ class UserDetailScreen extends ConsumerWidget {
     );
   }
 
-  void _resetLimits(BuildContext context, AdminUser user) {
+  void _resetLimits(BuildContext context, AdminUser user, WidgetRef ref) {
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -559,17 +557,18 @@ class UserDetailScreen extends ConsumerWidget {
               final success = await AdminFirestoreService.resetUserLimits(
                 user.id,
               );
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      success
-                          ? 'Monthly limits reset successfully!'
-                          : 'Failed to reset limits',
-                    ),
-                    backgroundColor: success ? Colors.green : Colors.red,
+              scaffoldMessenger.showSnackBar(
+                SnackBar(
+                  content: Text(
+                    success
+                        ? 'Monthly limits reset successfully!'
+                        : 'Failed to reset limits',
                   ),
-                );
+                  backgroundColor: success ? Colors.green : Colors.red,
+                ),
+              );
+              if (success) {
+                ref.invalidate(userDetailProvider(user.id));
               }
             },
             style: ElevatedButton.styleFrom(

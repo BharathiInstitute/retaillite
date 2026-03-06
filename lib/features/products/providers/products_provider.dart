@@ -183,11 +183,16 @@ class ProductsService {
 
   /// Batch-add multiple products using WriteBatch (P14)
   /// More efficient than sequential addProduct calls for CSV/catalog imports.
-  Future<int> addProductsBatch(List<ProductModel> products) async {
+  /// [onProgress] reports (addedSoFar, total) after each batch commit.
+  Future<int> addProductsBatch(
+    List<ProductModel> products, {
+    void Function(int added, int total)? onProgress,
+  }) async {
     if (_isDemoMode) {
       for (final p in products) {
         DemoDataService.addProduct(p);
       }
+      onProgress?.call(products.length, products.length);
       return products.length;
     }
 
@@ -214,6 +219,7 @@ class ProductsService {
       }
       await batch.commit();
       added += chunk.length;
+      onProgress?.call(added, products.length);
     }
     unawaited(UserMetricsService.trackProductAdded());
     return added;

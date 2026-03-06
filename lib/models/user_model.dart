@@ -15,6 +15,8 @@ class UserModel {
   final String? profileImagePath;
   final String? photoUrl;
   final String? upiId;
+  final String currency;
+  final String timezone;
   final UserSettings settings;
   final bool isPaid;
   final bool phoneVerified;
@@ -35,6 +37,8 @@ class UserModel {
     this.profileImagePath,
     this.photoUrl,
     this.upiId,
+    this.currency = 'INR',
+    this.timezone = 'Asia/Kolkata',
     required this.settings,
     this.isPaid = false,
     this.phoneVerified = false,
@@ -58,6 +62,8 @@ class UserModel {
       profileImagePath: data['profileImagePath'] as String?,
       photoUrl: data['photoUrl'] as String?,
       upiId: data['upiId'] as String?,
+      currency: (data['currency'] as String?) ?? 'INR',
+      timezone: (data['timezone'] as String?) ?? 'Asia/Kolkata',
       settings: UserSettings.fromMap(
         (data['settings'] as Map<String, dynamic>?) ?? {},
       ),
@@ -82,6 +88,8 @@ class UserModel {
       'profileImagePath': profileImagePath,
       'photoUrl': photoUrl,
       'upiId': upiId,
+      'currency': currency,
+      'timezone': timezone,
       'settings': settings.toMap(),
       'isPaid': isPaid,
       'phoneVerified': phoneVerified,
@@ -105,6 +113,8 @@ class UserModel {
     String? profileImagePath,
     String? photoUrl,
     String? upiId,
+    String? currency,
+    String? timezone,
     UserSettings? settings,
     bool? isPaid,
     bool? phoneVerified,
@@ -123,6 +133,8 @@ class UserModel {
       profileImagePath: profileImagePath ?? this.profileImagePath,
       photoUrl: photoUrl ?? this.photoUrl,
       upiId: upiId ?? this.upiId,
+      currency: currency ?? this.currency,
+      timezone: timezone ?? this.timezone,
       settings: settings ?? this.settings,
       isPaid: isPaid ?? this.isPaid,
       phoneVerified: phoneVerified ?? this.phoneVerified,

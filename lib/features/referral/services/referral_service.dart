@@ -1,5 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:math';
 
@@ -33,9 +35,8 @@ class ReferralService {
     if (uid == null) return 0;
 
     final snapshot = await _firestore
-        .collection('referrals')
+        .collection('referral_rewards')
         .where('referrerId', isEqualTo: uid)
-        .where('status', isEqualTo: 'completed')
         .count()
         .get();
 
@@ -43,11 +44,18 @@ class ReferralService {
   }
 
   /// Shares the referral code via the platform share sheet.
-  static Future<void> share(String code) async {
-    await Share.share(
-      'Try RetailLite for your shop! Use my referral code $code to sign up: https://retaillite.com/refer?code=$code',
-      subject: 'Try RetailLite - Referral Code: $code',
-    );
+  /// On web, copies to clipboard instead (Web Share API is unreliable).
+  static Future<bool> share(String code) async {
+    final text =
+        'Try RetailLite for your shop! Use my referral code $code to sign up: https://retaillite.com/refer?code=$code';
+
+    if (kIsWeb) {
+      await Clipboard.setData(ClipboardData(text: text));
+      return true; // Caller should show "Copied" feedback
+    }
+
+    await Share.share(text, subject: 'Try RetailLite - Referral Code: $code');
+    return false; // Native share sheet shown, no extra feedback needed
   }
 
   static String _generateCode(String uid) {

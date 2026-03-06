@@ -1355,6 +1355,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     String? gstNumber,
     String? email,
     String? upiId,
+    String? currency,
+    String? timezone,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -1368,6 +1370,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       if (gstNumber != null) updates['gstNumber'] = gstNumber;
       if (email != null) updates['email'] = email;
       if (upiId != null) updates['upiId'] = upiId;
+      if (currency != null) updates['currency'] = currency;
+      if (timezone != null) updates['timezone'] = timezone;
 
       if (updates.isEmpty) return true;
 
@@ -1387,6 +1391,8 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             gstNumber: gstNumber ?? state.user!.gstNumber,
             email: email ?? state.user!.email,
             upiId: upiId ?? state.user!.upiId,
+            currency: currency ?? state.user!.currency,
+            timezone: timezone ?? state.user!.timezone,
           ),
         );
       }

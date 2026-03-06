@@ -48,14 +48,14 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   }
 
   Future<void> _loadReferral() async {
-    final code = await ReferralService.getOrCreateCode();
-    final count = await ReferralService.getReferralCount();
-    if (mounted) {
-      setState(() {
-        _referralCode = code;
-        _referralCount = count;
-      });
-    }
+    try {
+      final code = await ReferralService.getOrCreateCode();
+      if (mounted) setState(() => _referralCode = code);
+    } catch (_) {}
+    try {
+      final count = await ReferralService.getReferralCount();
+      if (mounted) setState(() => _referralCount = count);
+    } catch (_) {}
   }
 
   Future<void> _loadSubscription() async {
@@ -366,7 +366,21 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                     child: FilledButton.icon(
                       onPressed: _referralCode.isEmpty
                           ? null
-                          : () => ReferralService.share(_referralCode),
+                          : () async {
+                              final copied = await ReferralService.share(
+                                _referralCode,
+                              );
+                              if (copied && mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Referral link copied to clipboard!',
+                                    ),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
                       icon: const Icon(Icons.share, size: 18),
                       label: const Text('Share Invite Link'),
                       style: FilledButton.styleFrom(
@@ -463,8 +477,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
         content: TextField(
           controller: controller,
           textCapitalization: TextCapitalization.characters,
-          maxLength: 6,
-          decoration: const InputDecoration(hintText: 'e.g. AB3XYZ'),
+          maxLength: 8,
+          decoration: const InputDecoration(hintText: 'e.g. ABCD1234'),
         ),
         actions: [
           TextButton(
@@ -480,7 +494,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
       ),
     );
     controller.dispose();
-    if (result == null || result.length != 6 || !mounted) return;
+    if (result == null || result.length != 8 || !mounted) return;
     try {
       final fn = FirebaseFunctions.instanceFor(region: 'asia-south1');
       await fn.httpsCallable('redeemReferralCode').call({'code': result});

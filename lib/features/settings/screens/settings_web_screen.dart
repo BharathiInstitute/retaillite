@@ -1,8 +1,10 @@
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/core/constants/app_constants.dart';
@@ -13,6 +15,10 @@ import 'package:retaillite/models/theme_settings_model.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
+import 'package:retaillite/core/services/privacy_consent_service.dart';
+import 'package:retaillite/core/services/user_metrics_service.dart';
+import 'package:retaillite/features/referral/services/referral_service.dart';
+import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 
@@ -36,16 +42,30 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _shopAddressController;
   late TextEditingController _emailController;
   late TextEditingController _termsController;
+  late TextEditingController _gstController;
+
+  String _selectedCurrency = 'INR';
+  String _selectedTimezone = 'Asia/Kolkata';
+
+  String _referralCode = '';
+  int _referralCount = 0;
+  UserSubscription _subscription = UserSubscription();
+  UserLimits _limits = UserLimits();
 
   @override
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
+    _loadReferral();
+    _loadSubscription();
     _shopNameController = TextEditingController(text: user?.shopName ?? '');
     _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
     _contactNumberController = TextEditingController(text: user?.phone ?? '');
     _shopAddressController = TextEditingController(text: user?.address ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
+    _gstController = TextEditingController(text: user?.gstNumber ?? '');
+    _selectedCurrency = user?.currency ?? 'INR';
+    _selectedTimezone = user?.timezone ?? 'Asia/Kolkata';
     _termsController = TextEditingController(
       text:
           '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.',
@@ -59,8 +79,33 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _contactNumberController.dispose();
     _shopAddressController.dispose();
     _emailController.dispose();
+    _gstController.dispose();
     _termsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadReferral() async {
+    try {
+      final code = await ReferralService.getOrCreateCode();
+      if (mounted) setState(() => _referralCode = code);
+    } catch (_) {}
+    try {
+      final count = await ReferralService.getReferralCount();
+      if (mounted) setState(() => _referralCount = count);
+    } catch (_) {}
+  }
+
+  Future<void> _loadSubscription() async {
+    try {
+      final sub = await UserMetricsService.getUserSubscription();
+      final limits = await UserMetricsService.getUserLimits();
+      if (mounted) {
+        setState(() {
+          _subscription = sub;
+          _limits = limits;
+        });
+      }
+    } catch (_) {}
   }
 
   SettingsTab get _selectedTab {
@@ -77,46 +122,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   }
 
   void _navigateToTab(SettingsTab tab) {
-    if (tab == SettingsTab.hardware || tab == SettingsTab.billing) {
-      _showComingSoonDialog(tab.name);
-    }
     context.go('/settings/${tab.name}');
-  }
-
-  bool _hasShownComingSoon = false;
-
-  void _showComingSoonDialog([String? tabName]) {
-    if (_hasShownComingSoon) return;
-    _hasShownComingSoon = true;
-    final featureName = tabName == 'billing' ? 'Billing' : 'Hardware';
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => PopScope(
-        canPop: false,
-        child: AlertDialog(
-          icon: const Icon(
-            Icons.construction,
-            size: 48,
-            color: AppColors.warning,
-          ),
-          title: const Text('Coming Soon'),
-          content: Text(
-            '$featureName settings are under development. These features will be available in a future update.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                _hasShownComingSoon = false;
-                context.go('/settings/general');
-              },
-              child: const Text('Go Back'),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   bool _isSyncing = false;
@@ -208,6 +214,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             phone: _contactNumberController.text.trim(),
             address: _shopAddressController.text.trim(),
             email: _emailController.text.trim(),
+            gstNumber: _gstController.text.trim(),
+            currency: _selectedCurrency,
+            timezone: _selectedTimezone,
           );
 
       if (mounted) {
@@ -233,6 +242,148 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       }
     } finally {
       if (mounted) setState(() => _isSaving = false);
+    }
+  }
+
+  Future<void> _showRedeemDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Enter Referral Code'),
+        content: TextField(
+          controller: controller,
+          textCapitalization: TextCapitalization.characters,
+          maxLength: 8,
+          decoration: const InputDecoration(hintText: 'e.g. ABCD1234'),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(ctx, controller.text.trim().toUpperCase()),
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (result == null || result.length != 8 || !mounted) return;
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'asia-south1');
+      await fn.httpsCallable('redeemReferralCode').call({'code': result});
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Referral code applied! 🎉'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Could not apply code: $e')));
+    }
+  }
+
+  Future<void> _confirmDeleteAccount() async {
+    // Step 1: Warning dialog
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(
+          Icons.warning_amber_rounded,
+          color: AppColors.error,
+          size: 48,
+        ),
+        title: const Text('Delete Account?'),
+        content: const Text(
+          'This will permanently delete:\n\n'
+          '• Your account and profile\n'
+          '• All products, bills, and inventory\n'
+          '• All settings and preferences\n'
+          '• Khata (credit) records\n\n'
+          'This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Delete Everything'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !mounted) return;
+
+    // Step 2: Type DELETE confirmation
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Type DELETE to confirm'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(
+            hintText: 'Type DELETE here',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(backgroundColor: AppColors.error),
+            child: const Text('Confirm Delete'),
+          ),
+        ],
+      ),
+    );
+    final typedText = controller.text.trim();
+    controller.dispose();
+    if (confirmed != true || !mounted) return;
+    if (typedText != 'DELETE') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('You must type DELETE to confirm')),
+      );
+      return;
+    }
+
+    // Step 3: Execute deletion
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    final success = await ref
+        .read(authNotifierProvider.notifier)
+        .deleteAccount();
+
+    if (mounted) {
+      Navigator.of(context).pop(); // dismiss spinner
+      if (success) {
+        context.go(AppRoutes.login);
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to delete account. Please try again.'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     }
   }
 
@@ -925,7 +1076,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             children: [
               _buildFieldLabel('GST Number'),
               _buildTextField(
-                value: user?.gstNumber ?? '',
+                controller: _gstController,
                 hint: '22AAAAA0000A1Z5',
               ),
               const SizedBox(height: 8),
@@ -939,19 +1090,22 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Currency'),
-                    _buildDropdown('Indian Rupee (₹)', [
-                      'Indian Rupee (₹)',
-                      'US Dollar (\$)',
-                    ]),
+                    _buildDropdown(
+                      _selectedCurrency,
+                      ['INR', 'USD', 'EUR'],
+                      onChanged: (v) => setState(() => _selectedCurrency = v!),
+                    ),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Timezone'),
-                    _buildDropdown('Asia/Kolkata (GMT+5:30)', [
-                      'Asia/Kolkata (GMT+5:30)',
-                    ]),
+                    _buildDropdown(
+                      _selectedTimezone,
+                      ['Asia/Kolkata', 'America/New_York', 'Europe/London'],
+                      onChanged: (v) => setState(() => _selectedTimezone = v!),
+                    ),
                   ],
                 ),
               ]),
@@ -1156,7 +1310,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               const Divider(height: 24),
               _buildClickableActionRow(
                 'About',
-                'Version 1.0.0',
+                'Version $appVersion+$appBuildNumber',
                 Icons.info_outline,
                 () => _showAboutDialog(context),
               ),
@@ -1255,6 +1409,8 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
       ),
 
+      const SizedBox(height: 20),
+
       // Verification Status
       _SectionCard(
         icon: Icons.verified_user,
@@ -1324,6 +1480,215 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
       ),
     ];
+
+    // Subscription
+    leftChildren.add(const SizedBox(height: 20));
+    leftChildren.add(
+      _SectionCard(
+        icon: Icons.workspace_premium,
+        iconColor: AppColors.primary,
+        title: 'Subscription',
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: CircleAvatar(
+            backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+            child: Icon(Icons.workspace_premium, color: AppColors.primary),
+          ),
+          title: Text(
+            '${_subscription.plan.name[0].toUpperCase()}${_subscription.plan.name.substring(1)} Plan',
+            style: const TextStyle(fontWeight: FontWeight.w600),
+          ),
+          subtitle: Text(
+            _limits.billsThisMonth < _limits.billsLimit
+                ? '${_limits.billsThisMonth} / ${_limits.billsLimit == 999999 ? "\u221e" : _limits.billsLimit} bills used this month'
+                : '\u26a0\ufe0f Bill limit reached — upgrade to continue',
+            style: TextStyle(
+              color: _limits.billsThisMonth >= _limits.billsLimit
+                  ? AppColors.error
+                  : null,
+            ),
+          ),
+          trailing: _subscription.plan == SubscriptionPlan.free
+              ? FilledButton(
+                  onPressed: () => context.push(AppRoutes.subscription),
+                  child: const Text('Upgrade'),
+                )
+              : TextButton(
+                  onPressed: () => context.push(AppRoutes.subscription),
+                  child: const Text('Manage'),
+                ),
+        ),
+      ),
+    );
+
+    // Invite Friends (Referral)
+    leftChildren.add(const SizedBox(height: 20));
+    leftChildren.add(
+      _SectionCard(
+        icon: Icons.card_giftcard,
+        iconColor: AppColors.accent,
+        title: 'Invite & Earn 1 Month Free',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Share your referral code with fellow shop owners. '
+              'When they sign up, you both get 1 month of Pro for free!',
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: 13,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              decoration: BoxDecoration(
+                color: Theme.of(
+                  context,
+                ).colorScheme.surfaceContainerHighest.withAlpha(80),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppColors.primary.withAlpha(40)),
+              ),
+              child: Column(
+                children: [
+                  Text(
+                    _referralCode.isEmpty ? '...' : _referralCode,
+                    style: const TextStyle(
+                      fontSize: 28,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: 6,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '$_referralCount referred',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _referralCode.isEmpty
+                    ? null
+                    : () async {
+                        final copied = await ReferralService.share(
+                          _referralCode,
+                        );
+                        if (copied && mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Referral link copied to clipboard!',
+                              ),
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                icon: const Icon(Icons.share, size: 18),
+                label: const Text('Share Invite Link'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: _showRedeemDialog,
+                icon: const Icon(Icons.redeem, size: 18),
+                label: const Text('Have a Referral Code?'),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Privacy & Data Export
+    leftChildren.add(const SizedBox(height: 20));
+    leftChildren.add(
+      _SectionCard(
+        icon: Icons.shield_outlined,
+        iconColor: AppColors.info,
+        title: 'Privacy & Data',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.download),
+              title: const Text('Export My Data'),
+              subtitle: const Text('Download all your data as JSON'),
+              trailing: const Icon(Icons.chevron_right),
+              onTap: () async {
+                try {
+                  final data = await PrivacyConsentService.exportAllUserData();
+                  if (mounted) {
+                    await Clipboard.setData(ClipboardData(text: data));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Data copied to clipboard')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('Export failed: $e'),
+                        backgroundColor: AppColors.error,
+                      ),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+
+    // Danger Zone: Delete Account
+    leftChildren.add(const SizedBox(height: 20));
+    leftChildren.add(
+      _SectionCard(
+        icon: Icons.warning_amber_rounded,
+        iconColor: AppColors.error,
+        title: 'Danger Zone',
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.delete_forever, color: AppColors.error),
+          title: const Text(
+            'Delete Account',
+            style: TextStyle(
+              color: AppColors.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          subtitle: const Text(
+            'Permanently delete your account and all data. This cannot be undone.',
+          ),
+          trailing: const Icon(Icons.chevron_right, color: AppColors.error),
+          onTap: _confirmDeleteAccount,
+        ),
+      ),
+    );
 
     final rightChildren = <Widget>[];
 
@@ -2245,7 +2610,11 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildDropdown(String value, List<String> items) {
+  Widget _buildDropdown(
+    String value,
+    List<String> items, {
+    ValueChanged<String?>? onChanged,
+  }) {
     // Ensure value is in items list to prevent assertion error
     final safeValue = items.contains(value) ? value : items.first;
     return Container(
@@ -2262,7 +2631,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         items: items
             .map((e) => DropdownMenuItem(value: e, child: Text(e)))
             .toList(),
-        onChanged: null, // Read-only display
+        onChanged: onChanged,
       ),
     );
   }
@@ -2358,19 +2727,22 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('About ${AppConstants.appName}'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               AppConstants.appName,
               style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
             ),
-            Text('Version 1.0.0'),
-            SizedBox(height: 16),
-            Text('Simple POS for Small Retailers'),
-            SizedBox(height: 16),
-            Text('© 2026 RetailLite', style: TextStyle(color: Colors.grey)),
+            Text('Version $appVersion+$appBuildNumber'),
+            const SizedBox(height: 16),
+            const Text('Simple POS for Small Retailers'),
+            const SizedBox(height: 16),
+            const Text(
+              '© 2026 RetailLite',
+              style: TextStyle(color: Colors.grey),
+            ),
           ],
         ),
         actions: [

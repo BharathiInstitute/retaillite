@@ -785,10 +785,10 @@ class BillsHistoryScreen extends ConsumerWidget {
             ),
             child: Row(
               children: [
-                _headerCell(context, 'TYPE'),
+                if (!isTablet) _headerCell(context, 'TYPE'),
                 _headerCell(context, 'REFERENCE', flex: 2),
                 _headerCell(context, 'DATE & TIME', flex: 2),
-                _headerCell(context, 'DETAILS', flex: 2),
+                if (!isTablet) _headerCell(context, 'DETAILS', flex: 2),
                 _headerCell(context, 'AMOUNT', flex: 2),
                 _headerCell(context, 'PAYMENT', flex: 2),
                 _headerCell(context, 'ACTION', flex: 2),

@@ -1,8 +1,6 @@
 /// Demo mode banner widget
 library;
 
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -90,31 +88,18 @@ class DemoModeBanner extends ConsumerWidget {
           'Sign in with Google to create your account and keep your data.',
         ),
         actions: [
-          // Keep Demo Data - secondary (text button)
-          TextButton(
-            onPressed: () async {
-              Navigator.pop(dialogContext);
-              await OfflineStorageService.saveSetting('keep_demo_data', true);
-              if (outerContext.mounted) {
-                unawaited(outerContext.push('/login'));
-              }
-            },
-            child: const Text('Keep Demo Data'),
-          ),
           // Start Fresh - primary (elevated button)
           ElevatedButton(
             onPressed: () async {
               Navigator.pop(dialogContext);
               await OfflineStorageService.saveSetting('keep_demo_data', false);
-              if (outerContext.mounted) {
-                unawaited(outerContext.push('/login'));
-              }
+              await ref.read(authNotifierProvider.notifier).exitDemoMode();
             },
             style: ElevatedButton.styleFrom(
               backgroundColor: AppColors.primary,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Start Fresh'),
+            child: const Text('Register'),
           ),
         ],
       ),

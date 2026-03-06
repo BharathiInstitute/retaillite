@@ -4,10 +4,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Pricing &#8212; TULASI STORES Billing App</title>
+  <title>Pricing — TULASI STORES Billing App</title>
   <meta name="description"
-    content="Simple, transparent pricing for India's small retailers. Start free, upgrade when you grow. Plans from &#8377;0 to &#8377;999/month.">
-  <meta property="og:title" content="Pricing &#8212; TULASI STORES Billing App">
+    content="Simple, transparent pricing for India's small retailers. Start free, upgrade when you grow. Plans from ₹0 to ₹999/month.">
+  <meta property="og:title" content="Pricing — TULASI STORES Billing App">
   <meta property="og:description"
     content="Start free, upgrade when you grow. Simple pricing for Indian retailers.">
   <meta property="og:type" content="website">
@@ -20,11 +20,13 @@
     rel="stylesheet">
   <link rel="stylesheet" href="../css/styles.css?v=3">
   <style>
+    /* ─── Pricing Grid ─── */
     .pricing-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       gap: 2rem;
       margin-top: 3rem;
+      align-items: start;
     }
 
     @media (max-width: 768px) {
@@ -36,15 +38,16 @@
       }
     }
 
+    /* ─── Pricing Card ─── */
     .pricing-card {
-      background: white;
+      background: #fff;
       border: 1px solid var(--color-border);
       border-radius: var(--radius-xl);
       padding: 2.5rem 2rem;
       display: flex;
       flex-direction: column;
       box-shadow: var(--shadow-sm);
-      transition: transform 0.2s, box-shadow 0.2s;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
     }
 
     .pricing-card:hover {
@@ -55,29 +58,40 @@
     .pricing-card.popular {
       border: 2px solid var(--color-primary);
       position: relative;
-      box-shadow: var(--shadow-lg);
+      box-shadow: 0 8px 30px rgba(16, 185, 129, 0.15);
+      transform: scale(1.03);
     }
 
-    .pricing-card.popular::before {
-      content: 'Most Popular';
+    .pricing-card.popular:hover {
+      transform: scale(1.03) translateY(-4px);
+    }
+
+    .popular-badge {
       position: absolute;
       top: -0.875rem;
       left: 50%;
       transform: translateX(-50%);
       background: var(--color-primary);
-      color: white;
+      color: #fff;
       font-size: 0.75rem;
       font-weight: 700;
-      padding: 0.25rem 1rem;
+      padding: 0.3rem 1.25rem;
       border-radius: var(--radius-full);
       white-space: nowrap;
+      letter-spacing: 0.025em;
+    }
+
+    /* ─── Plan Header ─── */
+    .plan-icon {
+      font-size: 2rem;
+      margin-bottom: 0.75rem;
     }
 
     .pricing-plan-name {
-      font-size: 1.25rem;
-      font-weight: 700;
+      font-size: 1.5rem;
+      font-weight: 800;
       color: var(--color-text);
-      margin-bottom: 0.5rem;
+      margin-bottom: 0.25rem;
     }
 
     .pricing-plan-desc {
@@ -86,6 +100,7 @@
       margin-bottom: 1.5rem;
     }
 
+    /* ─── Price ─── */
     .pricing-price {
       display: flex;
       align-items: baseline;
@@ -93,8 +108,14 @@
       margin-bottom: 0.25rem;
     }
 
+    .pricing-price .rupee {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: var(--color-text);
+    }
+
     .pricing-price-amount {
-      font-size: 2.5rem;
+      font-size: 3rem;
       font-weight: 800;
       color: var(--color-text);
       line-height: 1;
@@ -103,9 +124,10 @@
     .pricing-price-period {
       font-size: 0.875rem;
       color: var(--color-text-light);
+      margin-left: 0.125rem;
     }
 
-    .pricing-annual {
+    .pricing-annual-note {
       font-size: 0.8125rem;
       color: var(--color-primary-dark);
       font-weight: 600;
@@ -113,6 +135,7 @@
       min-height: 1.25rem;
     }
 
+    /* ─── Feature List ─── */
     .pricing-features {
       list-style: none;
       padding: 0;
@@ -121,42 +144,50 @@
       display: flex;
       flex-direction: column;
       gap: 0.75rem;
+      border-top: 1px solid var(--color-border);
+      padding-top: 1.5rem;
     }
 
     .pricing-features li {
-      font-size: 0.875rem;
+      font-size: 0.9rem;
       color: var(--color-text);
       display: flex;
-      align-items: flex-start;
+      align-items: center;
       gap: 0.625rem;
+      line-height: 1.4;
     }
 
-    .pricing-features li::before {
-      content: '&#10003;';
+    .pricing-features li .check {
       color: var(--color-primary);
       font-weight: 700;
+      font-size: 1rem;
       flex-shrink: 0;
+      width: 1.25rem;
+      text-align: center;
     }
 
+    /* ─── CTA Buttons ─── */
     .pricing-cta {
       display: block;
       width: 100%;
       text-align: center;
       padding: 0.875rem;
       border-radius: var(--radius-md);
-      font-weight: 600;
+      font-weight: 700;
       font-size: 0.9375rem;
       text-decoration: none;
-      transition: background 0.2s, color 0.2s;
+      transition: all 0.2s ease;
+      letter-spacing: 0.01em;
     }
 
     .pricing-cta-primary {
       background: var(--color-primary);
-      color: white;
+      color: #fff;
     }
 
     .pricing-cta-primary:hover {
       background: var(--color-primary-dark);
+      box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
     }
 
     .pricing-cta-outline {
@@ -169,38 +200,44 @@
       background: var(--color-primary-50);
     }
 
+    /* ─── Billing Toggle ─── */
     .pricing-toggle {
-      display: flex;
+      display: inline-flex;
       align-items: center;
-      justify-content: center;
-      gap: 1rem;
+      gap: 0.75rem;
       margin-top: 1.5rem;
+      background: rgba(255, 255, 255, 0.15);
+      padding: 0.5rem 1.25rem;
+      border-radius: var(--radius-full);
     }
 
     .pricing-toggle span {
       font-size: 0.9375rem;
       font-weight: 500;
-      color: var(--color-text-light);
+      color: rgba(255, 255, 255, 0.65);
       cursor: pointer;
+      transition: color 0.2s;
+      user-select: none;
     }
 
     .pricing-toggle span.active {
-      color: var(--color-text);
+      color: #fff;
       font-weight: 700;
     }
 
     .toggle-switch {
-      width: 48px;
-      height: 26px;
-      background: var(--color-border);
+      width: 44px;
+      height: 24px;
+      background: rgba(255, 255, 255, 0.3);
       border-radius: var(--radius-full);
       position: relative;
       cursor: pointer;
       transition: background 0.2s;
+      flex-shrink: 0;
     }
 
     .toggle-switch.active {
-      background: var(--color-primary);
+      background: #fff;
     }
 
     .toggle-switch::after {
@@ -208,17 +245,91 @@
       position: absolute;
       top: 3px;
       left: 3px;
-      width: 20px;
-      height: 20px;
-      background: white;
+      width: 18px;
+      height: 18px;
+      background: var(--color-primary);
       border-radius: 50%;
       transition: transform 0.2s;
     }
 
     .toggle-switch.active::after {
-      transform: translateX(22px);
+      transform: translateX(20px);
     }
 
+    .save-badge {
+      background: rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 0.6875rem;
+      font-weight: 700;
+      padding: 0.2rem 0.5rem;
+      border-radius: var(--radius-sm);
+      margin-left: 0.25rem;
+    }
+
+    /* ─── Comparison Table ─── */
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 2rem;
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      padding: 1rem 1.25rem;
+      text-align: left;
+      font-size: 0.875rem;
+      border-bottom: 1px solid var(--color-border);
+    }
+
+    .compare-table thead th {
+      font-weight: 700;
+      color: var(--color-text);
+      background: var(--color-bg-alt);
+      font-size: 0.9375rem;
+    }
+
+    .compare-table thead th:not(:first-child) {
+      text-align: center;
+    }
+
+    .compare-table td {
+      color: var(--color-text);
+    }
+
+    .compare-table td:first-child {
+      font-weight: 500;
+    }
+
+    .compare-table td:not(:first-child) {
+      text-align: center;
+    }
+
+    .compare-table tbody tr:hover {
+      background: var(--color-primary-50);
+    }
+
+    .compare-table .check-green {
+      color: var(--color-primary);
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+
+    .compare-table .dash {
+      color: var(--color-text-light);
+      font-size: 1rem;
+    }
+
+    @media (max-width: 768px) {
+      .compare-table th,
+      .compare-table td {
+        padding: 0.75rem 0.5rem;
+        font-size: 0.8125rem;
+      }
+    }
+
+    /* ─── FAQ ─── */
     .faq-list {
       max-width: 720px;
       margin: 0 auto;
@@ -226,7 +337,6 @@
 
     .faq-item {
       border-bottom: 1px solid var(--color-border);
-      padding: 1.5rem 0;
     }
 
     .faq-item:first-child {
@@ -242,24 +352,26 @@
       justify-content: space-between;
       align-items: center;
       gap: 1rem;
+      padding: 1.25rem 0;
     }
 
-    .faq-question::after {
-      content: '+';
-      font-size: 1.5rem;
+    .faq-question .faq-icon {
+      font-size: 1.25rem;
       font-weight: 400;
       color: var(--color-text-light);
       flex-shrink: 0;
       transition: transform 0.2s;
+      width: 1.5rem;
+      text-align: center;
     }
 
-    .faq-item.open .faq-question::after {
-      content: '&#8722;';
+    .faq-item.open .faq-icon {
+      transform: rotate(45deg);
     }
 
     .faq-answer {
       display: none;
-      padding-top: 0.75rem;
+      padding-bottom: 1.25rem;
       font-size: 0.9375rem;
       color: var(--color-text-light);
       line-height: 1.7;
@@ -267,45 +379,6 @@
 
     .faq-item.open .faq-answer {
       display: block;
-    }
-
-    .compare-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 2rem;
-    }
-
-    .compare-table th,
-    .compare-table td {
-      padding: 0.875rem 1rem;
-      text-align: left;
-      font-size: 0.875rem;
-      border-bottom: 1px solid var(--color-border);
-    }
-
-    .compare-table th {
-      font-weight: 700;
-      color: var(--color-text);
-      background: var(--color-bg-alt);
-    }
-
-    .compare-table td {
-      color: var(--color-text);
-    }
-
-    .compare-table td:first-child {
-      font-weight: 500;
-    }
-
-    @media (max-width: 768px) {
-      .compare-table {
-        font-size: 0.8125rem;
-      }
-
-      .compare-table th,
-      .compare-table td {
-        padding: 0.625rem 0.5rem;
-      }
     }
   </style>
 </head>
@@ -328,8 +401,7 @@
         <li><a href="support.html">Support</a></li>
       </ul>
       <div class="navbar-cta">
-        <a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">Open
-          App</a>
+        <a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">Open App</a>
         <a href="download.html" class="btn btn-primary btn-sm">Download Now</a>
       </div>
       <button class="navbar-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
@@ -342,15 +414,14 @@
       <a href="about.html">About</a>
       <a href="support.html">Support</a>
       <a href="download.html" style="color: var(--color-primary); font-weight: 700;">Download Now</a>
-      <a href="https://stores.tulasierp.com/app/" style="color: var(--color-primary); font-weight: 700;">Open App
-        &#8594;</a>
+      <a href="https://stores.tulasierp.com/app/" style="color: var(--color-primary); font-weight: 700;">Open App →</a>
     </div>
   </nav>
 
   <!-- HERO -->
   <section class="section-gradient" style="padding-top: 7rem;">
     <div class="container text-center">
-      <div class="badge badge-white" style="margin-bottom: 1rem;">&#128176; Pricing</div>
+      <div class="badge badge-white" style="margin-bottom: 1rem;">💰 Pricing</div>
       <h1>Simple, Transparent Pricing</h1>
       <p class="section-subtitle">Start free. Upgrade when your business grows. No hidden charges, no surprises.</p>
 
@@ -358,8 +429,7 @@
       <div class="pricing-toggle">
         <span id="toggle-monthly" class="active">Monthly</span>
         <div class="toggle-switch" id="billing-toggle"></div>
-        <span id="toggle-annual">Annual <span
-            style="color: var(--color-primary); font-weight: 700; font-size: 0.8125rem;">Save 33%</span></span>
+        <span id="toggle-annual">Annual <span class="save-badge">SAVE 33%</span></span>
       </div>
     </div>
   </section>
@@ -371,65 +441,72 @@
       <div class="pricing-grid">
 
         <!-- FREE -->
-        <div class="pricing-card">
+        <div class="pricing-card animate-on-scroll">
+          <div class="plan-icon">🆓</div>
           <div class="pricing-plan-name">Free</div>
           <div class="pricing-plan-desc">Perfect for getting started</div>
           <div class="pricing-price">
-            <span class="pricing-price-amount">&#8377;0</span>
-            <span class="pricing-price-period">forever</span>
+            <span class="rupee">₹</span>
+            <span class="pricing-price-amount">0</span>
           </div>
-          <div class="pricing-annual">&nbsp;</div>
+          <div class="pricing-price-period">free forever</div>
+          <div class="pricing-annual-note">&nbsp;</div>
           <ul class="pricing-features">
-            <li>50 bills per month</li>
-            <li>100 products</li>
-            <li>10 customers</li>
-            <li>Basic reports</li>
-            <li>Thermal printing</li>
-            <li>Barcode scanning</li>
-            <li>Offline mode</li>
+            <li><span class="check">✓</span> 50 bills per month</li>
+            <li><span class="check">✓</span> 100 products</li>
+            <li><span class="check">✓</span> 10 customers</li>
+            <li><span class="check">✓</span> Basic reports</li>
+            <li><span class="check">✓</span> Thermal printing</li>
+            <li><span class="check">✓</span> Barcode scanning</li>
+            <li><span class="check">✓</span> Offline mode</li>
           </ul>
-          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-outline">Start Free</a>
+          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-outline">Start Free →</a>
         </div>
 
         <!-- PRO -->
-        <div class="pricing-card popular">
+        <div class="pricing-card popular animate-on-scroll">
+          <div class="popular-badge">⭐ Most Popular</div>
+          <div class="plan-icon">🚀</div>
           <div class="pricing-plan-name">Pro</div>
           <div class="pricing-plan-desc">For growing shops</div>
           <div class="pricing-price">
-            <span class="pricing-price-amount" data-monthly="&#8377;299" data-annual="&#8377;199">&#8377;299</span>
-            <span class="pricing-price-period">/month</span>
+            <span class="rupee">₹</span>
+            <span class="pricing-price-amount" data-monthly="299" data-annual="199">299</span>
           </div>
-          <div class="pricing-annual" data-monthly="" data-annual="&#8377;2,390/year (save 33%)"></div>
+          <div class="pricing-price-period">/month</div>
+          <div class="pricing-annual-note" data-monthly="&nbsp;" data-annual="₹2,390/year — save ₹1,198!"></div>
           <ul class="pricing-features">
-            <li>500 bills per month</li>
-            <li>Unlimited products</li>
-            <li>Unlimited customers</li>
-            <li>Advanced reports</li>
-            <li>Priority support</li>
-            <li>Everything in Free</li>
+            <li><span class="check">✓</span> 500 bills per month</li>
+            <li><span class="check">✓</span> Unlimited products</li>
+            <li><span class="check">✓</span> Unlimited customers</li>
+            <li><span class="check">✓</span> Advanced reports</li>
+            <li><span class="check">✓</span> Priority support</li>
+            <li><span class="check">✓</span> Everything in Free</li>
           </ul>
-          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-primary">Get Pro</a>
+          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-primary">Get Pro →</a>
         </div>
 
         <!-- BUSINESS -->
-        <div class="pricing-card">
+        <div class="pricing-card animate-on-scroll">
+          <div class="plan-icon">🏢</div>
           <div class="pricing-plan-name">Business</div>
           <div class="pricing-plan-desc">For high-volume stores</div>
           <div class="pricing-price">
-            <span class="pricing-price-amount" data-monthly="&#8377;999" data-annual="&#8377;666">&#8377;999</span>
-            <span class="pricing-price-period">/month</span>
+            <span class="rupee">₹</span>
+            <span class="pricing-price-amount" data-monthly="999" data-annual="666">999</span>
           </div>
-          <div class="pricing-annual" data-monthly="" data-annual="&#8377;7,990/year (save 33%)"></div>
+          <div class="pricing-price-period">/month</div>
+          <div class="pricing-annual-note" data-monthly="&nbsp;" data-annual="₹7,990/year — save ₹3,998!"></div>
           <ul class="pricing-features">
-            <li>Unlimited bills</li>
-            <li>Unlimited products</li>
-            <li>Unlimited customers</li>
-            <li>All reports</li>
-            <li>Dedicated support</li>
-            <li>Multi-device sync</li>
-            <li>Everything in Pro</li>
+            <li><span class="check">✓</span> Unlimited bills</li>
+            <li><span class="check">✓</span> Unlimited products</li>
+            <li><span class="check">✓</span> Unlimited customers</li>
+            <li><span class="check">✓</span> All reports</li>
+            <li><span class="check">✓</span> Dedicated support</li>
+            <li><span class="check">✓</span> Multi-device sync</li>
+            <li><span class="check">✓</span> Everything in Pro</li>
           </ul>
-          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-outline">Get Business</a>
+          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-outline">Get Business →</a>
         </div>
       </div>
     </div>
@@ -440,6 +517,7 @@
   <section class="section-alt">
     <div class="container">
       <div class="text-center" style="margin-bottom: 2rem;">
+        <div class="badge" style="margin-bottom: 1rem;">📊 Compare</div>
         <h2>Compare Plans</h2>
         <p class="section-subtitle">See exactly what you get with each plan.</p>
       </div>
@@ -447,84 +525,84 @@
         <table class="compare-table">
           <thead>
             <tr>
-              <th>Feature</th>
+              <th style="width: 40%;">Feature</th>
               <th>Free</th>
-              <th>Pro</th>
+              <th>Pro ⭐</th>
               <th>Business</th>
             </tr>
           </thead>
           <tbody>
             <tr>
-              <td>Bills per month</td>
+              <td>📄 Bills per month</td>
               <td>50</td>
               <td>500</td>
-              <td>Unlimited</td>
+              <td><strong>Unlimited</strong></td>
             </tr>
             <tr>
-              <td>Products</td>
+              <td>📦 Products</td>
               <td>100</td>
-              <td>Unlimited</td>
-              <td>Unlimited</td>
+              <td><strong>Unlimited</strong></td>
+              <td><strong>Unlimited</strong></td>
             </tr>
             <tr>
-              <td>Customers</td>
+              <td>👥 Customers</td>
               <td>10</td>
-              <td>Unlimited</td>
-              <td>Unlimited</td>
+              <td><strong>Unlimited</strong></td>
+              <td><strong>Unlimited</strong></td>
             </tr>
             <tr>
-              <td>POS Billing</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>🛒 POS Billing</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Barcode Scanning</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>📷 Barcode Scanning</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Thermal Printing</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>🖨️ Thermal Printing</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Offline Mode</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>📶 Offline Mode</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Khata (Credit Ledger)</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>📒 Khata (Credit Ledger)</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Voice Search</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
-              <td>&#10003;</td>
+              <td>🎤 Voice Search</td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Reports</td>
+              <td>📊 Reports</td>
               <td>Basic</td>
-              <td>Advanced</td>
-              <td>All Reports</td>
+              <td><strong>Advanced</strong></td>
+              <td><strong>All Reports</strong></td>
             </tr>
             <tr>
-              <td>Multi-device Sync</td>
-              <td>&#8212;</td>
-              <td>&#8212;</td>
-              <td>&#10003;</td>
+              <td>📱 Multi-device Sync</td>
+              <td><span class="dash">—</span></td>
+              <td><span class="dash">—</span></td>
+              <td><span class="check-green">✓</span></td>
             </tr>
             <tr>
-              <td>Support</td>
+              <td>💬 Support</td>
               <td>Community</td>
-              <td>Priority</td>
-              <td>Dedicated</td>
+              <td><strong>Priority</strong></td>
+              <td><strong>Dedicated</strong></td>
             </tr>
           </tbody>
         </table>
@@ -537,31 +615,50 @@
   <section class="section" id="faq">
     <div class="container">
       <div class="text-center" style="margin-bottom: 2rem;">
+        <div class="badge" style="margin-bottom: 1rem;">❓ FAQ</div>
         <h2>Frequently Asked Questions</h2>
       </div>
       <div class="faq-list">
         <div class="faq-item">
-          <div class="faq-question">Is the Free plan really free forever?</div>
+          <div class="faq-question">
+            Is the Free plan really free forever?
+            <span class="faq-icon">+</span>
+          </div>
           <div class="faq-answer">Yes! The Free plan has no time limit. Use it as long as you want with up to 50 bills/month, 100 products, and 10 customers. No credit card required.</div>
         </div>
         <div class="faq-item">
-          <div class="faq-question">Can I upgrade or downgrade anytime?</div>
+          <div class="faq-question">
+            Can I upgrade or downgrade anytime?
+            <span class="faq-icon">+</span>
+          </div>
           <div class="faq-answer">Absolutely. You can upgrade from Free to Pro or Business anytime from the app. If you downgrade, your current billing cycle continues until it expires, then the new plan starts.</div>
         </div>
         <div class="faq-item">
-          <div class="faq-question">What payment methods do you accept?</div>
-          <div class="faq-answer">We accept UPI, Debit/Credit Cards, and Net Banking through Razorpay &#8212; India's most trusted payment gateway.</div>
+          <div class="faq-question">
+            What payment methods do you accept?
+            <span class="faq-icon">+</span>
+          </div>
+          <div class="faq-answer">We accept UPI, Debit/Credit Cards, and Net Banking through Razorpay — India's most trusted payment gateway.</div>
         </div>
         <div class="faq-item">
-          <div class="faq-question">What happens when I hit my bill limit?</div>
+          <div class="faq-question">
+            What happens when I hit my bill limit?
+            <span class="faq-icon">+</span>
+          </div>
           <div class="faq-answer">You'll see a friendly reminder to upgrade. Your existing data is always safe. You just can't create new bills until the next month or until you upgrade.</div>
         </div>
         <div class="faq-item">
-          <div class="faq-question">Is my data safe?</div>
+          <div class="faq-question">
+            Is my data safe?
+            <span class="faq-icon">+</span>
+          </div>
           <div class="faq-answer">Your data is stored securely on Google Firebase servers with encryption at rest and in transit. We never share or sell your data.</div>
         </div>
         <div class="faq-item">
-          <div class="faq-question">Do I need internet to use the app?</div>
+          <div class="faq-question">
+            Do I need internet to use the app?
+            <span class="faq-icon">+</span>
+          </div>
           <div class="faq-answer">The app works offline for billing. Data syncs automatically when you're back online. All plans include offline mode.</div>
         </div>
       </div>
@@ -576,7 +673,7 @@
       <p class="section-subtitle" style="color: rgba(255,255,255,0.85);">Join thousands of Indian retailers already
         using Tulasi Stores.</p>
       <div style="display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem;">
-        <a href="https://stores.tulasierp.com/app/" class="btn btn-white btn-lg">Start Free &#8594;</a>
+        <a href="https://stores.tulasierp.com/app/" class="btn btn-white btn-lg">Start Free →</a>
         <a href="download.html" class="btn btn-ghost-white btn-lg">Download App</a>
       </div>
     </div>
@@ -618,17 +715,16 @@
         </div>
       </div>
       <div class="footer-bottom">
-        <p>&#169; 2026 TULASI STORES. All rights reserved. Made with &#10084;&#65039; in India.</p>
-        <div class="footer-social"><a href="#">&#x1D54F;</a><a href="#">&#x1F4F7;</a><a href="#">&#x25B6;</a><a
-            href="#">&#x1F4AC;</a></div>
+        <p>© 2026 TULASI STORES. All rights reserved. Made with ❤️ in India.</p>
+        <div class="footer-social"><a href="#">𝕏</a><a href="#">📷</a><a href="#">▶</a><a href="#">💬</a></div>
       </div>
     </div>
   </footer>
 
-  <button class="scroll-top" aria-label="Scroll to top">&#8593;</button>
+  <button class="scroll-top" aria-label="Scroll to top">↑</button>
   <script src="../js/main.js?v=3"></script>
   <script>
-    // Billing toggle (monthly / annual)
+    /* ── Billing Toggle (Monthly ↔ Annual) ── */
     const toggle = document.getElementById('billing-toggle');
     const monthlyLabel = document.getElementById('toggle-monthly');
     const annualLabel = document.getElementById('toggle-annual');
@@ -636,26 +732,23 @@
 
     function updatePrices() {
       const key = isAnnual ? 'annual' : 'monthly';
-      document.querySelectorAll('.pricing-price-amount[data-monthly]').forEach(el => {
+      document.querySelectorAll('.pricing-price-amount[data-monthly]').forEach(function (el) {
         el.textContent = el.getAttribute('data-' + key);
       });
-      document.querySelectorAll('.pricing-annual[data-monthly]').forEach(el => {
-        el.textContent = el.getAttribute('data-' + key);
+      document.querySelectorAll('.pricing-annual-note[data-monthly]').forEach(function (el) {
+        el.innerHTML = el.getAttribute('data-' + key);
       });
       monthlyLabel.classList.toggle('active', !isAnnual);
       annualLabel.classList.toggle('active', isAnnual);
       toggle.classList.toggle('active', isAnnual);
     }
 
-    toggle.addEventListener('click', function () {
-      isAnnual = !isAnnual;
-      updatePrices();
-    });
+    toggle.addEventListener('click', function () { isAnnual = !isAnnual; updatePrices(); });
     monthlyLabel.addEventListener('click', function () { isAnnual = false; updatePrices(); });
     annualLabel.addEventListener('click', function () { isAnnual = true; updatePrices(); });
 
-    // FAQ accordion
-    document.querySelectorAll('.faq-question').forEach(q => {
+    /* ── FAQ Accordion ── */
+    document.querySelectorAll('.faq-question').forEach(function (q) {
       q.addEventListener('click', function () {
         this.closest('.faq-item').classList.toggle('open');
       });

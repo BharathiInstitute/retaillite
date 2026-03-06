@@ -120,7 +120,14 @@ class ProductCsvService {
 
       String csvContent;
       if (result.files.first.bytes != null) {
-        csvContent = utf8.decode(result.files.first.bytes!);
+        final bytes = result.files.first.bytes!;
+        // Try strict UTF-8 first, fall back to lenient decoding for
+        // Excel files saved in Windows-1252/ANSI encoding
+        try {
+          csvContent = utf8.decode(bytes);
+        } on FormatException {
+          csvContent = utf8.decode(bytes, allowMalformed: true);
+        }
       } else if (result.files.first.path != null) {
         csvContent = await File(result.files.first.path!).readAsString();
       } else {

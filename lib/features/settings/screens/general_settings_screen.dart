@@ -38,6 +38,8 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
     _contactController = TextEditingController(text: user?.phone ?? '');
     _addressController = TextEditingController(text: user?.address ?? '');
     _gstController = TextEditingController(text: user?.gstNumber ?? '');
+    _currency = user?.currency ?? 'INR';
+    _timezone = user?.timezone ?? 'Asia/Kolkata';
   }
 
   @override
@@ -446,6 +448,8 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
       phone: _contactController.text,
       address: _addressController.text,
       gstNumber: _gstController.text,
+      currency: _currency,
+      timezone: _timezone,
     );
 
     ScaffoldMessenger.of(context).showSnackBar(
