@@ -1008,19 +1008,30 @@ WScript.Quit 0
 
                 # Remind to upload MSIX to Microsoft Store
                 if ($msixFile -and (Test-Path $msixFile)) {
-                    Write-Step "MANUAL ACTION: Upload MSIX to Microsoft Store"
+                    Write-Step "Microsoft Store: MSIX ready for upload"
+
+                    # Copy MSIX path to clipboard
+                    Set-Clipboard -Value $msixFile
+                    Write-Ok "MSIX path copied to clipboard"
+
+                    # Open MSIX folder in Explorer (so you can drag & drop)
+                    $msixFolder = Split-Path $msixFile -Parent
+                    Start-Process explorer.exe -ArgumentList "/select,`"$msixFile`""
+                    Write-Ok "Opened MSIX file in Explorer"
+
+                    # Open Partner Center packages page in browser
+                    Start-Process "https://partner.microsoft.com/en-us/dashboard/apps-and-games/overview"
+                    Write-Ok "Opened Partner Center in browser"
+
                     Write-Host ""
                     Write-Host "  +-------------------------------------------------+" -ForegroundColor Cyan
-                    Write-Host "  |  MSIX file ready for Microsoft Store:            |" -ForegroundColor Cyan
-                    Write-Host "  |  $msixFile" -ForegroundColor Yellow
+                    Write-Host "  |  MSIX: $msixFile" -ForegroundColor Yellow
                     Write-Host "  |                                                  |" -ForegroundColor Cyan
-                    Write-Host "  |  1. Go to: partner.microsoft.com/dashboard       |" -ForegroundColor White
-                    Write-Host "  |  2. Select your app > Packages                   |" -ForegroundColor White
-                    Write-Host "  |  3. Upload the .msix file                        |" -ForegroundColor White
-                    Write-Host "  |  4. Submit for review                            |" -ForegroundColor White
+                    Write-Host "  |  Explorer + Partner Center opened for you!       |" -ForegroundColor Green
+                    Write-Host "  |  Just drag the MSIX file and click Submit.       |" -ForegroundColor White
                     Write-Host "  +-------------------------------------------------+" -ForegroundColor Cyan
                     Read-Host "  Press Enter after done (or skip)"
-                    Write-DeployLog "MSIX | Ready for Microsoft Store upload"
+                    Write-DeployLog "MSIX | $msixFile - Explorer + Partner Center opened"
                 }
             }
             Complete-Step "windows"

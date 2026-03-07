@@ -357,11 +357,11 @@ service cloud.firestore {
     // USER USAGE TRACKING (per-user backend cost tracking)
     // ===================
     match /user_usage/{userId} {
-      // Users can only read their own usage doc
+      // Users can read their own usage doc; admins can read all
       allow read: if isAuthenticated() && (isOwner(userId) || isAdmin());
-      // Only Cloud Functions / admin SDK can write usage data
-      // Prevents client-side counter manipulation
-      allow write: if isAdmin();
+      // Users can write their own usage doc (for client-side tracking)
+      // Admins can write any usage doc (for seeding / corrections)
+      allow write: if isAuthenticated() && (isOwner(userId) || isAdmin());
     }
     
     // ===================

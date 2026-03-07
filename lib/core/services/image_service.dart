@@ -10,6 +10,7 @@ import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:retaillite/core/services/user_usage_service.dart';
 
 /// Image sizes for different use cases
 class ImageSizes {
@@ -78,6 +79,7 @@ class ImageService {
         resizedBytes,
         SettableMetadata(contentType: 'image/jpeg'),
       );
+      UserUsageService.trackStorageUpload(bytes: resizedBytes.length);
 
       // Get download URL
       final downloadUrl = await storageRef.getDownloadURL();
@@ -145,6 +147,7 @@ class ImageService {
         resizedBytes,
         SettableMetadata(contentType: 'image/jpeg'),
       );
+      UserUsageService.trackStorageUpload(bytes: resizedBytes.length);
 
       final downloadUrl = await storageRef.getDownloadURL();
       return downloadUrl;
@@ -208,6 +211,7 @@ class ImageService {
         resizedBytes,
         SettableMetadata(contentType: 'image/jpeg'),
       );
+      UserUsageService.trackStorageUpload(bytes: resizedBytes.length);
 
       // Get download URL
       final downloadUrl = await storageRef.getDownloadURL();

@@ -11,6 +11,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/sync_status_service.dart';
+import 'package:retaillite/core/services/user_usage_service.dart';
 import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/customer_model.dart';
@@ -252,6 +253,7 @@ class OfflineStorageService {
           .collection('$_basePath/products')
           .limit(500)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs
           .map((doc) => ProductModel.fromFirestore(doc))
           .toList();
@@ -271,6 +273,7 @@ class OfflineStorageService {
     if (_basePath.isEmpty) return null;
     try {
       final doc = await _firestore.doc('$_basePath/products/$id').get();
+      UserUsageService.trackRead();
       if (!doc.exists) return null;
       return ProductModel.fromFirestore(doc);
     } catch (e) {
@@ -284,12 +287,14 @@ class OfflineStorageService {
     await _firestore
         .doc('$_basePath/products/${product.id}')
         .set(product.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Delete product
   static Future<void> deleteProduct(String productId) async {
     if (_basePath.isEmpty) return;
     await _firestore.doc('$_basePath/products/$productId').delete();
+    UserUsageService.trackDelete();
   }
 
   // ==================== Bills ====================
@@ -313,6 +318,7 @@ class OfflineStorageService {
           .orderBy('createdAt', descending: true)
           .limit(AppConstants.queryLimitBills)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs.map((doc) => BillModel.fromFirestore(doc)).toList();
     } catch (e) {
       debugPrint('Error getting bills: $e');
@@ -334,6 +340,7 @@ class OfflineStorageService {
           .orderBy('createdAt', descending: true)
           .limit(1000)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs.map((doc) => BillModel.fromFirestore(doc)).toList();
     } catch (e) {
       debugPrint('Error getting bills in range: $e');
@@ -345,6 +352,7 @@ class OfflineStorageService {
   static Future<void> saveBill(BillModel bill) async {
     if (_basePath.isEmpty) return;
     await _firestore.doc('$_basePath/bills/${bill.id}').set(bill.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Get next sequential bill number using Firestore atomic counter.
@@ -367,6 +375,8 @@ class OfflineStorageService {
         }, SetOptions(merge: true));
         return next;
       });
+      UserUsageService.trackRead();
+      UserUsageService.trackWrite();
       return newBillNumber;
     } catch (e) {
       debugPrint('⚠️ Bill counter fallback: $e');
@@ -484,6 +494,7 @@ class OfflineStorageService {
         .limit(pageSize);
     if (startAfter != null) query = query.startAfterDocument(startAfter);
     final snap = await query.get();
+    UserUsageService.trackRead(count: snap.docs.length);
     final bills = snap.docs.map((d) => BillModel.fromFirestore(d)).toList();
     final lastDoc = snap.docs.isNotEmpty ? snap.docs.last : null;
     return (bills, lastDoc);
@@ -526,6 +537,8 @@ class OfflineStorageService {
         batch.delete(doc.reference);
       }
       await batch.commit();
+      UserUsageService.trackRead(count: snapshot.docs.length);
+      UserUsageService.trackDelete(count: snapshot.docs.length);
       totalDeleted += snapshot.docs.length;
     }
     return totalDeleted;
@@ -539,6 +552,7 @@ class OfflineStorageService {
     await _firestore
         .doc('$_basePath/expenses/${expense.id}')
         .set(expense.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Get all expenses (uses server when online, cache when offline)
@@ -550,6 +564,7 @@ class OfflineStorageService {
           .orderBy('createdAt', descending: true)
           .limit(AppConstants.queryLimitExpenses)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs
           .map((doc) => ExpenseModel.fromFirestore(doc))
           .toList();
@@ -563,6 +578,7 @@ class OfflineStorageService {
   static Future<void> deleteExpense(String expenseId) async {
     if (_basePath.isEmpty) return;
     await _firestore.doc('$_basePath/expenses/$expenseId').delete();
+    UserUsageService.trackDelete();
   }
 
   /// Stream of all expenses (real-time updates from Firestore)
@@ -628,6 +644,7 @@ class OfflineStorageService {
         .limit(pageSize);
     if (startAfter != null) query = query.startAfterDocument(startAfter);
     final snap = await query.get();
+    UserUsageService.trackRead(count: snap.docs.length);
     final expenses = snap.docs
         .map((d) => ExpenseModel.fromFirestore(d))
         .toList();
@@ -658,6 +675,7 @@ class OfflineStorageService {
           .collection('$_basePath/customers')
           .limit(1000)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs
           .map((doc) => CustomerModel.fromFirestore(doc))
           .toList();
@@ -675,6 +693,7 @@ class OfflineStorageService {
       final doc = await _firestore
           .doc('$_basePath/customers/$customerId')
           .get();
+      UserUsageService.trackRead();
       if (!doc.exists) return null;
       return CustomerModel.fromFirestore(doc);
     } catch (e) {
@@ -688,6 +707,7 @@ class OfflineStorageService {
     await _firestore
         .doc('$_basePath/customers/${customer.id}')
         .set(customer.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Update cached customer
@@ -699,6 +719,7 @@ class OfflineStorageService {
   static Future<void> deleteCustomer(String customerId) async {
     if (_basePath.isEmpty) return;
     await _firestore.doc('$_basePath/customers/$customerId').delete();
+    UserUsageService.trackDelete();
   }
 
   /// Update customer balance by delta (positive = increase, negative = decrease)
@@ -711,6 +732,7 @@ class OfflineStorageService {
       'balance': FieldValue.increment(delta),
       'updatedAt': FieldValue.serverTimestamp(),
     });
+    UserUsageService.trackWrite();
   }
 
   /// Atomically update customer balance AND save a transaction in a single
@@ -748,6 +770,7 @@ class OfflineStorageService {
 
     // Atomic commit — both succeed or both fail
     await batch.commit();
+    UserUsageService.trackWrite(count: 2);
   }
 
   /// Atomically update customer balance AND save a credit transaction.
@@ -784,6 +807,7 @@ class OfflineStorageService {
 
     // Atomic commit
     await batch.commit();
+    UserUsageService.trackWrite(count: 2);
   }
 
   /// Stream of all customers (real-time updates from Firestore)
@@ -823,6 +847,7 @@ class OfflineStorageService {
         .limit(pageSize);
     if (startAfter != null) query = query.startAfterDocument(startAfter);
     final snap = await query.get();
+    UserUsageService.trackRead(count: snap.docs.length);
     final customers = snap.docs
         .map((d) => CustomerModel.fromFirestore(d))
         .toList();
@@ -847,6 +872,7 @@ class OfflineStorageService {
     await _firestore
         .doc('$_basePath/transactions/${transaction.id}')
         .set(transaction.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Save transaction with named parameters (convenience method)
@@ -876,6 +902,7 @@ class OfflineStorageService {
     await _firestore
         .doc('$_basePath/transactions/${transaction.id}')
         .set(transaction.toFirestore());
+    UserUsageService.trackWrite();
   }
 
   /// Get customer transactions
@@ -889,6 +916,7 @@ class OfflineStorageService {
           .where('customerId', isEqualTo: customerId)
           .orderBy('createdAt', descending: true)
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs
           .map((doc) => TransactionModel.fromFirestore(doc))
           .toList();
@@ -911,6 +939,7 @@ class OfflineStorageService {
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
           )
           .get();
+      UserUsageService.trackRead(count: snapshot.docs.length);
       return snapshot.docs.fold<double>(0, (total, doc) {
         final amount = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
         return total + amount;
@@ -1064,6 +1093,7 @@ class OfflineStorageService {
           .doc('$_basePath/settings/user_settings')
           .set({key: value}, SetOptions(merge: true))
           .timeout(const Duration(seconds: 5));
+      UserUsageService.trackWrite();
     } catch (e) {
       debugPrint('Error saving setting to cloud: $e');
     }
@@ -1077,6 +1107,7 @@ class OfflineStorageService {
           .doc('$_basePath/settings/user_settings')
           .get()
           .timeout(const Duration(seconds: 5));
+      UserUsageService.trackRead();
       if (!doc.exists) return null;
       return doc.data()?[key] as T?;
     } catch (e) {
@@ -1093,6 +1124,7 @@ class OfflineStorageService {
           .doc('$_basePath/settings/user_settings')
           .get()
           .timeout(const Duration(seconds: 5));
+      UserUsageService.trackRead();
       if (!doc.exists) return {};
       final data = doc.data() ?? {};
 

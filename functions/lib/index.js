@@ -48,7 +48,7 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.scheduledFirestoreBackup = exports.sendNotificationToPlan = exports.sendNotificationToAll = exports.getSubscriptionLimits = exports.seedAdmins = exports.onCustomerDeleted = exports.onCustomerCreated = exports.onProductDeleted = exports.onProductCreated = exports.onBillCreated = exports.processReferralReward = exports.redeemReferralCode = exports.onSubscriptionWrite = exports.generateMonthlyReport = exports.exchangeIdToken = exports.sendDailySalesSummary = exports.checkChurnedUsers = exports.checkSubscriptionExpiry = exports.activateSubscription = exports.checkLowStock = exports.cleanupOldNotifications = exports.sendPushNotification = exports.onNewUserSignup = exports.generateDesktopToken = exports.deleteUserAccount = exports.onUserDeleted = exports.verifyRegistrationOTP = exports.sendRegistrationOTP = exports.razorpayWebhook = exports.createPaymentLink = void 0;
+exports.seedUserUsage = exports.scheduledFirestoreBackup = exports.sendNotificationToPlan = exports.sendNotificationToAll = exports.getSubscriptionLimits = exports.seedAdmins = exports.onCustomerDeleted = exports.onCustomerCreated = exports.onProductDeleted = exports.onProductCreated = exports.onBillCreated = exports.processReferralReward = exports.redeemReferralCode = exports.onSubscriptionWrite = exports.generateMonthlyReport = exports.exchangeIdToken = exports.sendDailySalesSummary = exports.checkChurnedUsers = exports.checkSubscriptionExpiry = exports.activateSubscription = exports.checkLowStock = exports.cleanupOldNotifications = exports.sendPushNotification = exports.onNewUserSignup = exports.generateDesktopToken = exports.deleteUserAccount = exports.onUserDeleted = exports.verifyRegistrationOTP = exports.sendRegistrationOTP = exports.razorpayWebhook = exports.createPaymentLink = void 0;
 const functions = __importStar(require("firebase-functions"));
 const admin = __importStar(require("firebase-admin"));
 const crypto = __importStar(require("crypto"));
@@ -61,7 +61,7 @@ const getEmailTransporter = () => {
         port: 587,
         secure: false,
         auth: {
-            user: process.env.BREVO_SMTP_USER || "",
+            user: process.env.BREVO_SMTP_USER || process.env.BREVO_EMAIL || "",
             pass: process.env.BREVO_API_KEY || "",
         },
     });
@@ -1664,8 +1664,8 @@ exports.redeemReferralCode = functions
         throw new functions.https.HttpsError("unauthenticated", "Login required");
     }
     const code = String(data.code || "").toUpperCase().trim();
-    if (code.length !== 6) {
-        throw new functions.https.HttpsError("invalid-argument", "Code must be 6 characters");
+    if (code.length !== 8) {
+        throw new functions.https.HttpsError("invalid-argument", "Code must be 8 characters");
     }
     const db = admin.firestore();
     const uid = context.auth.uid;
@@ -1701,7 +1701,7 @@ exports.processReferralReward = functions
     .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 20 })
     .firestore.document("razorpay_subscriptions/{subId}")
     .onCreate(async (snapshot) => {
-    var _a, _b, _c;
+    var _a, _b, _c, _d, _e;
     const subscriptionData = snapshot.data();
     const userId = subscriptionData === null || subscriptionData === void 0 ? void 0 : subscriptionData.userId;
     if (!userId)
@@ -1727,10 +1727,20 @@ exports.processReferralReward = functions
         ? new Date(Math.max(currentExpiry.toDate().getTime(), Date.now()))
         : new Date();
     const newExpiry = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+    // Extend referee (subscriber) subscription by 30 days too
+    const refereeSub = (_e = (_d = userDoc.data()) === null || _d === void 0 ? void 0 : _d.subscription) === null || _e === void 0 ? void 0 : _e.expiresAt;
+    const refereeBase = refereeSub
+        ? new Date(Math.max(refereeSub.toDate().getTime(), Date.now()))
+        : new Date();
+    const refereeNewExpiry = new Date(refereeBase.getTime() + 30 * 24 * 60 * 60 * 1000);
     const batch = db.batch();
     // Update referrer
     batch.update(db.collection("users").doc(referrerId), {
         "subscription.expiresAt": admin.firestore.Timestamp.fromDate(newExpiry),
+    });
+    // Update referee
+    batch.update(db.collection("users").doc(userId), {
+        "subscription.expiresAt": admin.firestore.Timestamp.fromDate(refereeNewExpiry),
     });
     // Audit trail
     const rewardRef = db.collection("referral_rewards").doc();
@@ -1738,19 +1748,29 @@ exports.processReferralReward = functions
         referrerId,
         refereeId: userId,
         rewardDays: 30,
+        bothRewarded: true,
         rewardedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     // In-app notification for referrer
     const notifRef = db.collection("users").doc(referrerId).collection("notifications").doc();
     batch.set(notifRef, {
         title: "🎁 Referral Reward! +30 Days Free",
-        body: "Your friend just upgraded! Your subscription has been extended by 30 days.",
+        body: "Your friend just upgraded! You both get 30 extra days of Pro.",
+        type: "referral",
+        read: false,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    // In-app notification for referee
+    const refereeNotifRef = db.collection("users").doc(userId).collection("notifications").doc();
+    batch.set(refereeNotifRef, {
+        title: "🎁 Welcome Bonus! +30 Days Free",
+        body: "Thanks for using a referral code! You got 30 extra days of Pro.",
         type: "referral",
         read: false,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
     await batch.commit();
-    console.log(`🎁 Referral reward granted: ${referrerId} gets +30 days for referring ${userId}`);
+    console.log(`🎁 Referral reward granted: both ${referrerId} and ${userId} get +30 days`);
 });
 // ═══════════════════════════════════════════════════════════════════════════════
 // SUBSCRIPTION LIMIT ENFORCEMENT (Server-side safety nets)
@@ -2002,14 +2022,14 @@ exports.sendNotificationToAll = functions
     .region("asia-south1")
     .runWith({ timeoutSeconds: 540, memory: "512MB", maxInstances: 5 })
     .https.onCall(async (data, context) => {
-    var _a;
     // Only admins can broadcast
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
     }
     const db = admin.firestore();
-    const callerDoc = await db.collection("users").doc(context.auth.uid).get();
-    if (!((_a = callerDoc.data()) === null || _a === void 0 ? void 0 : _a.isAdmin)) {
+    const callerEmail = context.auth.token.email || "";
+    const adminDoc = await db.collection("admins").doc(callerEmail).get();
+    if (!adminDoc.exists) {
         throw new functions.https.HttpsError("permission-denied", "Admin access required");
     }
     const { title, body, type, sentBy } = data;
@@ -2062,13 +2082,13 @@ exports.sendNotificationToPlan = functions
     .region("asia-south1")
     .runWith({ timeoutSeconds: 540, memory: "512MB", maxInstances: 5 })
     .https.onCall(async (data, context) => {
-    var _a;
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
     }
     const db = admin.firestore();
-    const callerDoc = await db.collection("users").doc(context.auth.uid).get();
-    if (!((_a = callerDoc.data()) === null || _a === void 0 ? void 0 : _a.isAdmin)) {
+    const callerEmail = context.auth.token.email || "";
+    const adminDoc = await db.collection("admins").doc(callerEmail).get();
+    if (!adminDoc.exists) {
         throw new functions.https.HttpsError("permission-denied", "Admin access required");
     }
     const { plan, title, body, type, sentBy } = data;
@@ -2145,13 +2165,55 @@ exports.scheduledFirestoreBackup = functions
         });
         console.log(`✅ Firestore backup started: ${response.name}`);
         console.log(`   Output: ${bucket}/backups/${timestamp}`);
-        // Log backup to admin collection for monitoring
+        // Log backup start to admin collection
         await admin.firestore().collection("_admin").doc("last_backup").set({
             timestamp: admin.firestore.FieldValue.serverTimestamp(),
             outputPath: `${bucket}/backups/${timestamp}`,
             operationName: response.name,
             status: "started",
         });
+        // Poll the export operation until it completes (max 8 minutes)
+        const operationName = response.name;
+        const maxAttempts = 48; // 48 × 10s = 8 minutes
+        let completed = false;
+        for (let i = 0; i < maxAttempts; i++) {
+            await new Promise(resolve => setTimeout(resolve, 10000)); // wait 10s
+            try {
+                const operation = await firestoreClient.checkExportDocumentsProgress(operationName);
+                const op = Array.isArray(operation) ? operation[0] : operation;
+                if (op.done) {
+                    completed = true;
+                    console.log(`✅ Firestore backup completed: ${operationName}`);
+                    await admin.firestore().collection("_admin").doc("last_backup").update({
+                        status: "completed",
+                        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                    });
+                    break;
+                }
+            }
+            catch (pollErr) {
+                // checkExportDocumentsProgress may not be available; fall back to marking as started
+                console.warn(`⚠️ Could not poll backup status (attempt ${i + 1}):`, pollErr);
+                // Don't fail — the export is still running. Just mark as completed optimistically after first poll failure.
+                if (i >= 2) {
+                    console.log("⚠️ Marking backup as completed (poll unavailable, export was accepted)");
+                    await admin.firestore().collection("_admin").doc("last_backup").update({
+                        status: "completed",
+                        completedAt: admin.firestore.FieldValue.serverTimestamp(),
+                        note: "Status inferred — poll API unavailable",
+                    });
+                    completed = true;
+                    break;
+                }
+            }
+        }
+        if (!completed) {
+            console.warn("⚠️ Backup may still be running (timed out waiting for completion)");
+            await admin.firestore().collection("_admin").doc("last_backup").update({
+                status: "timeout",
+                note: "Export accepted but did not complete within 8 minutes. Check GCS bucket manually.",
+            });
+        }
         return null;
     }
     catch (e) {
@@ -2164,5 +2226,119 @@ exports.scheduledFirestoreBackup = functions
         });
         return null;
     }
+});
+/**
+ * seedUserUsage — Admin-only callable that scans all users and populates
+ * the user_usage collection with document counts from their subcollections.
+ * This bootstraps the per-user cost tracking with existing data.
+ */
+exports.seedUserUsage = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 120, memory: "512MB", maxInstances: 1 })
+    .https.onCall(async (_data, context) => {
+    var _a, _b;
+    if (!context.auth) {
+        throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
+    }
+    // Verify caller is admin
+    const db = admin.firestore();
+    const callerEmail = context.auth.token.email || "";
+    const adminDoc = await db.collection("admins").doc(callerEmail).get();
+    const hardcodedAdmins = [
+        "kehsaram001@gmail.com",
+        "admin@retaillite.com",
+    ];
+    if (!adminDoc.exists && !hardcodedAdmins.includes(callerEmail)) {
+        throw new functions.https.HttpsError("permission-denied", "Admin access required");
+    }
+    console.log("🌱 seedUserUsage: Starting...");
+    // Get all users
+    const usersSnap = await db.collection("users").get();
+    let seeded = 0;
+    // Get admin emails set for fast lookup
+    const adminsSnap = await db.collection("admins").get();
+    const adminEmails = new Set([
+        ...hardcodedAdmins,
+        ...adminsSnap.docs.map(d => d.id.toLowerCase()),
+    ]);
+    let batch = db.batch();
+    const batchLimit = 400;
+    let batchCount = 0;
+    for (const userDoc of usersSnap.docs) {
+        const userId = userDoc.id;
+        const userData = userDoc.data();
+        // Count subcollection documents
+        const [billsCount, productsCount, expensesCount, transactionsCount] = await Promise.all([
+            db.collection(`users/${userId}/bills`).count().get(),
+            db.collection(`users/${userId}/products`).count().get(),
+            db.collection(`users/${userId}/expenses`).count().get(),
+            db.collection(`users/${userId}/transactions`).count().get(),
+        ]);
+        const bills = billsCount.data().count;
+        const products = productsCount.data().count;
+        const expenses = expensesCount.data().count;
+        const transactions = transactionsCount.data().count;
+        // Estimate usage based on document counts
+        const totalDocs = bills + products + expenses + transactions;
+        // Each doc was written once and read ~3x on average
+        const estimatedReads = totalDocs * 3;
+        const estimatedWrites = totalDocs;
+        // Average Firestore doc size ~1 KB; storage = docs × 1 KB
+        const estimatedStorageBytes = totalDocs * 1024;
+        // Each read serves ~1 KB avg doc over network
+        const estimatedNetworkBytes = estimatedReads * 1024;
+        // Estimate 2 function calls per session, avg 30 sessions per user
+        const estimatedFunctionCalls = Math.max(2, Math.round(totalDocs * 0.1));
+        // Estimate storage uploads: users with products likely uploaded some images
+        // Average product image ~30 KB after resize, logo ~20 KB
+        const hasLogo = userData.shopLogo || ((_a = userData.profile) === null || _a === void 0 ? void 0 : _a.shopLogo) ? 1 : 0;
+        const estimatedStorageUploadBytes = (products * 30 * 1024) + (hasLogo * 20 * 1024);
+        // Downloads ~2x uploads (images displayed multiple times)
+        const estimatedStorageDownloadBytes = estimatedStorageUploadBytes * 2;
+        const email = userData.email || ((_b = userData.profile) === null || _b === void 0 ? void 0 : _b.email) || "";
+        const isAdmin = adminEmails.has(email.toLowerCase());
+        // Calculate total estimated cost
+        const readsCost = (estimatedReads / 100000) * 0.06;
+        const writesCost = (estimatedWrites / 100000) * 0.18;
+        const storageCost = (estimatedStorageBytes / (1024 * 1024 * 1024)) * 0.026;
+        const networkCost = (estimatedNetworkBytes / (1024 * 1024 * 1024)) * 0.12;
+        const functionsCost = (estimatedFunctionCalls / 1000000) * 0.40;
+        const fileStorageCost = (estimatedStorageUploadBytes / (1024 * 1024 * 1024)) * 0.026;
+        const downloadCost = (estimatedStorageDownloadBytes / (1024 * 1024 * 1024)) * 0.12;
+        const totalCost = readsCost + writesCost + storageCost + networkCost +
+            functionsCost + fileStorageCost + downloadCost;
+        const usageRef = db.collection("user_usage").doc(userId);
+        batch.set(usageRef, {
+            userId: userId,
+            email: email,
+            isAdmin: isAdmin,
+            firestoreReads: estimatedReads,
+            firestoreWrites: estimatedWrites,
+            firestoreDeletes: 0,
+            storageBytes: estimatedStorageBytes,
+            functionCalls: estimatedFunctionCalls,
+            networkEgressBytes: estimatedNetworkBytes,
+            storageUploadBytes: estimatedStorageUploadBytes,
+            storageDownloadBytes: estimatedStorageDownloadBytes,
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+            periodStart: admin.firestore.Timestamp.fromDate(new Date(new Date().getFullYear(), new Date().getMonth(), 1)),
+            estimatedCost: totalCost,
+            docCounts: { bills, products, expenses, transactions },
+        }, { merge: true });
+        seeded++;
+        batchCount++;
+        // Commit in chunks of 400
+        if (batchCount >= batchLimit) {
+            await batch.commit();
+            batch = db.batch();
+            batchCount = 0;
+        }
+    }
+    // Commit remaining
+    if (batchCount > 0) {
+        await batch.commit();
+    }
+    console.log(`✅ seedUserUsage: Seeded ${seeded} users`);
+    return { success: true, seeded };
 });
 //# sourceMappingURL=index.js.map

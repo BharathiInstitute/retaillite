@@ -1,6 +1,7 @@
 /// User Costs Screen - Per-user backend usage and costs
 library;
 
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/services/user_usage_service.dart';
@@ -40,17 +41,21 @@ class UserCostsScreen extends ConsumerWidget {
         ],
       ),
       body: summaryAsync.when(
-        data: (summary) => _buildContent(summary),
+        data: (summary) => _buildContent(context, ref, summary),
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(child: Text('Error: $e')),
       ),
     );
   }
 
-  Widget _buildContent(Map<String, dynamic> summary) {
+  Widget _buildContent(
+    BuildContext context,
+    WidgetRef ref,
+    Map<String, dynamic> summary,
+  ) {
     final totalUsers = summary['totalUsers'] as int? ?? 0;
 
-    // If no usage data, show empty state
+    // If no usage data, show empty state with seed option
     if (totalUsers == 0) {
       return Center(
         child: Padding(
@@ -101,6 +106,10 @@ class UserCostsScreen extends ConsumerWidget {
                   ],
                 ),
               ),
+              const SizedBox(height: 32),
+              _SeedUsageButton(
+                onSeeded: () => ref.invalidate(usageSummaryProvider),
+              ),
             ],
           ),
         ),
@@ -114,6 +123,10 @@ class UserCostsScreen extends ConsumerWidget {
     final regularUsers = summary['regularUsers'] as int? ?? 0;
     final totalReads = summary['totalReads'] as int? ?? 0;
     final totalWrites = summary['totalWrites'] as int? ?? 0;
+    final totalFunctionCalls = summary['totalFunctionCalls'] as int? ?? 0;
+    final totalNetworkBytes = summary['totalNetworkBytes'] as int? ?? 0;
+    final totalStorageUpload = summary['totalStorageUpload'] as int? ?? 0;
+    final totalStorageDownload = summary['totalStorageDownload'] as int? ?? 0;
     final users = summary['users'] as List<UserUsage>? ?? [];
 
     return SingleChildScrollView(
@@ -133,8 +146,15 @@ class UserCostsScreen extends ConsumerWidget {
 
           const SizedBox(height: 24),
 
-          // Total Operations
-          _buildOperationsCard(totalReads, totalWrites),
+          // All Operations & Costs
+          _buildOperationsCard(
+            totalReads,
+            totalWrites,
+            totalFunctionCalls,
+            totalNetworkBytes,
+            totalStorageUpload,
+            totalStorageDownload,
+          ),
 
           const SizedBox(height: 24),
 
@@ -299,16 +319,82 @@ class UserCostsScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildOperationsCard(int reads, int writes) {
+  Widget _buildOperationsCard(
+    int reads,
+    int writes,
+    int functionCalls,
+    int networkBytes,
+    int storageUpload,
+    int storageDownload,
+  ) {
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(20),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _buildOperationStat('Reads', reads, Icons.visibility, Colors.green),
-            Container(width: 1, height: 40, color: Colors.grey.shade300),
-            _buildOperationStat('Writes', writes, Icons.edit, Colors.orange),
+            Text(
+              'Total Operations & Bandwidth',
+              style: TextStyle(
+                fontWeight: FontWeight.bold,
+                fontSize: 14,
+                color: Colors.grey.shade700,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildOperationStat(
+                  'Reads',
+                  reads,
+                  Icons.visibility,
+                  Colors.green,
+                ),
+                Container(width: 1, height: 40, color: Colors.grey.shade300),
+                _buildOperationStat(
+                  'Writes',
+                  writes,
+                  Icons.edit,
+                  Colors.orange,
+                ),
+                Container(width: 1, height: 40, color: Colors.grey.shade300),
+                _buildOperationStat(
+                  'Functions',
+                  functionCalls,
+                  Icons.functions,
+                  Colors.purple,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            const Divider(height: 1),
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              children: [
+                _buildOperationStat(
+                  'Bandwidth',
+                  _formatBytes(networkBytes),
+                  Icons.cloud_download,
+                  Colors.blue,
+                ),
+                Container(width: 1, height: 40, color: Colors.grey.shade300),
+                _buildOperationStat(
+                  'Uploads',
+                  _formatBytes(storageUpload),
+                  Icons.cloud_upload,
+                  Colors.teal,
+                ),
+                Container(width: 1, height: 40, color: Colors.grey.shade300),
+                _buildOperationStat(
+                  'Downloads',
+                  _formatBytes(storageDownload),
+                  Icons.download,
+                  Colors.indigo,
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -317,16 +403,17 @@ class UserCostsScreen extends ConsumerWidget {
 
   Widget _buildOperationStat(
     String label,
-    int count,
+    dynamic value,
     IconData icon,
     Color color,
   ) {
+    final displayValue = value is int ? _formatNumber(value) : value.toString();
     return Column(
       children: [
         Icon(icon, color: color, size: 24),
         const SizedBox(height: 4),
         Text(
-          _formatNumber(count),
+          displayValue,
           style: TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
@@ -394,6 +481,7 @@ class UserCostsScreen extends ConsumerWidget {
   Widget _buildUserCard(UserUsage user) {
     final isAdmin = user.isAdmin;
     final color = isAdmin ? Colors.purple : Colors.blue;
+    final breakdown = user.costBreakdown;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -454,7 +542,7 @@ class UserCostsScreen extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
                     Text(
-                      '\$${user.estimatedCost.toStringAsFixed(3)}',
+                      '\$${user.estimatedCost.toStringAsFixed(4)}',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
@@ -474,7 +562,7 @@ class UserCostsScreen extends ConsumerWidget {
             const Divider(height: 1),
             const SizedBox(height: 12),
 
-            // Stats
+            // Firestore Stats
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -488,7 +576,98 @@ class UserCostsScreen extends ConsumerWidget {
                 ),
               ],
             ),
+
+            const SizedBox(height: 8),
+
+            // Bandwidth & Functions Stats
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildUserStat(
+                  'Bandwidth',
+                  _formatBytes(user.networkEgressBytes),
+                  Icons.cloud_download,
+                ),
+                _buildUserStat(
+                  'Functions',
+                  user.functionCalls,
+                  Icons.functions,
+                ),
+                _buildUserStat(
+                  'Uploads',
+                  _formatBytes(user.storageUploadBytes),
+                  Icons.cloud_upload,
+                ),
+                _buildUserStat(
+                  'Downloads',
+                  _formatBytes(user.storageDownloadBytes),
+                  Icons.download,
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+            const Divider(height: 1),
+            const SizedBox(height: 8),
+
+            // Cost Breakdown
+            Text(
+              'Cost Breakdown',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Colors.grey.shade600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 12,
+              runSpacing: 4,
+              children: breakdown.entries
+                  .where((e) => e.value > 0)
+                  .map((e) => _buildCostChip(e.key, e.value))
+                  .toList(),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCostChip(String category, double cost) {
+    final colors = {
+      'reads': Colors.green,
+      'writes': Colors.orange,
+      'deletes': Colors.red,
+      'storage': Colors.blueGrey,
+      'functions': Colors.purple,
+      'bandwidth': Colors.blue,
+      'fileStorage': Colors.teal,
+      'downloads': Colors.indigo,
+    };
+    final labels = {
+      'reads': 'Reads',
+      'writes': 'Writes',
+      'deletes': 'Deletes',
+      'storage': 'DB Storage',
+      'functions': 'Functions',
+      'bandwidth': 'Bandwidth',
+      'fileStorage': 'File Storage',
+      'downloads': 'Downloads',
+    };
+    final chipColor = colors[category] ?? Colors.grey;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: chipColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        '${labels[category] ?? category}: \$${cost.toStringAsFixed(5)}',
+        style: TextStyle(
+          fontSize: 10,
+          color: chipColor.shade700,
+          fontWeight: FontWeight.w500,
         ),
       ),
     );
@@ -513,6 +692,17 @@ class UserCostsScreen extends ConsumerWidget {
     );
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    } else if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    }
+    return '$bytes B';
+  }
+
   String _formatNumber(int number) {
     if (number >= 1000000) {
       return '${(number / 1000000).toStringAsFixed(1)}M';
@@ -520,5 +710,76 @@ class UserCostsScreen extends ConsumerWidget {
       return '${(number / 1000).toStringAsFixed(1)}K';
     }
     return number.toString();
+  }
+}
+
+/// Button to seed user_usage data from existing users via Cloud Function
+class _SeedUsageButton extends StatefulWidget {
+  final VoidCallback onSeeded;
+  const _SeedUsageButton({required this.onSeeded});
+
+  @override
+  State<_SeedUsageButton> createState() => _SeedUsageButtonState();
+}
+
+class _SeedUsageButtonState extends State<_SeedUsageButton> {
+  bool _loading = false;
+  String? _message;
+
+  Future<void> _seedUsage() async {
+    setState(() {
+      _loading = true;
+      _message = null;
+    });
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: 'asia-south1');
+      final result = await fn.httpsCallable('seedUserUsage').call();
+      final data = result.data as Map<String, dynamic>?;
+      final seeded = data?['seeded'] ?? 0;
+      setState(() => _message = 'Seeded $seeded users');
+      widget.onSeeded();
+    } catch (e) {
+      setState(() => _message = 'Error: $e');
+    } finally {
+      setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        ElevatedButton.icon(
+          onPressed: _loading ? null : _seedUsage,
+          icon: _loading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.play_arrow),
+          label: Text(
+            _loading ? 'Seeding...' : 'Seed Usage Data from Existing Users',
+          ),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.amber.shade700,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+          ),
+        ),
+        if (_message != null) ...[
+          const SizedBox(height: 12),
+          Text(
+            _message!,
+            style: TextStyle(
+              color: _message!.startsWith('Error')
+                  ? Colors.red
+                  : Colors.green.shade700,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }

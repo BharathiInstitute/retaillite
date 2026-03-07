@@ -57,6 +57,74 @@
       width: 100%;
     }
 
+    .platform-card .btn + .btn {
+      margin-top: 0.5rem;
+    }
+
+    .store-badge-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.625rem;
+      background: #0078D4;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      padding: 0.75rem 1.25rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      text-decoration: none;
+      transition: all 0.25s ease;
+      width: 100%;
+      cursor: pointer;
+    }
+
+    .store-badge-btn:hover {
+      background: #106EBE;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 120, 212, 0.35);
+    }
+
+    .store-badge-btn svg {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .store-badge-btn .store-badge-text {
+      text-align: left;
+      line-height: 1.2;
+    }
+
+    .store-badge-btn .store-badge-text small {
+      display: block;
+      font-size: 0.625rem;
+      font-weight: 400;
+      opacity: 0.85;
+    }
+
+    .store-badge-btn .store-badge-text strong {
+      display: block;
+      font-size: 0.9375rem;
+    }
+
+    .store-divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin: 0.75rem 0;
+      font-size: 0.75rem;
+      color: var(--color-text-light);
+    }
+
+    .store-divider::before,
+    .store-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--color-border);
+    }
+
     .req-table {
       width: 100%;
       border-collapse: collapse;
@@ -221,10 +289,23 @@
             <span>~45 MB</span>
             <span>v8.1.0</span>
           </div>
+          <a href="https://apps.microsoft.com/store/detail/9P0BHSSVVB2H?cid=DevShareMCLPCS"
+            class="store-badge-btn" target="_blank" rel="noopener noreferrer">
+            <svg viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
+              <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
+              <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
+              <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
+            </svg>
+            <span class="store-badge-text">
+              <small>Get it from</small>
+              <strong>Microsoft Store</strong>
+            </span>
+          </a>
+          <div class="store-divider"><span>or direct download</span></div>
           <a href="https://firebasestorage.googleapis.com/v0/b/login-radha.firebasestorage.app/o/downloads%2Fwindows%2FTulasiStores_Setup.exe?alt=media"
-            class="btn btn-primary" download="TulasiStores_Setup_v8.1.0.exe">
-            <span style="display: block; font-size: 0.6875rem; opacity: 0.8;">DOWNLOAD</span>
-            Windows Installer
+            class="btn btn-secondary" download="TulasiStores_Setup_v8.1.0.exe" style="font-size: 0.8125rem;">
+            &#x2B07; Download Installer (.exe)
           </a>
         </div>
 
@@ -290,10 +371,26 @@
         <!-- Windows -->
         <div class="card animate-on-scroll">
           <h3 style="margin-bottom: 1.5rem;">&#x1FA9F; Windows Installation</h3>
+          <div style="background: #EFF6FF; border: 1px solid #BFDBFE; border-radius: 10px; padding: 1rem 1.25rem; margin-bottom: 1.25rem;">
+            <p style="font-size: 0.875rem; font-weight: 600; color: #1E40AF; margin-bottom: 0.5rem;">&#x2B50; Recommended: Microsoft Store</p>
+            <div class="install-step" style="margin-bottom: 0.5rem;">
+              <div class="install-step-num">1</div>
+              <div><p>Open <strong>Microsoft Store</strong> on your PC</p></div>
+            </div>
+            <div class="install-step" style="margin-bottom: 0.5rem;">
+              <div class="install-step-num">2</div>
+              <div><p>Search <strong>"TULASI STORES"</strong> or click the Store button above</p></div>
+            </div>
+            <div class="install-step" style="margin-bottom: 0;">
+              <div class="install-step-num">3</div>
+              <div><p>Click <strong>Install</strong> &#8212; auto-updates enabled!</p></div>
+            </div>
+          </div>
+          <p style="font-size: 0.8125rem; color: var(--color-text-light); margin-bottom: 1rem;">Or install manually:</p>
           <div class="install-step">
             <div class="install-step-num">1</div>
             <div>
-              <p>Click the <strong>Download Windows Installer</strong> button above</p>
+              <p>Click the <strong>Download Installer</strong> button above</p>
             </div>
           </div>
           <div class="install-step">

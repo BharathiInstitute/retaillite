@@ -28,7 +28,7 @@ const getEmailTransporter = () => {
         port: 587,
         secure: false,
         auth: {
-            user: process.env.BREVO_SMTP_USER || "",
+            user: process.env.BREVO_SMTP_USER || process.env.BREVO_EMAIL || "",
             pass: process.env.BREVO_API_KEY || "",
         },
     });
@@ -2558,4 +2558,137 @@ export const scheduledFirestoreBackup = functions
 
             return null;
         }
+    });
+
+/**
+ * seedUserUsage — Admin-only callable that scans all users and populates
+ * the user_usage collection with document counts from their subcollections.
+ * This bootstraps the per-user cost tracking with existing data.
+ */
+export const seedUserUsage = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 120, memory: "512MB", maxInstances: 1 })
+    .https.onCall(async (_data, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError("unauthenticated", "Must be authenticated");
+        }
+
+        // Verify caller is admin
+        const db = admin.firestore();
+        const callerEmail = context.auth.token.email || "";
+        const adminDoc = await db.collection("admins").doc(callerEmail).get();
+        const hardcodedAdmins = [
+            "kehsaram001@gmail.com",
+            "admin@retaillite.com",
+        ];
+        if (!adminDoc.exists && !hardcodedAdmins.includes(callerEmail)) {
+            throw new functions.https.HttpsError("permission-denied", "Admin access required");
+        }
+
+        console.log("🌱 seedUserUsage: Starting...");
+
+        // Get all users
+        const usersSnap = await db.collection("users").get();
+        let seeded = 0;
+
+        // Get admin emails set for fast lookup
+        const adminsSnap = await db.collection("admins").get();
+        const adminEmails = new Set([
+            ...hardcodedAdmins,
+            ...adminsSnap.docs.map(d => d.id.toLowerCase()),
+        ]);
+
+        let batch = db.batch();
+        const batchLimit = 400;
+        let batchCount = 0;
+
+        for (const userDoc of usersSnap.docs) {
+            const userId = userDoc.id;
+            const userData = userDoc.data();
+
+            // Count subcollection documents
+            const [billsCount, productsCount, expensesCount, transactionsCount] =
+                await Promise.all([
+                    db.collection(`users/${userId}/bills`).count().get(),
+                    db.collection(`users/${userId}/products`).count().get(),
+                    db.collection(`users/${userId}/expenses`).count().get(),
+                    db.collection(`users/${userId}/transactions`).count().get(),
+                ]);
+
+            const bills = billsCount.data().count;
+            const products = productsCount.data().count;
+            const expenses = expensesCount.data().count;
+            const transactions = transactionsCount.data().count;
+
+            // Estimate usage based on document counts
+            const totalDocs = bills + products + expenses + transactions;
+            // Each doc was written once and read ~3x on average
+            const estimatedReads = totalDocs * 3;
+            const estimatedWrites = totalDocs;
+            // Average Firestore doc size ~1 KB; storage = docs × 1 KB
+            const estimatedStorageBytes = totalDocs * 1024;
+            // Each read serves ~1 KB avg doc over network
+            const estimatedNetworkBytes = estimatedReads * 1024;
+            // Estimate 2 function calls per session, avg 30 sessions per user
+            const estimatedFunctionCalls = Math.max(2, Math.round(totalDocs * 0.1));
+            // Estimate storage uploads: users with products likely uploaded some images
+            // Average product image ~30 KB after resize, logo ~20 KB
+            const hasLogo = userData.shopLogo || userData.profile?.shopLogo ? 1 : 0;
+            const estimatedStorageUploadBytes = (products * 30 * 1024) + (hasLogo * 20 * 1024);
+            // Downloads ~2x uploads (images displayed multiple times)
+            const estimatedStorageDownloadBytes = estimatedStorageUploadBytes * 2;
+
+            const email = userData.email || userData.profile?.email || "";
+            const isAdmin = adminEmails.has(email.toLowerCase());
+
+            // Calculate total estimated cost
+            const readsCost = (estimatedReads / 100000) * 0.06;
+            const writesCost = (estimatedWrites / 100000) * 0.18;
+            const storageCost = (estimatedStorageBytes / (1024 * 1024 * 1024)) * 0.026;
+            const networkCost = (estimatedNetworkBytes / (1024 * 1024 * 1024)) * 0.12;
+            const functionsCost = (estimatedFunctionCalls / 1000000) * 0.40;
+            const fileStorageCost = (estimatedStorageUploadBytes / (1024 * 1024 * 1024)) * 0.026;
+            const downloadCost = (estimatedStorageDownloadBytes / (1024 * 1024 * 1024)) * 0.12;
+            const totalCost = readsCost + writesCost + storageCost + networkCost +
+                functionsCost + fileStorageCost + downloadCost;
+
+            const usageRef = db.collection("user_usage").doc(userId);
+            batch.set(usageRef, {
+                userId: userId,
+                email: email,
+                isAdmin: isAdmin,
+                firestoreReads: estimatedReads,
+                firestoreWrites: estimatedWrites,
+                firestoreDeletes: 0,
+                storageBytes: estimatedStorageBytes,
+                functionCalls: estimatedFunctionCalls,
+                networkEgressBytes: estimatedNetworkBytes,
+                storageUploadBytes: estimatedStorageUploadBytes,
+                storageDownloadBytes: estimatedStorageDownloadBytes,
+                lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+                periodStart: admin.firestore.Timestamp.fromDate(
+                    new Date(new Date().getFullYear(), new Date().getMonth(), 1)
+                ),
+                estimatedCost: totalCost,
+                docCounts: { bills, products, expenses, transactions },
+            }, { merge: true });
+
+            seeded++;
+            batchCount++;
+
+            // Commit in chunks of 400
+            if (batchCount >= batchLimit) {
+                await batch.commit();
+                batch = db.batch();
+                batchCount = 0;
+            }
+        }
+
+        // Commit remaining
+        if (batchCount > 0) {
+            await batch.commit();
+        }
+
+        console.log(`✅ seedUserUsage: Seeded ${seeded} users`);
+        return { success: true, seeded };
     });
