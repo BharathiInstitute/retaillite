@@ -31,7 +31,6 @@ import 'package:in_app_review/in_app_review.dart';
 import 'package:retaillite/shared/widgets/onboarding_checklist.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
-import 'package:retaillite/shared/widgets/app_text_field.dart';
 
 class PaymentModal extends ConsumerStatefulWidget {
   const PaymentModal({super.key});
@@ -42,18 +41,25 @@ class PaymentModal extends ConsumerStatefulWidget {
 
 class _PaymentModalState extends ConsumerState<PaymentModal> {
   PaymentMethod _selectedMethod = PaymentMethod.cash;
-  final _receivedController = TextEditingController();
+  final _udharAmountController = TextEditingController();
   bool _isLoading = false;
   CustomerModel? _selectedCustomer;
 
   @override
   void dispose() {
-    _receivedController.dispose();
+    _udharAmountController.dispose();
     super.dispose();
   }
 
-  double get _receivedAmount {
-    return double.tryParse(_receivedController.text) ?? 0;
+  double get _udharAmount {
+    return double.tryParse(_udharAmountController.text) ?? 0;
+  }
+
+  void _syncUdharAmount() {
+    if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
+      final cart = ref.read(cartProvider);
+      _udharAmountController.text = cart.total.toInt().toString();
+    }
   }
 
   Future<void> _maybeRequestReview() async {
@@ -81,17 +87,27 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       return;
     }
 
-    // Validate cash payment: received amount must cover the total
-    if (_selectedMethod == PaymentMethod.cash && _receivedAmount < cart.total) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Received amount must be at least equal to the total'),
-        ),
-      );
-      return;
-    }
-
     setState(() => _isLoading = true);
+
+    // Validate udhar amount
+    final udharAmount = _selectedMethod == PaymentMethod.udhar
+        ? _udharAmount
+        : 0.0;
+    if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
+      if (udharAmount <= 0 || udharAmount > cart.total) {
+        setState(() => _isLoading = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              udharAmount <= 0
+                  ? 'Enter an amount to add to khata'
+                  : 'Khata amount cannot exceed bill total',
+            ),
+          ),
+        );
+        return;
+      }
+    }
 
     try {
       // Check bill limit before creating
@@ -130,20 +146,18 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         paymentMethod: _selectedMethod,
         customerId: _selectedCustomer?.id ?? cart.customerId,
         customerName: _selectedCustomer?.name ?? cart.customerName,
-        receivedAmount: _selectedMethod == PaymentMethod.cash
-            ? _receivedAmount
-            : null,
+        receivedAmount: cart.total,
         createdAt: now,
         date: dateStr,
       );
 
       // Save bill to local storage for Reports
-      // For Udhar payments, atomically save bill + update balance + record transaction
+      // For Udhar/Credit payments, atomically save bill + update khata balance
       if (_selectedMethod == PaymentMethod.udhar && _selectedCustomer != null) {
         await OfflineStorageService.saveBillWithUdharAtomic(
           bill: bill,
           customerId: _selectedCustomer!.id,
-          amount: cart.total,
+          amount: udharAmount,
         );
       } else {
         await OfflineStorageService.saveBillLocally(bill);
@@ -172,8 +186,8 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
         ref.invalidate(filteredBillsProvider);
         ref.invalidate(dashboardBillsProvider);
 
-        // Invalidate customers if Udhar payment was made
-        if (_selectedMethod == PaymentMethod.udhar) {
+        // Invalidate customers if a customer was selected
+        if (_selectedCustomer != null) {
           ref.invalidate(customersProvider);
         }
 
@@ -518,7 +532,12 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<CustomerModel?>(
-              value: _selectedCustomer,
+              value: _selectedCustomer != null
+                  ? customers.cast<CustomerModel?>().firstWhere(
+                      (c) => c?.id == _selectedCustomer!.id,
+                      orElse: () => null,
+                    )
+                  : null,
               hint: Row(
                 children: [
                   Icon(
@@ -602,7 +621,10 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                 ),
               ],
               onChanged: (customer) {
-                setState(() => _selectedCustomer = customer);
+                setState(() {
+                  _selectedCustomer = customer;
+                  _syncUdharAmount();
+                });
               },
             ),
           ),
@@ -625,7 +647,6 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
   @override
   Widget build(BuildContext context) {
     final cart = ref.watch(cartProvider);
-    final change = _receivedAmount - cart.total;
 
     return Container(
       decoration: BoxDecoration(
@@ -732,8 +753,12 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                           child: _PaymentMethodButton(
                             method: method,
                             isSelected: isSelected,
-                            onTap: () =>
-                                setState(() => _selectedMethod = method),
+                            onTap: () {
+                              setState(() {
+                                _selectedMethod = method;
+                                _syncUdharAmount();
+                              });
+                            },
                           ),
                         ),
                       );
@@ -742,111 +767,117 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
               ),
               const SizedBox(height: 12),
 
-              // Cash received (only for cash)
-              if (_selectedMethod == PaymentMethod.cash) ...[
-                CurrencyTextField(
-                  label: 'Received Amount',
-                  controller: _receivedController,
-                  onChanged: (_) => setState(() {}),
-                ),
-                const SizedBox(height: 6),
-                // Quick amount buttons
-                Wrap(
-                  spacing: 8,
-                  children:
-                      [50, 100, 200, 500].map((amount) {
-                        return ActionChip(
-                          label: Text('₹$amount'),
-                          onPressed: () {
-                            _receivedController.text = amount.toString();
-                            setState(() {});
-                          },
-                        );
-                      }).toList()..add(
-                        ActionChip(
-                          label: const Text('Exact'),
-                          onPressed: () {
-                            _receivedController.text = cart.total
-                                .toInt()
-                                .toString();
-                            setState(() {});
-                          },
+              // Udhar amount editor
+              if (_selectedMethod == PaymentMethod.udhar) ...[
+                if (_selectedCustomer != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Amount to add to ${_selectedCustomer!.name}\'s khata',
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: _udharAmountController,
+                    keyboardType: TextInputType.number,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                    decoration: InputDecoration(
+                      prefixText: '₹ ',
+                      prefixStyle: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.warning,
+                      ),
+                      hintText: '0',
+                      filled: true,
+                      fillColor: AppColors.warning.withValues(alpha: 0.08),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: AppColors.warning.withValues(alpha: 0.3),
                         ),
                       ),
-                ),
-                if (_receivedAmount >= cart.total) ...[
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                          color: AppColors.warning.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(
+                          color: AppColors.warning,
+                          width: 2,
+                        ),
+                      ),
+                      suffixIcon: TextButton(
+                        onPressed: () {
+                          _udharAmountController.text = cart.total
+                              .toInt()
+                              .toString();
+                          setState(() {});
+                        },
+                        child: const Text('Full'),
+                      ),
                     ),
+                    onChanged: (_) => setState(() {}),
+                  ),
+                  if (_udharAmount > 0 && _udharAmount < cart.total) ...[
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: AppColors.success,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${(cart.total - _udharAmount).asCurrency} paid now, ${_udharAmount.asCurrency} on credit',
+                              style: Theme.of(context).textTheme.bodySmall
+                                  ?.copyWith(color: AppColors.success),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: AppColors.success.withValues(alpha: 0.1),
+                      color: AppColors.error.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: AppColors.error.withValues(alpha: 0.3),
+                      ),
                     ),
                     child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text('Return: '),
-                        Text(
-                          change.asCurrency,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: AppColors.success,
-                                fontWeight: FontWeight.bold,
-                              ),
+                        const Icon(Icons.warning_amber, color: AppColors.error),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Please select a customer for Udhar payment',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppColors.error),
+                          ),
                         ),
                       ],
                     ),
                   ),
                 ],
                 const SizedBox(height: 12),
-              ],
-
-              // Udhar warning/validation
-              if (_selectedMethod == PaymentMethod.udhar) ...[
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: _selectedCustomer != null
-                        ? AppColors.warning.withValues(alpha: 0.1)
-                        : AppColors.error.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: _selectedCustomer != null
-                          ? AppColors.warning.withValues(alpha: 0.3)
-                          : AppColors.error.withValues(alpha: 0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _selectedCustomer != null
-                            ? Icons.info_outline
-                            : Icons.warning_amber,
-                        color: _selectedCustomer != null
-                            ? AppColors.warning
-                            : AppColors.error,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _selectedCustomer != null
-                              ? '${cart.total.asCurrency} will be added to ${_selectedCustomer!.name}\'s khata'
-                              : 'Please select a customer for Udhar payment',
-                          style: Theme.of(context).textTheme.bodySmall
-                              ?.copyWith(
-                                color: _selectedCustomer == null
-                                    ? AppColors.error
-                                    : null,
-                              ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 20),
               ],
 
               // Complete button

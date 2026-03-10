@@ -148,7 +148,27 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   itemCount: cart.items.length,
                   itemBuilder: (context, index) {
                     final item = cart.items[index];
-                    return _buildCartItem(item, ref);
+                    return Dismissible(
+                      key: ValueKey(item.productId),
+                      direction: DismissDirection.endToStart,
+                      onDismissed: (_) => ref
+                          .read(cartProvider.notifier)
+                          .removeItem(item.productId),
+                      background: Container(
+                        alignment: Alignment.centerRight,
+                        padding: const EdgeInsets.only(right: 20),
+                        decoration: BoxDecoration(
+                          color: Colors.red,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(
+                          Icons.delete,
+                          color: Colors.white,
+                          size: 22,
+                        ),
+                      ),
+                      child: _buildCartItem(item, ref),
+                    );
                   },
                 ),
         ),
@@ -293,6 +313,20 @@ class _BillingScreenState extends ConsumerState<BillingScreen> {
                   padding: EdgeInsets.zero,
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () =>
+                ref.read(cartProvider.notifier).removeItem(item.productId),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close,
+                size: 18,
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
         ],

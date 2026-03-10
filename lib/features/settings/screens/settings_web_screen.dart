@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
@@ -43,6 +44,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   late TextEditingController _emailController;
   late TextEditingController _termsController;
   late TextEditingController _gstController;
+  late TextEditingController _upiController;
 
   String _selectedCurrency = 'INR';
   String _selectedTimezone = 'Asia/Kolkata';
@@ -64,10 +66,12 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _shopAddressController = TextEditingController(text: user?.address ?? '');
     _emailController = TextEditingController(text: user?.email ?? '');
     _gstController = TextEditingController(text: user?.gstNumber ?? '');
+    _upiController = TextEditingController(text: user?.upiId ?? '');
     _selectedCurrency = user?.currency ?? 'INR';
     _selectedTimezone = user?.timezone ?? 'Asia/Kolkata';
     _termsController = TextEditingController(
       text:
+          user?.settings.receiptFooter ??
           '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.',
     );
   }
@@ -80,6 +84,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _shopAddressController.dispose();
     _emailController.dispose();
     _gstController.dispose();
+    _upiController.dispose();
     _termsController.dispose();
     super.dispose();
   }
@@ -206,6 +211,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   Future<void> _saveSettings() async {
     setState(() => _isSaving = true);
     try {
+      final footer = _termsController.text.trim();
       final success = await ref
           .read(authNotifierProvider.notifier)
           .updateShopInfo(
@@ -215,8 +221,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             address: _shopAddressController.text.trim(),
             email: _emailController.text.trim(),
             gstNumber: _gstController.text.trim(),
+            upiId: _upiController.text.trim(),
             currency: _selectedCurrency,
             timezone: _selectedTimezone,
+            receiptFooter: footer,
           );
 
       if (mounted) {
@@ -2278,9 +2286,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildFieldLabel('Shop Name'),
-                        _buildTextField(
-                          value: user?.shopName ?? 'Your Shop Name',
-                        ),
+                        _buildTextField(controller: _shopNameController),
                       ],
                     ),
                   ),
@@ -2295,14 +2301,14 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Address Line 1'),
-                    _buildTextField(value: user?.address ?? 'Shop Address'),
+                    _buildTextField(controller: _shopAddressController),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Contact Number'),
-                    _buildTextField(value: user?.phone ?? ''),
+                    _buildTextField(controller: _contactNumberController),
                   ],
                 ),
               ]),
@@ -2386,32 +2392,12 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   children: [
                     _buildFieldLabel('GSTIN'),
                     _buildTextField(
-                      value: user?.gstNumber ?? '',
+                      controller: _gstController,
                       hint: '22AAAAA0000A1Z5',
                     ),
                   ],
                 ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildFieldLabel('Default Tax Rate'),
-                    _buildDropdown(
-                      '${(user?.settings.taxRate ?? 5.0).toStringAsFixed(0)}%',
-                      ['5%', '12%', '18%', '28%'],
-                    ),
-                  ],
-                ),
               ]),
-              const SizedBox(height: 16),
-              const Row(
-                children: [
-                  Checkbox(value: false, onChanged: null),
-                  Text(
-                    'Prices are inclusive of tax (coming soon)',
-                    style: TextStyle(color: AppColors.textMuted),
-                  ),
-                ],
-              ),
             ],
           ),
         ),
@@ -2469,86 +2455,73 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                   const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
+                  if (_upiController.text.trim().isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFDCFCE7),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: const Text(
+                        'ACTIVE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: AppColors.success,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
                     ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              _buildFieldLabel('UPI ID'),
+              TextField(
+                controller: _upiController,
+                decoration: const InputDecoration(
+                  hintText: 'yourname@upi',
+                  filled: true,
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              if (_upiController.text.trim().isNotEmpty)
+                Center(
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: const Color(0xFFDCFCE7),
-                      borderRadius: BorderRadius.circular(4),
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: AppShadows.small,
                     ),
-                    child: const Text(
-                      'ACTIVE',
+                    child: QrImageView(
+                      data: 'upi://pay?pa=${_upiController.text.trim()}',
+                      size: 180,
+                      backgroundColor: Colors.white,
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 8),
+              const Row(
+                children: [
+                  Icon(
+                    Icons.info_outline,
+                    size: 14,
+                    color: AppColors.textMuted,
+                  ),
+                  SizedBox(width: 4),
+                  Flexible(
+                    child: Text(
+                      'Enter your UPI ID and click Save. The QR code will be shown on invoices.',
                       style: TextStyle(
-                        fontSize: 10,
-                        color: AppColors.success,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                        color: AppColors.textMuted,
                       ),
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Container(
-                    width: 64,
-                    height: 64,
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).cardColor,
-                      borderRadius: BorderRadius.circular(8),
-                      boxShadow: AppShadows.small,
-                    ),
-                    child: const Icon(Icons.qr_code_2, size: 40),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTextField(value: 'retailstore@upi'),
-                        const SizedBox(height: 4),
-                        TextButton(
-                          onPressed: () {},
-                          child: const Text(
-                            'Generate New QR',
-                            style: TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              const Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    'Razorpay Integration',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Switch(value: false, onChanged: null),
-                ],
-              ),
-              const SizedBox(height: 4),
-              const Text(
-                'Coming soon',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 12),
-              _buildTextField(
-                value: '',
-                hint: 'Key ID (rzp_live_...)',
-                enabled: false,
-              ),
-              const SizedBox(height: 8),
-              _buildTextField(value: '', hint: 'Key Secret', enabled: false),
-              const SizedBox(height: 8),
-              const Text(
-                'Enable to send payment links via SMS/Email.',
-                style: TextStyle(fontSize: 11, color: AppColors.textMuted),
               ),
             ],
           ),

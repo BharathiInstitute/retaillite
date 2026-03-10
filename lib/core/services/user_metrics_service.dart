@@ -285,32 +285,57 @@ class UserMetricsService {
       int newCount = 0;
       int limit = 50;
 
-      await _firestore.runTransaction((txn) async {
-        final snap = await txn.get(userRef);
+      // On Windows, avoid runTransaction — the C++ Firestore SDK sends
+      // callbacks on non-platform threads, crashing Flutter.
+      final useSimpleWrite = !kIsWeb && Platform.isWindows;
+
+      if (useSimpleWrite) {
+        final snap = await userRef.get();
         final data = snap.data() ?? {};
         final limitsMap = data['limits'] as Map<String, dynamic>? ?? {};
         final now = DateTime.now();
         final currentMonth =
             '${now.year}-${now.month.toString().padLeft(2, '0')}';
-
-        // Detect new month via Firestore field (not SharedPreferences)
         final lastResetMonth = (limitsMap['lastResetMonth'] as String?) ?? '';
         final isNewMonth = lastResetMonth != currentMonth;
         final billsThisMonth = isNewMonth
             ? 0
             : ((limitsMap['billsThisMonth'] as int?) ?? 0);
         limit = (limitsMap['billsLimit'] as int?) ?? 50;
-
         allowed = billsThisMonth < limit;
         if (allowed) {
           newCount = billsThisMonth + 1;
-          txn.update(userRef, {
+          await userRef.update({
             'limits.billsThisMonth': newCount,
             'limits.lastResetMonth': currentMonth,
             'activity.lastActiveAt': FieldValue.serverTimestamp(),
           });
         }
-      });
+      } else {
+        await _firestore.runTransaction((txn) async {
+          final snap = await txn.get(userRef);
+          final data = snap.data() ?? {};
+          final limitsMap = data['limits'] as Map<String, dynamic>? ?? {};
+          final now = DateTime.now();
+          final currentMonth =
+              '${now.year}-${now.month.toString().padLeft(2, '0')}';
+          final lastResetMonth = (limitsMap['lastResetMonth'] as String?) ?? '';
+          final isNewMonth = lastResetMonth != currentMonth;
+          final billsThisMonth = isNewMonth
+              ? 0
+              : ((limitsMap['billsThisMonth'] as int?) ?? 0);
+          limit = (limitsMap['billsLimit'] as int?) ?? 50;
+          allowed = billsThisMonth < limit;
+          if (allowed) {
+            newCount = billsThisMonth + 1;
+            txn.update(userRef, {
+              'limits.billsThisMonth': newCount,
+              'limits.lastResetMonth': currentMonth,
+              'activity.lastActiveAt': FieldValue.serverTimestamp(),
+            });
+          }
+        });
+      }
 
       if (allowed) {
         // Mirror to SharedPreferences only as a non-authoritative UI cache

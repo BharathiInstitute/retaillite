@@ -157,13 +157,26 @@ class _WebCartSection extends ConsumerStatefulWidget {
 
 class _WebCartSectionState extends ConsumerState<_WebCartSection> {
   final _customerController = TextEditingController();
+  final _udharAmountController = TextEditingController();
   CustomerModel? _selectedCustomer;
   PaymentMethod _selectedPayment = PaymentMethod.cash;
   bool _isLoading = false;
 
+  double get _udharAmount {
+    return double.tryParse(_udharAmountController.text) ?? 0;
+  }
+
+  void _syncUdharAmount() {
+    if (_selectedPayment == PaymentMethod.udhar && _selectedCustomer != null) {
+      final cart = ref.read(cartProvider);
+      _udharAmountController.text = cart.total.toInt().toString();
+    }
+  }
+
   @override
   void dispose() {
     _customerController.dispose();
+    _udharAmountController.dispose();
     super.dispose();
   }
 
@@ -224,14 +237,31 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
       if (_selectedPayment == PaymentMethod.udhar &&
           _selectedCustomer != null) {
+        final udharAmount = _udharAmount;
+        if (udharAmount <= 0 || udharAmount > cart.total) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  udharAmount <= 0
+                      ? 'Enter an amount to add to khata'
+                      : 'Khata amount cannot exceed bill total',
+                ),
+                backgroundColor: AppColors.error,
+              ),
+            );
+          }
+          setState(() => _isLoading = false);
+          return;
+        }
         await OfflineStorageService.updateCustomerBalance(
           _selectedCustomer!.id,
-          cart.total,
+          udharAmount,
         );
         await OfflineStorageService.saveTransaction(
           customerId: _selectedCustomer!.id,
           type: 'purchase',
-          amount: cart.total,
+          amount: udharAmount,
           billId: bill.id,
         );
       }
@@ -597,6 +627,7 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                             },
                         onSelected: (customer) {
                           setState(() => _selectedCustomer = customer);
+                          _syncUdharAmount();
                           ref
                               .read(cartProvider.notifier)
                               .setCustomer(customer.id, customer.name);
@@ -847,109 +878,144 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                       itemBuilder: (context, index) {
                         final item = cart.items[index];
                         final imageUrl = productMap[item.productId]?.imageUrl;
-                        return Row(
-                          children: [
-                            Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).scaffoldBackgroundColor,
-                                borderRadius: BorderRadius.circular(8),
-                                image: imageUrl != null
-                                    ? DecorationImage(
-                                        image: NetworkImage(imageUrl),
-                                        fit: BoxFit.cover,
-                                      )
+                        return Dismissible(
+                          key: ValueKey(item.productId),
+                          direction: DismissDirection.endToStart,
+                          onDismissed: (_) => ref
+                              .read(cartProvider.notifier)
+                              .removeItem(item.productId),
+                          background: Container(
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 20),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.error,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                              size: 20,
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 40,
+                                height: 40,
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).scaffoldBackgroundColor,
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: imageUrl != null
+                                      ? DecorationImage(
+                                          image: NetworkImage(imageUrl),
+                                          fit: BoxFit.cover,
+                                        )
+                                      : null,
+                                ),
+                                child: imageUrl == null
+                                    ? const Icon(Icons.image, size: 16)
                                     : null,
                               ),
-                              child: imageUrl == null
-                                  ? const Icon(Icons.image, size: 16)
-                                  : null,
-                            ),
-                            const SizedBox(width: 10),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    item.name,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w500,
-                                      fontSize: 13,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                    maxLines: 1,
-                                  ),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    '${Formatters.currency(item.price)} x ${item.quantity}',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.onSurfaceVariant,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              Formatters.currency(item.total),
-                              style: const TextStyle(
-                                fontWeight: FontWeight.bold,
-                                fontSize: 13,
-                              ),
-                            ),
-                            const SizedBox(width: 10),
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Theme.of(
-                                  context,
-                                ).scaffoldBackgroundColor,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  InkWell(
-                                    onTap: () => ref
-                                        .read(cartProvider.notifier)
-                                        .decrementQuantity(item.productId),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(6),
-                                      child: Icon(Icons.remove, size: 14),
-                                    ),
-                                  ),
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 6,
-                                    ),
-                                    child: Text(
-                                      '${item.quantity}',
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.name,
                                       style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
                                         fontSize: 13,
-                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      overflow: TextOverflow.ellipsis,
+                                      maxLines: 1,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '${Formatters.currency(item.price)} x ${item.quantity}',
+                                      style: TextStyle(
+                                        fontSize: 11,
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.onSurfaceVariant,
                                       ),
                                     ),
-                                  ),
-                                  InkWell(
-                                    onTap: () => ref
-                                        .read(cartProvider.notifier)
-                                        .incrementQuantity(item.productId),
-                                    borderRadius: BorderRadius.circular(6),
-                                    child: const Padding(
-                                      padding: EdgeInsets.all(6),
-                                      child: Icon(Icons.add, size: 14),
-                                    ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                              const SizedBox(width: 8),
+                              Text(
+                                Formatters.currency(item.total),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Theme.of(
+                                    context,
+                                  ).scaffoldBackgroundColor,
+                                  borderRadius: BorderRadius.circular(6),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    InkWell(
+                                      onTap: () => ref
+                                          .read(cartProvider.notifier)
+                                          .decrementQuantity(item.productId),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(6),
+                                        child: Icon(Icons.remove, size: 14),
+                                      ),
+                                    ),
+                                    Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 6,
+                                      ),
+                                      child: Text(
+                                        '${item.quantity}',
+                                        style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
+                                    InkWell(
+                                      onTap: () => ref
+                                          .read(cartProvider.notifier)
+                                          .incrementQuantity(item.productId),
+                                      borderRadius: BorderRadius.circular(6),
+                                      child: const Padding(
+                                        padding: EdgeInsets.all(6),
+                                        child: Icon(Icons.add, size: 14),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              InkWell(
+                                onTap: () => ref
+                                    .read(cartProvider.notifier)
+                                    .removeItem(item.productId),
+                                borderRadius: BorderRadius.circular(6),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(4),
+                                  child: Icon(
+                                    Icons.close,
+                                    size: 16,
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         );
                       },
                     );
@@ -1021,8 +1087,10 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                             child: _PosPaymentButton(
                               method: method,
                               isSelected: isSelected,
-                              onTap: () =>
-                                  setState(() => _selectedPayment = method),
+                              onTap: () {
+                                setState(() => _selectedPayment = method);
+                                _syncUdharAmount();
+                              },
                             ),
                           ),
                         );
@@ -1031,44 +1099,120 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                 ),
                 if (_selectedPayment == PaymentMethod.udhar) ...[
                   const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: _selectedCustomer != null
-                          ? AppColors.warning.withValues(alpha: 0.1)
-                          : AppColors.error.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+                  if (_selectedCustomer != null) ...[
+                    Text(
+                      'Amount to add to ${_selectedCustomer!.name}\'s khata',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          _selectedCustomer != null
-                              ? Icons.info_outline
-                              : Icons.warning_amber,
-                          size: 16,
-                          color: _selectedCustomer != null
-                              ? AppColors.warning
-                              : AppColors.error,
+                    const SizedBox(height: 6),
+                    TextField(
+                      controller: _udharAmountController,
+                      keyboardType: TextInputType.number,
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                      decoration: InputDecoration(
+                        prefixText: '\u{20B9} ',
+                        prefixStyle: const TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.warning,
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _selectedCustomer != null
-                                ? 'Amount will be added to ${_selectedCustomer!.name}\'s credit'
-                                : 'Please select a customer for Credit payment',
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: _selectedCustomer == null
-                                  ? AppColors.error
-                                  : Theme.of(
-                                      context,
-                                    ).colorScheme.onSurfaceVariant,
-                            ),
+                        hintText: '0',
+                        filled: true,
+                        fillColor: AppColors.warning.withValues(alpha: 0.08),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: AppColors.warning.withValues(alpha: 0.3),
                           ),
                         ),
-                      ],
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: BorderSide(
+                            color: AppColors.warning.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide: const BorderSide(
+                            color: AppColors.warning,
+                            width: 2,
+                          ),
+                        ),
+                        suffixIcon: TextButton(
+                          onPressed: () {
+                            _udharAmountController.text = cart.total
+                                .toInt()
+                                .toString();
+                            setState(() {});
+                          },
+                          child: const Text('Full'),
+                        ),
+                      ),
+                      onChanged: (_) => setState(() {}),
                     ),
-                  ),
+                    if (_udharAmount > 0 && _udharAmount < cart.total) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: AppColors.success.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.info_outline,
+                              size: 16,
+                              color: AppColors.success,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                '${(cart.total - _udharAmount).asCurrency} paid now, ${_udharAmount.asCurrency} on credit',
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(color: AppColors.success),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ] else ...[
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.error.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.warning_amber,
+                            size: 16,
+                            color: AppColors.error,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Please select a customer for Credit payment',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: AppColors.error,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 16),
                 SizedBox(

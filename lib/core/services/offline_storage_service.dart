@@ -5,6 +5,7 @@
 library;
 
 import 'dart:convert';
+import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
@@ -364,6 +365,19 @@ class OfflineStorageService {
 
     try {
       final counterRef = _firestore.doc('$_basePath/counters/billing');
+
+      // On Windows, avoid runTransaction — the C++ Firestore SDK sends
+      // callbacks on non-platform threads, crashing Flutter.
+      if (!kIsWeb && Platform.isWindows) {
+        final snapshot = await counterRef.get();
+        final current = (snapshot.data()?['billNumber'] as int?) ?? 1000;
+        final next = current + 1;
+        await counterRef.set({'billNumber': next}, SetOptions(merge: true));
+        UserUsageService.trackRead();
+        UserUsageService.trackWrite();
+        return next;
+      }
+
       final newBillNumber = await _firestore.runTransaction<int>((
         transaction,
       ) async {
@@ -1139,6 +1153,9 @@ class OfflineStorageService {
           await _prefs?.setDouble(entry.key, value);
         } else if (value is bool) {
           await _prefs?.setBool(entry.key, value);
+        } else if (value is Map) {
+          // Cache maps as JSON strings (matches saveSetting behavior)
+          await _prefs?.setString(entry.key, jsonEncode(value));
         }
       }
 

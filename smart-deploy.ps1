@@ -1115,6 +1115,63 @@ WScript.Quit 0
                 Write-Info "  Firebase Console > Storage > updates/android/"
                 Write-Info "  Upload: version.json + $apkStorageName"
             }
+
+            # --- Build AAB for Play Store Closed Testing ---
+            Write-Step "Building Android App Bundle (AAB) for Play Store..."
+            $ErrorActionPreference = "Continue"
+            flutter build appbundle --release
+            $aabExit = $LASTEXITCODE
+            $ErrorActionPreference = "Stop"
+            $aabPath = Join-Path $root "build\app\outputs\bundle\release\app-release.aab"
+            if ($aabExit -eq 0 -and (Test-Path $aabPath)) {
+                $aabSize = "{0:N1} MB" -f ((Get-Item $aabPath).Length / 1MB)
+                Write-Ok "AAB built ($aabSize)"
+                Write-DeployLog "ANDROID AAB BUILT | $aabSize"
+
+                # Copy AAB to easy-to-find location
+                $aabDest = Join-Path $root "build\PlayStore-v$newVersion.aab"
+                Copy-Item $aabPath $aabDest -Force
+                Write-Ok "AAB copied to: $aabDest"
+
+                # Open Play Console and file explorer
+                Write-Host ""
+                Write-Host "  ========================================================" -ForegroundColor Magenta
+                Write-Host "  PLAY STORE UPLOAD - Upload AAB to Closed Testing" -ForegroundColor Magenta
+                Write-Host "  ========================================================" -ForegroundColor Magenta
+                Write-Host "  AAB file: $aabDest" -ForegroundColor Yellow
+                Write-Host "  Size: $aabSize" -ForegroundColor Gray
+                Write-Host ""
+                Write-Host "  Opening Play Console and file location..." -ForegroundColor Gray
+
+                # Open file explorer with AAB selected
+                Start-Process explorer.exe "/select,`"$aabDest`""
+
+                # Open Play Console closed testing page
+                Start-Process "https://play.google.com/console/developers/app/tracks/closed-testing"
+
+                Write-Host ""
+                Write-Host "  Steps:" -ForegroundColor Cyan
+                Write-Host "    1. Click 'Create new release' in Play Console" -ForegroundColor White
+                Write-Host "    2. Drag the AAB file from the opened folder" -ForegroundColor White
+                Write-Host "    3. Add release notes: $($changelog.Substring(0, [Math]::Min(50, $changelog.Length)))..." -ForegroundColor White
+                Write-Host "    4. Click Save > Review > Roll out" -ForegroundColor White
+                Write-Host ""
+
+                $uploaded = Read-Host "  Press ENTER after uploading to Play Console (or 's' to skip)"
+                if ($uploaded -ne 's') {
+                    Write-Ok "Play Store closed testing release done!"
+                    Write-DeployLog "PLAY STORE | AAB v$newVersion uploaded to closed testing"
+                }
+                else {
+                    Write-Warn "Skipped Play Store upload — remember to upload manually!"
+                    Write-DeployLog "PLAY STORE | AAB v$newVersion built but upload skipped"
+                }
+            }
+            else {
+                Write-Warn "AAB build failed — APK was uploaded to Firebase Storage, but Play Store upload skipped"
+                Write-DeployLog "ANDROID AAB FAILED | APK upload OK, AAB failed"
+            }
+
             Complete-Step "android"
         }
     }

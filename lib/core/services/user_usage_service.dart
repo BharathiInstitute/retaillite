@@ -254,10 +254,16 @@ class UserUsageService {
         _pendingWrites +
         _pendingDeletes +
         _pendingFunctionCalls;
+
+    // On first call, defer flush by 10 seconds to avoid crashing during login
+    if (_lastFlush == null) {
+      _lastFlush = now; // Mark as initialized
+      Future.delayed(const Duration(seconds: 10), _flushUsage);
+      return;
+    }
+
     // Flush every 30 seconds or if counts are significant
-    if (_lastFlush == null ||
-        now.difference(_lastFlush!).inSeconds >= 30 ||
-        totalPending >= 50) {
+    if (now.difference(_lastFlush!).inSeconds >= 30 || totalPending >= 50) {
       _flushUsage();
     }
   }
@@ -301,53 +307,38 @@ class UserUsageService {
 
       final docRef = _firestore.collection('user_usage').doc(userId);
 
-      await _firestore.runTransaction((transaction) async {
-        final doc = await transaction.get(docRef);
+      // Use set+merge with FieldValue.increment — simpler and more
+      // compatible across platforms (avoids runTransaction which can
+      // crash the Windows C++ Firestore SDK during early startup).
+      final data = <String, dynamic>{
+        'userId': userId,
+        'email': email,
+        'isAdmin': isAdmin,
+        'lastUpdated': FieldValue.serverTimestamp(),
+      };
+      if (reads > 0) {
+        data['firestoreReads'] = FieldValue.increment(reads);
+      }
+      if (writes > 0) {
+        data['firestoreWrites'] = FieldValue.increment(writes);
+      }
+      if (deletes > 0) {
+        data['firestoreDeletes'] = FieldValue.increment(deletes);
+      }
+      if (fnCalls > 0) {
+        data['functionCalls'] = FieldValue.increment(fnCalls);
+      }
+      if (netBytes > 0) {
+        data['networkEgressBytes'] = FieldValue.increment(netBytes);
+      }
+      if (uploadBytes > 0) {
+        data['storageUploadBytes'] = FieldValue.increment(uploadBytes);
+      }
+      if (downloadBytes > 0) {
+        data['storageDownloadBytes'] = FieldValue.increment(downloadBytes);
+      }
 
-        if (doc.exists) {
-          // Update existing
-          final updates = <String, dynamic>{
-            'lastUpdated': FieldValue.serverTimestamp(),
-          };
-          if (reads > 0)
-            updates['firestoreReads'] = FieldValue.increment(reads);
-          if (writes > 0)
-            updates['firestoreWrites'] = FieldValue.increment(writes);
-          if (deletes > 0)
-            updates['firestoreDeletes'] = FieldValue.increment(deletes);
-          if (fnCalls > 0)
-            updates['functionCalls'] = FieldValue.increment(fnCalls);
-          if (netBytes > 0)
-            updates['networkEgressBytes'] = FieldValue.increment(netBytes);
-          if (uploadBytes > 0)
-            updates['storageUploadBytes'] = FieldValue.increment(uploadBytes);
-          if (downloadBytes > 0)
-            updates['storageDownloadBytes'] = FieldValue.increment(
-              downloadBytes,
-            );
-          transaction.update(docRef, updates);
-        } else {
-          // Create new
-          final now = DateTime.now();
-          final periodStart = DateTime(now.year, now.month);
-
-          transaction.set(docRef, {
-            'userId': userId,
-            'email': email,
-            'isAdmin': isAdmin,
-            'firestoreReads': reads,
-            'firestoreWrites': writes,
-            'firestoreDeletes': deletes,
-            'storageBytes': 0,
-            'functionCalls': fnCalls,
-            'networkEgressBytes': netBytes,
-            'storageUploadBytes': uploadBytes,
-            'storageDownloadBytes': downloadBytes,
-            'lastUpdated': FieldValue.serverTimestamp(),
-            'periodStart': Timestamp.fromDate(periodStart),
-          });
-        }
-      });
+      await docRef.set(data, SetOptions(merge: true));
     } catch (e) {
       if (kDebugMode) debugPrint('❌ Failed to flush usage: $e');
     }

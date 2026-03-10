@@ -2,7 +2,7 @@
 ; Creates a professional installer with bundled VC++ Redistributable
 
 #define MyAppName "Tulasi Shop Lite"
-#define MyAppVersion "8.1.0"
+#define MyAppVersion "9.0.0"
 #define MyAppPublisher "Tulasi Stores"
 #define MyAppExeName "retaillite.exe"
 #define MyAppURL "https://tulasistores.com"
@@ -24,6 +24,7 @@ WizardStyle=modern
 ArchitecturesAllowed=x64
 UninstallDisplayName={#MyAppName}
 PrivilegesRequired=lowest
+DisableDirPage=no
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

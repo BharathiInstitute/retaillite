@@ -326,7 +326,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             profileImagePath: data['profileImagePath'] as String?,
             photoUrl: data['photoUrl'] as String? ?? firebaseUser.photoURL,
             upiId: data['upiId'] as String?,
-            settings: const UserSettings(),
+            settings: UserSettings.fromMap(
+              (data['settings'] as Map<String, dynamic>?) ?? {},
+            ),
             phoneVerified: (data['phoneVerified'] as bool?) ?? false,
             emailVerified: emailVerified,
             phoneVerifiedAt: (data['phoneVerifiedAt'] as Timestamp?)?.toDate(),
@@ -1357,6 +1359,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     String? upiId,
     String? currency,
     String? timezone,
+    String? receiptFooter,
   }) async {
     final user = _auth.currentUser;
     if (user == null) return false;
@@ -1372,13 +1375,14 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       if (upiId != null) updates['upiId'] = upiId;
       if (currency != null) updates['currency'] = currency;
       if (timezone != null) updates['timezone'] = timezone;
+      if (receiptFooter != null) {
+        updates['settings.receiptFooter'] = receiptFooter;
+      }
 
       if (updates.isEmpty) return true;
 
-      await _firestore
-          .collection('users')
-          .doc(user.uid)
-          .set(updates, SetOptions(merge: true));
+      // Use update() for dot-notation nested keys (e.g. settings.receiptFooter)
+      await _firestore.collection('users').doc(user.uid).update(updates);
 
       // Update local state
       if (state.user != null) {
@@ -1393,6 +1397,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             upiId: upiId ?? state.user!.upiId,
             currency: currency ?? state.user!.currency,
             timezone: timezone ?? state.user!.timezone,
+            settings: receiptFooter != null
+                ? state.user!.settings.copyWith(receiptFooter: receiptFooter)
+                : state.user!.settings,
           ),
         );
       }

@@ -125,8 +125,15 @@ class CartSection extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: cart.items.length,
                   separatorBuilder: (e, _) => const SizedBox(height: 4),
-                  itemBuilder: (context, index) =>
-                      _CartItemTile(item: cart.items[index]),
+                  itemBuilder: (context, index) {
+                    final item = cart.items[index];
+                    return _DismissibleCartItem(
+                      item: item,
+                      onDismissed: () => ref
+                          .read(cartProvider.notifier)
+                          .removeItem(item.productId),
+                    );
+                  },
                 ),
               )
             else
@@ -137,8 +144,15 @@ class CartSection extends ConsumerWidget {
                   padding: const EdgeInsets.symmetric(vertical: 8),
                   itemCount: cart.items.length,
                   separatorBuilder: (e, _) => const SizedBox(height: 4),
-                  itemBuilder: (context, index) =>
-                      _CartItemTile(item: cart.items[index]),
+                  itemBuilder: (context, index) {
+                    final item = cart.items[index];
+                    return _DismissibleCartItem(
+                      item: item,
+                      onDismissed: () => ref
+                          .read(cartProvider.notifier)
+                          .removeItem(item.productId),
+                    );
+                  },
                 ),
               ),
 
@@ -176,6 +190,33 @@ class CartSection extends ConsumerWidget {
           ],
         ],
       ),
+    );
+  }
+}
+
+class _DismissibleCartItem extends StatelessWidget {
+  final CartItem item;
+  final VoidCallback onDismissed;
+
+  const _DismissibleCartItem({required this.item, required this.onDismissed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Dismissible(
+      key: ValueKey(item.productId),
+      direction: DismissDirection.endToStart,
+      onDismissed: (_) => onDismissed(),
+      background: Container(
+        alignment: Alignment.centerRight,
+        padding: const EdgeInsets.only(right: 20),
+        margin: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          color: AppColors.error,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: const Icon(Icons.delete, color: Colors.white, size: 22),
+      ),
+      child: _CartItemTile(item: item),
     );
   }
 }
@@ -246,7 +287,7 @@ class _CartItemTile extends ConsumerWidget {
             ),
           ),
 
-          const SizedBox(width: 12),
+          const SizedBox(width: 8),
 
           // Total
           SizedBox(
@@ -257,6 +298,22 @@ class _CartItemTile extends ConsumerWidget {
                 context,
               ).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
               textAlign: TextAlign.right,
+            ),
+          ),
+
+          // Delete button
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () =>
+                ref.read(cartProvider.notifier).removeItem(item.productId),
+            borderRadius: BorderRadius.circular(6),
+            child: Padding(
+              padding: const EdgeInsets.all(4),
+              child: Icon(
+                Icons.close,
+                size: 16,
+                color: Theme.of(context).colorScheme.error,
+              ),
             ),
           ),
         ],

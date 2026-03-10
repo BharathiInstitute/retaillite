@@ -815,7 +815,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
               ),
             if (errors.isNotEmpty) ...[
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 'Errors:',
                 style: TextStyle(
                   fontWeight: FontWeight.bold,

@@ -2,7 +2,9 @@
 library;
 
 import 'dart:async';
+import 'dart:io' show Platform;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -67,6 +69,15 @@ class ThemeSettingsNotifier extends StateNotifier<ThemeSettingsModel> {
   /// Async cloud fetch — updates if cloud has newer data
   Future<void> _loadFromCloud() async {
     try {
+      // On Windows desktop, delay theme cloud fetch to let initial Firestore
+      // channel listeners settle. The Firebase C++ SDK sends messages on
+      // non-platform threads, and a theme state change during that window
+      // triggers a full widget tree rebuild that crashes the app.
+      if (!kIsWeb && Platform.isWindows) {
+        await Future.delayed(const Duration(seconds: 3));
+        if (!mounted) return;
+      }
+
       final cloudData =
           await OfflineStorageService.getSettingFromCloud<Map<String, dynamic>>(
             'theme_settings',
