@@ -401,11 +401,22 @@ class ErrorLoggingService {
       final message = error.toString();
       final shopName = OfflineStorageService.prefs?.getString('shop_name');
 
+      // Safe access to currentUser — on web, Firebase JS interop can return
+      // a LegacyJavaScriptObject that fails type casting
+      String? userId;
+      String? userEmail;
+      try {
+        userId = _auth.currentUser?.uid;
+        userEmail = _auth.currentUser?.email;
+      } catch (_) {
+        // Swallow JS interop type errors on web
+      }
+
       final entry = ErrorLogEntry(
         message: message,
         stackTrace: stackTrace?.toString(),
         platform: _platform,
-        userId: _auth.currentUser?.uid,
+        userId: userId,
         appVersion: appVersion,
         timestamp: DateTime.now(),
         severity: severity,
@@ -424,8 +435,7 @@ class ErrorLoggingService {
         lifecycleState: metadata?['lifecycleState'] as String?,
         buildMode: metadata?['buildMode'] as String? ?? _buildMode,
         sessionId: metadata?['sessionId'] as String? ?? _sessionId,
-        userEmail:
-            metadata?['userEmail'] as String? ?? _auth.currentUser?.email,
+        userEmail: metadata?['userEmail'] as String? ?? userEmail,
         shopName: metadata?['shopName'] as String? ?? shopName,
         // resolved defaults to false
         errorHash: _generateErrorHash(message),

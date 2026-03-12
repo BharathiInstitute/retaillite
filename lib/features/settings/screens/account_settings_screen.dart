@@ -367,11 +367,12 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                       onPressed: _referralCode.isEmpty
                           ? null
                           : () async {
+                              final messenger = ScaffoldMessenger.of(context);
                               final copied = await ReferralService.share(
                                 _referralCode,
                               );
                               if (copied && mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
+                                messenger.showSnackBar(
                                   const SnackBar(
                                     content: Text(
                                       'Referral link copied to clipboard!',

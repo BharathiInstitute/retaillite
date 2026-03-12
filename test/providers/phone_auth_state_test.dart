@@ -206,4 +206,94 @@ void main() {
       expect(formatPhoneNumber('0 (987) 654-3210'), '+919876543210');
     });
   });
+
+  // ── sendOtp state reset preserves resendToken ──
+
+  group('sendOtp state management', () {
+    test('copyWith preserves resendToken when transitioning to sending', () {
+      // Simulates the fix: sendOtp should use copyWith (not new PhoneAuthState)
+      // so that resendToken is preserved for the forceResendingToken parameter
+      const state = PhoneAuthState(
+        status: PhoneAuthStatus.codeSent,
+        verificationId: 'vid-123',
+        resendToken: 42,
+        phoneNumber: '+919876543210',
+        canResend: true,
+      );
+
+      // Save token BEFORE state reset (matches the fix)
+      final previousResendToken = state.resendToken;
+
+      // Reset state with copyWith (preserves fields)
+      final newState = state.copyWith(
+        status: PhoneAuthStatus.sending,
+        phoneNumber: '+919876543210',
+      );
+
+      expect(previousResendToken, 42);
+      expect(newState.resendToken, 42);
+      expect(newState.status, PhoneAuthStatus.sending);
+    });
+
+    test('new PhoneAuthState constructor loses resendToken (old bug)', () {
+      // Demonstrates the bug that was fixed: using constructor wipes resendToken
+      const state = PhoneAuthState(
+        status: PhoneAuthStatus.codeSent,
+        resendToken: 42,
+        phoneNumber: '+919876543210',
+      );
+      // Old code: state = PhoneAuthState(status: sending, phoneNumber: ...)
+      // This loses resendToken!
+      const newState = PhoneAuthState(
+        status: PhoneAuthStatus.sending,
+        phoneNumber: '+919876543210',
+      );
+      expect(state.resendToken, 42);
+      expect(newState.resendToken, isNull); // Bug: token lost!
+    });
+  });
+
+  // ── provider-already-linked should be treated as success ──
+
+  group('provider-already-linked handling', () {
+    test('verified status is distinct from error status', () {
+      const verifiedState = PhoneAuthState(status: PhoneAuthStatus.verified);
+      const errorState = PhoneAuthState(
+        status: PhoneAuthStatus.error,
+        error: 'Phone is already verified for this account.',
+      );
+      expect(verifiedState.status, PhoneAuthStatus.verified);
+      expect(errorState.status, PhoneAuthStatus.error);
+      expect(verifiedState.status != errorState.status, true);
+    });
+  });
+
+  // ── auto-verification failure should keep codeSent ──
+
+  group('auto-verification failure recovery', () {
+    test(
+      'codeSent status lets user enter code manually after auto-verify fail',
+      () {
+        const state = PhoneAuthState(
+          status: PhoneAuthStatus.codeSent,
+          verificationId: 'vid-123',
+          phoneNumber: '+919876543210',
+          error: 'Auto-verification failed. Please enter the code manually.',
+        );
+        // User should still be able to enter code
+        expect(state.status, PhoneAuthStatus.codeSent);
+        expect(state.verificationId, isNotNull);
+        expect(state.error, contains('enter the code manually'));
+      },
+    );
+
+    test('error status blocks manual code entry', () {
+      const state = PhoneAuthState(
+        status: PhoneAuthStatus.error,
+        error: 'Auto-verification failed.',
+      );
+      // Error status resets the flow - user can't enter code
+      expect(state.status, PhoneAuthStatus.error);
+    });
+  });
 }

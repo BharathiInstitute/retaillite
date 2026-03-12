@@ -1097,6 +1097,68 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
                       })
                       .toList(),
                 ),
+                if (_selectedPayment == PaymentMethod.upi) ...[
+                  const SizedBox(height: 8),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: () {
+                        if (_selectedCustomer == null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Please select a customer first'),
+                            ),
+                          );
+                          return;
+                        }
+                        final upiId = PaymentLinkService.upiId;
+                        if (upiId.isEmpty ||
+                            !PaymentLinkService.isValidUpiId(upiId)) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text(
+                                'Please set your UPI ID in Settings first',
+                              ),
+                            ),
+                          );
+                          return;
+                        }
+                        final user = ref.read(currentUserProvider);
+                        final shopName = (user?.shopName.isNotEmpty == true)
+                            ? user!.shopName
+                            : 'Store';
+                        final amount = cart.total;
+                        final payUrl =
+                            PaymentLinkService.generatePaymentPageUrl(
+                              upiId: upiId,
+                              amount: amount,
+                              payeeName: shopName,
+                              transactionNote: 'Payment to $shopName',
+                            );
+                        final msg =
+                            'Hi ${_selectedCustomer!.name},\n\n'
+                            'Your bill amount is *Rs ${amount.toStringAsFixed(0)}*.\n\n'
+                            'Pay via UPI:\n'
+                            'Click here to pay:\n'
+                            '$payUrl\n\n'
+                            'Thank you\n'
+                            '— $shopName';
+                        final phone = '91${_selectedCustomer!.phone}';
+                        final url = Uri.https('wa.me', '/$phone', {
+                          'text': msg,
+                        });
+                        launchUrl(url, mode: LaunchMode.externalApplication);
+                      },
+                      icon: const Icon(Icons.send, size: 18),
+                      label: const Text('Send Payment Link'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.info,
+                        side: const BorderSide(color: AppColors.info),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                    ),
+                  ),
+                ],
                 if (_selectedPayment == PaymentMethod.udhar) ...[
                   const SizedBox(height: 8),
                   if (_selectedCustomer != null) ...[

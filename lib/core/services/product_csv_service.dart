@@ -69,7 +69,7 @@ class ProductCsvService {
 
       if (kIsWeb) {
         // On web, FilePicker.saveFile requires bytes
-        final bytes = Uint8List.fromList(csvData.codeUnits);
+        final bytes = Uint8List.fromList(utf8.encode(csvData));
         final result = await FilePicker.platform.saveFile(
           dialogTitle: 'Save Products CSV',
           fileName: fileName,
@@ -84,17 +84,17 @@ class ProductCsvService {
         return null;
       }
 
-      // Native: let user pick save location then write file
+      // Native: pass bytes to saveFile (required on Android & iOS)
+      final bytes = Uint8List.fromList(utf8.encode(csvData));
       final result = await FilePicker.platform.saveFile(
         dialogTitle: 'Save Products CSV',
         fileName: fileName,
         type: FileType.custom,
         allowedExtensions: ['csv'],
+        bytes: bytes,
       );
 
       if (result != null) {
-        final file = File(result);
-        await file.writeAsString(csvData);
         debugPrint('✅ Saved CSV to: $result');
         return result;
       }

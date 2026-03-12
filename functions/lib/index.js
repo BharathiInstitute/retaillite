@@ -407,13 +407,13 @@ exports.sendRegistrationOTP = functions
     try {
         const transporter = getEmailTransporter();
         await transporter.sendMail({
-            from: `"RetailLite" <${process.env.BREVO_EMAIL}>`,
+            from: `"Tulasi Stores" <${process.env.BREVO_EMAIL}>`,
             to: email,
-            subject: "Your Verification Code - RetailLite",
+            subject: "Your Verification Code - Tulasi Stores",
             html: `
                     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; padding: 32px; background: #f8faf8; border-radius: 12px;">
                         <div style="text-align: center; margin-bottom: 24px;">
-                            <h2 style="color: #059669; margin: 0;">RetailLite</h2>
+                            <h2 style="color: #059669; margin: 0;">Tulasi Stores</h2>
                             <p style="color: #6b7280; font-size: 14px; margin-top: 4px;">Email Verification</p>
                         </div>
                         <div style="background: white; border-radius: 8px; padding: 24px; text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.1);">

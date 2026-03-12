@@ -27,6 +27,8 @@ import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
 import 'package:retaillite/features/notifications/models/notification_model.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 part 'pos_web_widgets.dart';
 

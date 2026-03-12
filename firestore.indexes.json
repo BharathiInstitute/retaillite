@@ -213,17 +213,17 @@
             ]
         },
         {
-            "__comment": "bills: createdAt DESC + paymentMethod — reports & analytics queries",
+            "__comment": "bills: paymentMethod filter + orderBy(createdAt, desc) — bills history payment filter",
             "collectionGroup": "bills",
             "queryScope": "COLLECTION",
             "fields": [
                 {
-                    "fieldPath": "createdAt",
-                    "order": "DESCENDING"
-                },
-                {
                     "fieldPath": "paymentMethod",
                     "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
                 }
             ]
         },

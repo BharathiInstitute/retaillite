@@ -1138,8 +1138,11 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
         ? '${upiId.substring(0, 2)}${'*' * (atIdx - 2)}${upiId.substring(atIdx)}'
         : upiId;
     final user = ref.read(currentUserProvider);
-    final shopName = user?.shopName ?? 'Store';
+    final shopName = (user?.shopName.isNotEmpty == true)
+        ? user!.shopName
+        : 'Store';
 
+    final amt = customer.balance.toStringAsFixed(0);
     String messageText;
     if (customer.balance > 0 && hasUpi) {
       final payUrl = PaymentLinkService.generatePaymentPageUrl(
@@ -1149,23 +1152,23 @@ class _CustomerDetailPanelState extends ConsumerState<_CustomerDetailPanel> {
         transactionNote: 'Payment to $shopName',
       );
       messageText =
-          'नमस्ते ${customer.name},\n\n'
-          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
-          '💳 *UPI से भुगतान करें:*\n'
+          'Hi ${customer.name},\n\n'
+          'You have a pending balance of *Rs $amt*.\n\n'
+          'Pay via UPI:\n'
           '━━━━━━━━━━━━━━\n'
-          '📱 UPI ID: *$maskedUpi*\n'
-          '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
+          'UPI ID: *$maskedUpi*\n'
+          'Amount: *Rs $amt*\n'
           '━━━━━━━━━━━━━━\n\n'
-          '👉 *भुगतान करने के लिए यहाँ क्लिक करें:*\n'
+          'Click here to pay:\n'
           '$payUrl\n\n'
-          'धन्यवाद 🙏\n'
+          'Thank you\n'
           '— $shopName';
     } else if (customer.balance > 0) {
       messageText =
-          'नमस्ते ${customer.name},\n\n'
-          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n'
-          'कृपया जल्द भुगतान करें।\n\n'
-          'धन्यवाद 🙏';
+          'Hi ${customer.name},\n\n'
+          'You have a pending balance of *Rs $amt*.\n'
+          'Please pay at your earliest convenience.\n\n'
+          'Thank you';
     } else {
       messageText = ''; // No due, just open chat
     }

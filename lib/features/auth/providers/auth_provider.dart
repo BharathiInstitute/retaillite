@@ -285,16 +285,18 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         // Backfill limits for users missing productsLimit (required by Firestore rules)
         final limits = data['limits'] as Map<String, dynamic>?;
         if (limits == null || limits['productsLimit'] == null) {
-          _firestore.collection('users').doc(firebaseUser.uid).set({
-            'limits': {
-              'productsCount': limits?['productsCount'] ?? 0,
-              'productsLimit': 100,
-              'billsThisMonth': limits?['billsThisMonth'] ?? 0,
-              'billsLimit': 50,
-              'customersCount': limits?['customersCount'] ?? 0,
-              'customersLimit': 10,
-            },
-          }, SetOptions(merge: true));
+          unawaited(
+            _firestore.collection('users').doc(firebaseUser.uid).set({
+              'limits': {
+                'productsCount': limits?['productsCount'] ?? 0,
+                'productsLimit': 100,
+                'billsThisMonth': limits?['billsThisMonth'] ?? 0,
+                'billsLimit': 50,
+                'customersCount': limits?['customersCount'] ?? 0,
+                'customersLimit': 10,
+              },
+            }, SetOptions(merge: true)),
+          );
         }
 
         // Load this user's cloud settings into local SharedPreferences
@@ -933,6 +935,12 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           emailVerified: emailVerified,
         );
 
+        // Load user profile so isLoading becomes false and router can navigate.
+        // authStateChanges listener may skip this if _authResolved is already true.
+        _authResolved = true;
+        _profileLoaded = true;
+        await _loadUserProfile(user);
+
         debugPrint('✅ User registered: ${user.email}');
         return true;
       }
@@ -1063,6 +1071,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             name: name,
             emailVerified: emailVerified,
           );
+          _authResolved = true;
+          _profileLoaded = true;
+          await _loadUserProfile(user);
         }
 
         debugPrint('✅ Windows: Registered and signed in with custom token');
@@ -1384,6 +1395,11 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       // Use update() for dot-notation nested keys (e.g. settings.receiptFooter)
       await _firestore.collection('users').doc(user.uid).update(updates);
 
+      // Update in-memory PaymentLinkService so reminders use new UPI ID immediately
+      if (upiId != null && upiId.isNotEmpty) {
+        PaymentLinkService.setUpiId(upiId);
+      }
+
       // Update local state
       if (state.user != null) {
         state = state.copyWith(
@@ -1687,7 +1703,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       return false;
     } catch (e) {
       debugPrint('🔐 Error checking phone uniqueness: $e');
-      return true; // Fail closed — block on error to prevent duplicate registrations
+      // Fail open — allow user to proceed on error; linkWithCredential
+      // will catch actual duplicates server-side (credential-already-in-use)
+      return false;
     }
   }
 

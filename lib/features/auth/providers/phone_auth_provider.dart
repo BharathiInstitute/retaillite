@@ -73,7 +73,8 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
   /// Send OTP to phone number
   Future<void> sendOtp(String phoneNumber) async {
     final formattedPhone = _formatPhoneNumber(phoneNumber);
-    state = PhoneAuthState(
+    final previousResendToken = state.resendToken;
+    state = state.copyWith(
       status: PhoneAuthStatus.sending,
       phoneNumber: formattedPhone,
     );
@@ -82,7 +83,7 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
       await _auth.verifyPhoneNumber(
         phoneNumber: formattedPhone,
         timeout: const Duration(seconds: 60),
-        forceResendingToken: state.resendToken,
+        forceResendingToken: previousResendToken,
         verificationCompleted: _onVerificationCompleted,
         verificationFailed: _onVerificationFailed,
         codeSent: _onCodeSent,
@@ -221,8 +222,11 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
           message = 'This phone number is already linked to another account.';
           break;
         case 'provider-already-linked':
-          message = 'Phone is already verified for this account.';
-          break;
+          // Phone already linked to this account — treat as success
+          state = state.copyWith(status: PhoneAuthStatus.verified);
+          _cancelResendTimer();
+          debugPrint('✅ Phone already linked (provider-already-linked)');
+          return true;
         default:
           message = 'Verification failed. Please try again or resend OTP.';
       }
@@ -257,10 +261,13 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
       _cancelResendTimer();
     } catch (e) {
       debugPrint('📱 Auto-verification failed: $e');
-      state = state.copyWith(
-        status: PhoneAuthStatus.error,
-        error: 'Auto-verification failed. Please enter the code manually.',
-      );
+      // Don't reset to error — keep codeSent so user can enter code manually
+      if (state.status != PhoneAuthStatus.verified) {
+        state = state.copyWith(
+          status: PhoneAuthStatus.codeSent,
+          error: 'Auto-verification failed. Please enter the code manually.',
+        );
+      }
     }
   }
 
@@ -278,9 +285,22 @@ class PhoneAuthNotifier extends StateNotifier<PhoneAuthState> {
       case 'quota-exceeded':
         message = 'SMS limit reached. Please try again after some time.';
         break;
+      case 'app-not-authorized':
+        message =
+            'Phone authentication is not enabled. Please contact support.';
+        break;
+      case 'captcha-check-failed':
+        message = 'reCAPTCHA verification failed. Please try again.';
+        break;
+      case 'missing-phone-number':
+        message = 'Phone number is missing. Please enter your number.';
+        break;
+      case 'unverified-email':
+        message = 'Please verify your email before adding a phone number.';
+        break;
       default:
         message =
-            'Could not send OTP. This may be due to too many attempts — please wait a few minutes and try again.';
+            'Could not send OTP (${e.code}). Please wait a few minutes and try again.';
     }
     state = state.copyWith(status: PhoneAuthStatus.error, error: message);
   }

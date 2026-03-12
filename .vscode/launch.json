@@ -1,13 +1,18 @@
 {
     "version": "0.2.0",
     "configurations": [
-    
         {
             "name": "retaillite (Flutter Chrome)",
             "request": "launch",
             "type": "dart",
             "flutterMode": "debug",
             "deviceId": "chrome"
+        },
+        {
+            "name": "retaillite (Flutter moto g45 5G)",
+            "request": "launch",
+            "type": "dart",
+            "flutterMode": "debug"
         }
     ]
 }

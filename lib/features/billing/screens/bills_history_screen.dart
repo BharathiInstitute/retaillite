@@ -309,6 +309,15 @@ class BillsHistoryScreen extends ConsumerWidget {
                     );
                   },
                 ),
+                const SizedBox(width: 8),
+
+                // Export chip
+                ActionChip(
+                  avatar: const Icon(Icons.download, size: 18),
+                  label: const Text('Export'),
+                  backgroundColor: AppColors.primary.withValues(alpha: 0.12),
+                  onPressed: () => _showExportDialog(context),
+                ),
               ],
             ),
           ),

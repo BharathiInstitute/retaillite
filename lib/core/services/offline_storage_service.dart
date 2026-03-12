@@ -451,9 +451,14 @@ class OfflineStorageService {
     String? paymentMethod,
   }) {
     if (_basePath.isEmpty) return Stream.value([]);
-    Query query = _firestore
-        .collection('$_basePath/bills')
-        .orderBy('createdAt', descending: true);
+    Query query = _firestore.collection('$_basePath/bills');
+
+    // Equality filters first (Firestore requires equality before range/orderBy)
+    if (paymentMethod != null) {
+      query = query.where('paymentMethod', isEqualTo: paymentMethod);
+    }
+
+    query = query.orderBy('createdAt', descending: true);
 
     // Server-side date filter
     if (dateRange != null) {
@@ -468,11 +473,6 @@ class OfflineStorageService {
               dateRange.end.add(const Duration(days: 1)),
             ),
           );
-    }
-
-    // Server-side payment method filter
-    if (paymentMethod != null) {
-      query = query.where('paymentMethod', isEqualTo: paymentMethod);
     }
 
     query = query.limit(AppConstants.queryLimitBills);
@@ -602,9 +602,14 @@ class OfflineStorageService {
     String? paymentMethod,
   }) {
     if (_basePath.isEmpty) return Stream.value([]);
-    Query query = _firestore
-        .collection('$_basePath/expenses')
-        .orderBy('createdAt', descending: true);
+    Query query = _firestore.collection('$_basePath/expenses');
+
+    // Equality filters first (Firestore requires equality before range/orderBy)
+    if (paymentMethod != null) {
+      query = query.where('paymentMethod', isEqualTo: paymentMethod);
+    }
+
+    query = query.orderBy('createdAt', descending: true);
 
     // Server-side date filter
     if (dateRange != null) {
@@ -619,11 +624,6 @@ class OfflineStorageService {
               dateRange.end.add(const Duration(days: 1)),
             ),
           );
-    }
-
-    // Server-side payment method filter
-    if (paymentMethod != null) {
-      query = query.where('paymentMethod', isEqualTo: paymentMethod);
     }
 
     query = query.limit(AppConstants.queryLimitExpenses);

@@ -205,6 +205,29 @@ class _ShopSetupScreenState extends ConsumerState<ShopSetupScreen> {
     final userModel = authState.user;
     final phoneState = ref.watch(phoneAuthProvider);
 
+    // Auto-detect when Firebase auto-verification completes (Android)
+    // This handles the race where auto-verify succeeds but user hasn't tapped Verify
+    if (phoneState.status == PhoneAuthStatus.verified && !_phoneVerified) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        if (!mounted) return;
+        setState(() => _phoneVerified = true);
+        final phone = _phoneController.text.trim();
+        if (phone.isNotEmpty) {
+          final messenger = ScaffoldMessenger.of(context);
+          await ref
+              .read(authNotifierProvider.notifier)
+              .updatePhoneVerified(phone: '${AppConstants.countryCode}$phone');
+          if (!mounted) return;
+          messenger.showSnackBar(
+            const SnackBar(
+              content: Text('Phone auto-verified & linked!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      });
+    }
+
     return AuthLayout(
       title: 'Set Up Your Shop',
       subtitle: 'Enter your shop details to get started',

@@ -323,7 +323,7 @@ class DataExportService {
   /// Web: trigger browser download via FilePicker saveFile with bytes
   Future<String> _webDownload(String name, String ext, String content) async {
     try {
-      final bytes = Uint8List.fromList(content.codeUnits);
+      final bytes = Uint8List.fromList(utf8.encode(content));
       await FilePicker.platform.saveFile(
         dialogTitle: 'Save Export',
         fileName: '$name.$ext',

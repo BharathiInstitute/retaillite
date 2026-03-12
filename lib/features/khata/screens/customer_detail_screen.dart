@@ -389,7 +389,8 @@ class CustomerDetailScreen extends ConsumerWidget {
 
                               // Cap visible list to avoid rendering all items at once
                               const maxVisible = 50;
-                              final visibleCount = transactions.length > maxVisible
+                              final visibleCount =
+                                  transactions.length > maxVisible
                                   ? maxVisible
                                   : transactions.length;
 
@@ -398,7 +399,8 @@ class CustomerDetailScreen extends ConsumerWidget {
                                   children: [
                                     ListView.separated(
                                       shrinkWrap: true,
-                                      physics: const NeverScrollableScrollPhysics(),
+                                      physics:
+                                          const NeverScrollableScrollPhysics(),
                                       itemCount: visibleCount,
                                       separatorBuilder: (e, _) =>
                                           const Divider(height: 1),
@@ -412,7 +414,9 @@ class CustomerDetailScreen extends ConsumerWidget {
                                         padding: const EdgeInsets.all(8),
                                         child: Text(
                                           '${transactions.length - maxVisible} more transactions not shown',
-                                          style: Theme.of(context).textTheme.bodySmall,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.bodySmall,
                                         ),
                                       ),
                                   ],
@@ -589,7 +593,10 @@ class CustomerDetailScreen extends ConsumerWidget {
         ? '${upiId.substring(0, 2)}${'*' * (atIdx - 2)}${upiId.substring(atIdx)}'
         : upiId;
     final user = ref.read(currentUserProvider);
-    final shopName = user?.shopName ?? 'Store';
+    final shopName = (user?.shopName.isNotEmpty == true)
+        ? user!.shopName
+        : 'Store';
+    final amt = customer.balance.toStringAsFixed(0);
 
     String messageText;
     if (hasUpi) {
@@ -600,23 +607,23 @@ class CustomerDetailScreen extends ConsumerWidget {
         transactionNote: 'Payment to $shopName',
       );
       messageText =
-          'नमस्ते ${customer.name},\n\n'
-          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n\n'
-          '💳 *UPI से भुगतान करें:*\n'
+          'Hi ${customer.name},\n\n'
+          'You have a pending balance of *Rs $amt*.\n\n'
+          'Pay via UPI:\n'
           '━━━━━━━━━━━━━━\n'
-          '📱 UPI ID: *$maskedUpi*\n'
-          '💰 Amount: *₹${customer.balance.toStringAsFixed(0)}*\n'
+          'UPI ID: *$maskedUpi*\n'
+          'Amount: *Rs $amt*\n'
           '━━━━━━━━━━━━━━\n\n'
-          '👉 *भुगतान करने के लिए यहाँ क्लिक करें:*\n'
+          'Click here to pay:\n'
           '$payUrl\n\n'
-          'धन्यवाद 🙏\n'
+          'Thank you\n'
           '— $shopName';
     } else {
       messageText =
-          'नमस्ते ${customer.name},\n\n'
-          'आपके ₹${customer.balance.toStringAsFixed(0)} बाकी हैं।\n'
-          'कृपया जल्द भुगतान करें।\n\n'
-          'धन्यवाद 🙏';
+          'Hi ${customer.name},\n\n'
+          'You have a pending balance of *Rs $amt*.\n'
+          'Please pay at your earliest convenience.\n\n'
+          'Thank you';
     }
 
     final phone = '91${customer.phone}';

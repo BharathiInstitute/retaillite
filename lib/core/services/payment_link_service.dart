@@ -105,7 +105,7 @@ class PaymentLinkService {
     if (transactionNote != null && transactionNote.isNotEmpty) {
       parts.add('tn=${Uri.encodeComponent(transactionNote)}');
     }
-    return 'https://app.retaillite.com/pay?${parts.join('&')}';
+    return 'https://stores.tulasierp.com/pay?${parts.join('&')}';
   }
 
   /// Generate the UPI QR code data string (same as deep link, for QR rendering)
@@ -319,7 +319,7 @@ class PaymentLinkService {
     bool isShort = false,
   }) {
     final amountStr = '₹${amount.toStringAsFixed(0)}';
-    final shop = shopName ?? 'Store';
+    final shop = (shopName != null && shopName.isNotEmpty) ? shopName : 'Store';
 
     // Check if this is a Razorpay link
     final isRazorpayLink =

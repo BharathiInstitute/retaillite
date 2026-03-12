@@ -28,6 +28,8 @@ import 'package:retaillite/features/reports/providers/reports_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:in_app_review/in_app_review.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:retaillite/shared/widgets/onboarding_checklist.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
@@ -766,6 +768,68 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
                     .toList(),
               ),
               const SizedBox(height: 12),
+
+              // Send Payment Link button (UPI selected)
+              if (_selectedMethod == PaymentMethod.upi) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      if (_selectedCustomer == null) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Please select a customer first'),
+                          ),
+                        );
+                        return;
+                      }
+                      final upiId = PaymentLinkService.upiId;
+                      if (upiId.isEmpty ||
+                          !PaymentLinkService.isValidUpiId(upiId)) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Please set your UPI ID in Settings first',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      final user = ref.read(currentUserProvider);
+                      final shopName =
+                          (user != null && user.shopName.isNotEmpty)
+                          ? user.shopName
+                          : 'Store';
+                      final amount = cart.total;
+                      final payUrl = PaymentLinkService.generatePaymentPageUrl(
+                        upiId: upiId,
+                        amount: amount,
+                        payeeName: shopName,
+                        transactionNote: 'Payment to $shopName',
+                      );
+                      final msg =
+                          'Hi ${_selectedCustomer!.name},\n\n'
+                          'Your bill amount is *Rs ${amount.toStringAsFixed(0)}*.\n\n'
+                          'Pay via UPI:\n'
+                          'Click here to pay:\n'
+                          '$payUrl\n\n'
+                          'Thank you\n'
+                          '\u2014 $shopName';
+                      final phone = '91${_selectedCustomer!.phone}';
+                      final url = Uri.https('wa.me', '/$phone', {'text': msg});
+                      launchUrl(url, mode: LaunchMode.externalApplication);
+                    },
+                    icon: const Icon(Icons.send, size: 18),
+                    label: const Text('Send Payment Link'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: AppColors.info,
+                      side: const BorderSide(color: AppColors.info),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
 
               // Udhar amount editor
               if (_selectedMethod == PaymentMethod.udhar) ...[

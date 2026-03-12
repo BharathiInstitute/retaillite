@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -18,6 +19,7 @@ import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/privacy_consent_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
+import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 import 'package:retaillite/router/app_router.dart';
@@ -370,10 +372,12 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     }
 
     // Step 3: Execute deletion
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: CircularProgressIndicator()),
+    unawaited(
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
+      ),
     );
 
     final success = await ref
@@ -1647,17 +1651,18 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               subtitle: const Text('Download all your data as JSON'),
               trailing: const Icon(Icons.chevron_right),
               onTap: () async {
+                final messenger = ScaffoldMessenger.of(context);
                 try {
                   final data = await PrivacyConsentService.exportAllUserData();
                   if (mounted) {
                     await Clipboard.setData(ClipboardData(text: data));
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       const SnackBar(content: Text('Data copied to clipboard')),
                     );
                   }
                 } catch (e) {
                   if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    messenger.showSnackBar(
                       SnackBar(
                         content: Text('Export failed: $e'),
                         backgroundColor: AppColors.error,
@@ -2497,7 +2502,10 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                       boxShadow: AppShadows.small,
                     ),
                     child: QrImageView(
-                      data: 'upi://pay?pa=${_upiController.text.trim()}',
+                      data: PaymentLinkService.generateUpiQrData(
+                        upiId: _upiController.text.trim(),
+                        payeeName: _shopNameController.text.trim(),
+                      ),
                       size: 180,
                       backgroundColor: Colors.white,
                     ),
