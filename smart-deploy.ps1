@@ -423,7 +423,7 @@ if (Test-Path $statePath) {
         # Auto-disable platforms with missing toolchains on resume
         $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $hasVS = $false
-        if (Test-Path $vsWhere) { if (& $vsWhere -latest -property installationPath 2>$null) { $hasVS = $true } }
+        if (Test-Path $vsWhere) { if (& $vsWhere -products * -latest -property installationPath 2>$null) { $hasVS = $true } }
         if ($deployWindows -and -not $hasVS -and -not (Is-StepDone "windows")) {
             Write-Warn "Visual Studio not found — skipping Windows build"
             $deployWindows = $false; $buildMsix = $false; $buildExe = $false
@@ -476,7 +476,7 @@ if (-not $resumed) {
     $hasVisualStudio = $false
     $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
     if (Test-Path $vsWhere) {
-        $vsInstalls = & $vsWhere -latest -property installationPath 2>$null
+        $vsInstalls = & $vsWhere -products * -latest -property installationPath 2>$null
         if ($vsInstalls) { $hasVisualStudio = $true }
     }
     $hasAndroidSdk = $false
