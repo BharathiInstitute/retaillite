@@ -17,11 +17,13 @@ class UserDetailScreen extends ConsumerWidget {
     final userAsync = ref.watch(userDetailProvider(userId));
     final isWide = MediaQuery.of(context).size.width > 600;
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('User Details'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
       ),
       body: userAsync.when(
         data: (user) {
@@ -93,59 +95,82 @@ class UserDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildProfileCard(AdminUser user) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: _getPlanColor(user.subscription.plan),
-              child: Text(
-                user.shopName.isNotEmpty ? user.shopName[0].toUpperCase() : '?',
-                style: const TextStyle(color: Colors.white, fontSize: 32),
-              ),
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              children: [
+                CircleAvatar(
+                  radius: 40,
+                  backgroundColor: _getPlanColor(user.subscription.plan),
+                  child: Text(
+                    user.shopName.isNotEmpty
+                        ? user.shopName[0].toUpperCase()
+                        : '?',
+                    style: const TextStyle(color: Colors.white, fontSize: 32),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  user.shopName,
+                  style: const TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  user.ownerName,
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _buildPlanBadge(user.subscription.plan, large: true),
+                const SizedBox(height: 24),
+                _buildInfoRow(Icons.email, user.email),
+                if (user.phone != null) _buildInfoRow(Icons.phone, user.phone!),
+                if (user.address != null)
+                  _buildInfoRow(Icons.location_on, user.address!),
+                if (user.gstNumber != null)
+                  _buildInfoRow(Icons.badge, 'GST: ${user.gstNumber}'),
+                _buildInfoRow(
+                  Icons.calendar_today,
+                  'Joined ${user.daysSinceRegistration} days ago',
+                ),
+              ],
             ),
-            const SizedBox(height: 16),
-            Text(
-              user.shopName,
-              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              user.ownerName,
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 16),
-            _buildPlanBadge(user.subscription.plan, large: true),
-            const SizedBox(height: 24),
-            _buildInfoRow(Icons.email, user.email),
-            if (user.phone != null) _buildInfoRow(Icons.phone, user.phone!),
-            if (user.address != null)
-              _buildInfoRow(Icons.location_on, user.address!),
-            if (user.gstNumber != null)
-              _buildInfoRow(Icons.badge, 'GST: ${user.gstNumber}'),
-            _buildInfoRow(
-              Icons.calendar_today,
-              'Joined ${user.daysSinceRegistration} days ago',
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: Colors.grey.shade600),
-          const SizedBox(width: 12),
-          Expanded(child: Text(text)),
-        ],
-      ),
+    return Builder(
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Text(text)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -294,12 +319,16 @@ class UserDetailScreen extends ConsumerWidget {
         const SizedBox(height: 8),
         ClipRRect(
           borderRadius: BorderRadius.circular(4),
-          child: LinearProgressIndicator(
-            value: percentage,
-            minHeight: 8,
-            backgroundColor: Colors.grey.shade200,
-            valueColor: AlwaysStoppedAnimation(
-              percentage > 0.8 ? Colors.orange : Colors.green,
+          child: Builder(
+            builder: (context) => LinearProgressIndicator(
+              value: percentage,
+              minHeight: 8,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
+              valueColor: AlwaysStoppedAnimation(
+                percentage > 0.8 ? Colors.orange : Colors.green,
+              ),
             ),
           ),
         ),
@@ -316,27 +345,38 @@ class UserDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildStatBox(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
+    return Builder(
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
           ),
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
-        ],
-      ),
+          child: Column(
+            children: [
+              Icon(icon, color: color),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                  color: color,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -376,17 +416,28 @@ class UserDetailScreen extends ConsumerWidget {
   }
 
   Widget _buildActivityRow(String label, String value, Color dotColor) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        children: [
-          Icon(Icons.circle, size: 10, color: dotColor),
-          const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: Colors.grey.shade600)),
-          const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
-        ],
-      ),
+    return Builder(
+      builder: (context) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Row(
+            children: [
+              Icon(Icons.circle, size: 10, color: dotColor),
+              const SizedBox(width: 12),
+              Text(
+                label,
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+              const Spacer(),
+              Text(value, style: const TextStyle(fontWeight: FontWeight.w500)),
+            ],
+          ),
+        );
+      },
     );
   }
 

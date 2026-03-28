@@ -10,6 +10,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:retaillite/core/constants/app_constants.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
@@ -39,14 +40,17 @@ class SettingsWebScreen extends ConsumerStatefulWidget {
 
 class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   // Text controllers for editable fields
-  late TextEditingController _shopNameController;
-  late TextEditingController _ownerNameController;
-  late TextEditingController _contactNumberController;
-  late TextEditingController _shopAddressController;
-  late TextEditingController _emailController;
-  late TextEditingController _termsController;
-  late TextEditingController _gstController;
-  late TextEditingController _upiController;
+  final _shopNameController = TextEditingController();
+  final _ownerNameController = TextEditingController();
+  final _contactNumberController = TextEditingController();
+  final _shopAddressController = TextEditingController();
+  final _emailController = TextEditingController();
+  final _termsController = TextEditingController();
+  final _gstController = TextEditingController();
+  final _upiController = TextEditingController();
+  final _barcodePrefixController = TextEditingController();
+  final _barcodeSuffixController = TextEditingController();
+  final _receiptFooterController = TextEditingController();
 
   String _selectedCurrency = 'INR';
   String _selectedTimezone = 'Asia/Kolkata';
@@ -62,20 +66,21 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     final user = ref.read(currentUserProvider);
     _loadReferral();
     _loadSubscription();
-    _shopNameController = TextEditingController(text: user?.shopName ?? '');
-    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
-    _contactNumberController = TextEditingController(text: user?.phone ?? '');
-    _shopAddressController = TextEditingController(text: user?.address ?? '');
-    _emailController = TextEditingController(text: user?.email ?? '');
-    _gstController = TextEditingController(text: user?.gstNumber ?? '');
-    _upiController = TextEditingController(text: user?.upiId ?? '');
+    _shopNameController.text = user?.shopName ?? '';
+    _ownerNameController.text = user?.ownerName ?? '';
+    _contactNumberController.text = user?.phone ?? '';
+    _shopAddressController.text = user?.address ?? '';
+    _emailController.text = user?.email ?? '';
+    _gstController.text = user?.gstNumber ?? '';
+    _upiController.text = user?.upiId ?? '';
+    _barcodePrefixController.text = PrinterStorage.getBarcodePrefix();
+    _barcodeSuffixController.text = PrinterStorage.getBarcodeSuffix();
     _selectedCurrency = user?.currency ?? 'INR';
     _selectedTimezone = user?.timezone ?? 'Asia/Kolkata';
-    _termsController = TextEditingController(
-      text:
-          user?.settings.receiptFooter ??
-          '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.',
-    );
+    _termsController.text =
+        user?.settings.receiptFooter ??
+        '1. Goods once sold will not be taken back.\n2. Subject to local jurisdiction.\n3. Warranty as per manufacturer terms.';
+    _receiptFooterController.text = ref.read(printerProvider).receiptFooter;
   }
 
   @override
@@ -87,6 +92,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _emailController.dispose();
     _gstController.dispose();
     _upiController.dispose();
+    _barcodePrefixController.dispose();
+    _barcodeSuffixController.dispose();
+    _receiptFooterController.dispose();
     _termsController.dispose();
     super.dispose();
   }
@@ -1090,6 +1098,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               _buildTextField(
                 controller: _gstController,
                 hint: '22AAAAA0000A1Z5',
+                suffixIcon: const Icon(Icons.edit, size: 18),
               ),
               const SizedBox(height: 8),
               const Text(
@@ -1732,7 +1741,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
 
     return _responsiveColumns(
       [
-        // Printer Settings
+        // ─── Printer Settings ───
         _SectionCard(
           icon: Icons.print,
           iconColor: AppColors.info,
@@ -1740,7 +1749,11 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.12),
+              color:
+                  (printerState.isConnected
+                          ? AppColors.success
+                          : AppColors.textMuted)
+                      .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -1749,16 +1762,20 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.success,
+                  decoration: BoxDecoration(
+                    color: printerState.isConnected
+                        ? AppColors.success
+                        : AppColors.textMuted,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Connected',
+                Text(
+                  printerState.isConnected ? 'Connected' : 'Not Connected',
                   style: TextStyle(
-                    color: AppColors.success,
+                    color: printerState.isConnected
+                        ? AppColors.success
+                        : AppColors.textMuted,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1769,12 +1786,66 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _buildFieldLabel('Select Printer'),
-              _buildDropdown(
-                printerState.printerName ?? 'Epson TM-T82 (Bluetooth)',
-                ['Epson TM-T82 (Bluetooth)', 'None'],
+              // Printer Type selector
+              _buildFieldLabel('Printer Type'),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildSelectableChip(
+                    'System',
+                    printerState.printerType == PrinterTypeOption.system,
+                    () => ref
+                        .read(printerProvider.notifier)
+                        .setPrinterType(PrinterTypeOption.system),
+                  ),
+                  if (kIsWeb)
+                    _buildSelectableChip(
+                      'Web Bluetooth',
+                      printerState.printerType ==
+                          PrinterTypeOption.webBluetooth,
+                      () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.webBluetooth),
+                    ),
+                  if (!kIsWeb) ...[
+                    _buildSelectableChip(
+                      'Bluetooth',
+                      printerState.printerType == PrinterTypeOption.bluetooth,
+                      () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.bluetooth),
+                    ),
+                    _buildSelectableChip(
+                      'WiFi',
+                      printerState.printerType == PrinterTypeOption.wifi,
+                      () => ref
+                          .read(printerProvider.notifier)
+                          .setPrinterType(PrinterTypeOption.wifi),
+                    ),
+                    if (!kIsWeb && Platform.isWindows)
+                      _buildSelectableChip(
+                        'USB',
+                        printerState.printerType == PrinterTypeOption.usb,
+                        () => ref
+                            .read(printerProvider.notifier)
+                            .setPrinterType(PrinterTypeOption.usb),
+                      ),
+                    if (!kIsWeb && Platform.isAndroid)
+                      _buildSelectableChip(
+                        'Sunmi',
+                        printerState.printerType == PrinterTypeOption.sunmi,
+                        () => ref
+                            .read(printerProvider.notifier)
+                            .setPrinterType(PrinterTypeOption.sunmi),
+                      ),
+                  ],
+                ],
               ),
               const SizedBox(height: 20),
+
+              // Paper Width
               _responsiveFields([
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1783,9 +1854,21 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildToggleChip('58mm', false),
+                        _buildSelectableChip(
+                          '58mm',
+                          printerState.paperSizeIndex == 0,
+                          () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(0),
+                        ),
                         const SizedBox(width: 8),
-                        _buildToggleChip('80mm', true),
+                        _buildSelectableChip(
+                          '80mm',
+                          printerState.paperSizeIndex == 1,
+                          () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(1),
+                        ),
                       ],
                     ),
                   ],
@@ -1793,28 +1876,76 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildFieldLabel('Density'),
+                    _buildFieldLabel('Font Size'),
                     const SizedBox(height: 8),
-                    Slider(
-                      value: 0.7,
-                      onChanged: null,
-                      activeColor: AppColors.primary,
-                    ),
-                    const Text(
-                      'Coming soon',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: AppColors.textMuted,
-                      ),
+                    Row(
+                      children: [
+                        for (final f in PrinterFontSize.values) ...[
+                          _buildSelectableChip(
+                            f.label,
+                            printerState.fontSizeIndex == f.value,
+                            () => ref
+                                .read(printerProvider.notifier)
+                                .setFontSize(f.value),
+                          ),
+                          const SizedBox(width: 8),
+                        ],
+                      ],
                     ),
                   ],
                 ),
               ]),
               const SizedBox(height: 16),
+
+              // Custom Width slider
+              _buildFieldLabel(
+                'Custom Width: ${printerState.customWidth == 0 ? "Auto" : "${printerState.customWidth}"}',
+              ),
+              Slider(
+                value: printerState.customWidth.toDouble(),
+                max: 52,
+                divisions: 52,
+                label: printerState.customWidth == 0
+                    ? 'Auto'
+                    : '${printerState.customWidth}',
+                activeColor: AppColors.primary,
+                onChanged: (v) {
+                  ref.read(printerProvider.notifier).setCustomWidth(v.toInt());
+                },
+              ),
+              const SizedBox(height: 12),
+
+              // Print copies
+              _buildFieldLabel('Print Copies'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  for (final c in [1, 2, 3]) ...[
+                    _buildSelectableChip(
+                      '$c',
+                      printerState.printCopies == c,
+                      () =>
+                          ref.read(printerProvider.notifier).setPrintCopies(c),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Test Print button
               Align(
                 alignment: Alignment.centerRight,
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Test print — use the mobile app for direct printing',
+                        ),
+                      ),
+                    );
+                  },
                   icon: const Icon(Icons.print, size: 18),
                   label: const Text('Test Print'),
                 ),
@@ -1824,7 +1955,146 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
         ),
         const SizedBox(height: 24),
 
-        // Barcode Scanner
+        // ─── Receipt Settings ───
+        _SectionCard(
+          icon: Icons.receipt_long,
+          iconColor: AppColors.success,
+          title: 'Receipt Settings',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Auto-print toggle
+              _buildSettingToggle(
+                'Auto-Print',
+                'Print receipt automatically after billing',
+                printerState.autoPrint,
+                (v) => ref.read(printerProvider.notifier).setAutoPrint(v),
+              ),
+              const Divider(height: 24),
+
+              // Cash drawer toggle (thermal only)
+              if (printerState.printerType.isThermal) ...[
+                _buildSettingToggle(
+                  'Open Cash Drawer',
+                  'Automatically open cash drawer after payment',
+                  printerState.openCashDrawer,
+                  (v) =>
+                      ref.read(printerProvider.notifier).setOpenCashDrawer(v),
+                ),
+                const Divider(height: 24),
+              ],
+
+              // UPI QR on receipt
+              _buildSettingToggle(
+                'UPI QR on Receipt',
+                'Print UPI payment QR code on receipt',
+                printerState.showQrOnReceipt,
+                (v) => ref.read(printerProvider.notifier).setShowQrOnReceipt(v),
+              ),
+              const Divider(height: 24),
+
+              // GST breakdown
+              _buildSettingToggle(
+                'GST Breakdown',
+                'Show CGST/SGST split on receipt',
+                printerState.showGstBreakdown,
+                (v) =>
+                    ref.read(printerProvider.notifier).setShowGstBreakdown(v),
+              ),
+              const Divider(height: 24),
+
+              // Receipt language
+              _buildFieldLabel('Receipt Language'),
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  for (final lang in ReceiptLanguage.values) ...[
+                    _buildSelectableChip(
+                      lang.label,
+                      printerState.receiptLanguage == lang,
+                      () => ref
+                          .read(printerProvider.notifier)
+                          .setReceiptLanguage(lang),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Logo on thermal receipt
+              if (printerState.printerType.isThermal) ...[
+                _buildSettingToggle(
+                  'Logo on Receipt',
+                  'Print shop logo on thermal receipts',
+                  printerState.showLogoOnThermal,
+                  (v) => ref
+                      .read(printerProvider.notifier)
+                      .setShowLogoOnThermal(v),
+                ),
+                const Divider(height: 24),
+              ],
+
+              // Copy label (Original/Duplicate)
+              _buildSettingToggle(
+                'Original/Duplicate Label',
+                'Mark copies as ORIGINAL or DUPLICATE when printing multiple',
+                printerState.showCopyLabel,
+                (v) => ref.read(printerProvider.notifier).setShowCopyLabel(v),
+              ),
+              const Divider(height: 24),
+
+              // HSN/SAC code on receipt
+              _buildSettingToggle(
+                'HSN/SAC Code on Receipt',
+                'Show HSN/SAC code below each item on receipts',
+                printerState.showHsnOnReceipt,
+                (v) =>
+                    ref.read(printerProvider.notifier).setShowHsnOnReceipt(v),
+              ),
+              const Divider(height: 24),
+
+              // Cut mode (thermal only)
+              if (printerState.printerType.isThermal) ...[
+                _buildFieldLabel('Paper Cut'),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    for (final mode in CutMode.values) ...[
+                      _buildSelectableChip(
+                        mode.label,
+                        printerState.cutMode == mode,
+                        () =>
+                            ref.read(printerProvider.notifier).setCutMode(mode),
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 16),
+              ],
+
+              // Receipt footer
+              _buildFieldLabel('Receipt Footer'),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _receiptFooterController,
+                decoration: InputDecoration(
+                  hintText: 'e.g. Thank you for shopping!',
+                  helperText: 'Custom text at the bottom of receipts',
+                  filled: true,
+                  fillColor: Theme.of(context).scaffoldBackgroundColor,
+                ),
+                onChanged: (v) {
+                  ref.read(printerProvider.notifier).setReceiptFooter(v);
+                },
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        // ─── Barcode Scanner ───
         _SectionCard(
           icon: Icons.qr_code_scanner,
           iconColor: AppColors.warning,
@@ -1837,41 +2107,41 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Prefix'),
-                    _buildTextField(value: 'None'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _barcodePrefixController,
+                      decoration: InputDecoration(
+                        hintText: 'Optional prefix',
+                        filled: true,
+                        fillColor: Theme.of(context).scaffoldBackgroundColor,
+                      ),
+                      onChanged: (v) => PrinterStorage.saveBarcodePrefix(v),
+                    ),
                   ],
                 ),
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildFieldLabel('Suffix'),
-                    _buildTextField(value: 'Enter (Return)'),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _barcodeSuffixController,
+                      decoration: InputDecoration(
+                        hintText: 'Optional suffix',
+                        filled: true,
+                        fillColor: Theme.of(context).scaffoldBackgroundColor,
+                      ),
+                      onChanged: (v) => PrinterStorage.saveBarcodeSuffix(v),
+                    ),
                   ],
                 ),
               ]),
-              const SizedBox(height: 20),
-              const Text(
-                'TEST CONFIGURATION',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppColors.textMuted,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
               const SizedBox(height: 8),
-              TextField(
-                decoration: InputDecoration(
-                  hintText: 'Scan an item here to test...',
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.refresh),
-                    onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Scan test reset - ready for new scan'),
-                        duration: Duration(seconds: 2),
-                      ),
-                    ),
-                  ),
-                  filled: true,
-                  fillColor: Theme.of(context).scaffoldBackgroundColor,
+              Text(
+                'Add prefix/suffix to barcode input for scanner compatibility',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Theme.of(context).colorScheme.outline,
                 ),
               ),
             ],
@@ -2573,6 +2843,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     bool obscure = false,
     int maxLines = 1,
     bool enabled = true,
+    Widget? suffixIcon,
   }) {
     return TextFormField(
       controller: controller,
@@ -2583,6 +2854,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       decoration: InputDecoration(
         hintText: hint,
         filled: true,
+        suffixIcon: suffixIcon,
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 12,
           vertical: 12,
@@ -2810,26 +3082,67 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     );
   }
 
-  Widget _buildToggleChip(String label, bool isSelected) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      decoration: BoxDecoration(
-        color: isSelected
-            ? AppColors.primary.withValues(alpha: 0.1)
-            : Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(8),
-        border: isSelected ? Border.all(color: AppColors.primary) : null,
-        boxShadow: isSelected ? null : AppShadows.small,
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
+  Widget _buildSelectableChip(
+    String label,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
           color: isSelected
-              ? AppColors.primary
-              : Theme.of(context).colorScheme.onSurface,
-          fontWeight: FontWeight.w500,
+              ? AppColors.primary.withValues(alpha: 0.1)
+              : Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(8),
+          border: isSelected ? Border.all(color: AppColors.primary) : null,
+          boxShadow: isSelected ? null : AppShadows.small,
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isSelected
+                ? AppColors.primary
+                : Theme.of(context).colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
         ),
       ),
+    );
+  }
+
+  Widget _buildSettingToggle(
+    String title,
+    String description,
+    bool value,
+    ValueChanged<bool> onChanged,
+  ) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+              const SizedBox(height: 4),
+              Text(
+                description,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Switch(
+          value: value,
+          onChanged: onChanged,
+          activeThumbColor: AppColors.primary,
+        ),
+      ],
     );
   }
 

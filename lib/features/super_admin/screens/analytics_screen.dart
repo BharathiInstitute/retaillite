@@ -16,11 +16,13 @@ class AnalyticsScreen extends ConsumerWidget {
     final featureUsageAsync = ref.watch(featureUsageProvider);
     final isWide = MediaQuery.of(context).size.width > 800;
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Analytics'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         leading: MediaQuery.of(context).size.width >= 1024
             ? null
             : IconButton(
@@ -33,6 +35,7 @@ class AnalyticsScreen extends ConsumerWidget {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
+              ref.invalidate(analyticsRecalcProvider);
               ref.invalidate(adminStatsProvider);
               ref.invalidate(platformStatsProvider);
               ref.invalidate(featureUsageProvider);
@@ -161,40 +164,52 @@ class AnalyticsScreen extends ConsumerWidget {
     IconData icon,
     Color color,
   ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: color, size: 20),
-            const SizedBox(height: 2),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: color,
+    return Builder(
+      builder: (context) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, color: color, size: 20),
+                const SizedBox(height: 2),
+                FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    value,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: color,
+                    ),
+                  ),
                 ),
-              ),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
             ),
-            Text(
-              label,
-              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12),
-            ),
-            Text(
-              subtitle,
-              style: TextStyle(fontSize: 9, color: Colors.grey.shade600),
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -265,238 +280,269 @@ class AnalyticsScreen extends ConsumerWidget {
       'settings': {'name': '~Settings (est.)', 'color': Colors.grey},
     };
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Feature Usage',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Billing, Products, Khata from data · Reports & Settings estimated',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
-            ...featureConfig.entries.map((entry) {
-              final usage = featureStats[entry.key] ?? 0.0;
-              final config = entry.value;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(config['name'] as String),
-                        Text(
-                          '${(usage * 100).toInt()}%',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                      ],
+                    const Text(
+                      'Feature Usage',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
-                    const SizedBox(height: 4),
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(4),
-                      child: LinearProgressIndicator(
-                        value: usage.clamp(0.0, 1.0),
-                        minHeight: 8,
-                        backgroundColor: Colors.grey.shade200,
-                        valueColor: AlwaysStoppedAnimation(
-                          config['color'] as Color,
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'LIVE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
                   ],
                 ),
-              );
-            }),
-          ],
-        ),
-      ),
+                const SizedBox(height: 8),
+                Text(
+                  'Billing, Products, Khata from data · Reports & Settings estimated',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                ...featureConfig.entries.map((entry) {
+                  final usage = featureStats[entry.key] ?? 0.0;
+                  final config = entry.value;
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(config['name'] as String),
+                            Text(
+                              '${(usage * 100).toInt()}%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(4),
+                          child: LinearProgressIndicator(
+                            value: usage.clamp(0.0, 1.0),
+                            minHeight: 8,
+                            backgroundColor: cs.surfaceContainerHighest,
+                            valueColor: AlwaysStoppedAnimation(
+                              config['color'] as Color,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildPlatformCard(Map<String, int> platformStats) {
-    // Map platform keys to display config
-    final platformConfig = {
-      'android': {
-        'name': 'Android',
-        'icon': Icons.android,
-        'color': Colors.green,
-      },
-      'ios': {
-        'name': 'iOS',
-        'icon': Icons.apple,
-        'color': Colors.grey.shade800,
-      },
-      'web': {'name': 'Web', 'icon': Icons.web, 'color': Colors.blue},
-      'windows': {
-        'name': 'Windows',
-        'icon': Icons.desktop_windows,
-        'color': Colors.lightBlue,
-      },
-      'macos': {
-        'name': 'macOS',
-        'icon': Icons.laptop_mac,
-        'color': Colors.grey.shade700,
-      },
-      'linux': {
-        'name': 'Linux',
-        'icon': Icons.computer,
-        'color': Colors.orange,
-      },
-      'unknown': {
-        'name': 'Unknown',
-        'icon': Icons.device_unknown,
-        'color': Colors.grey,
-      },
-    };
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        // Map platform keys to display config
+        final platformConfig = {
+          'android': {
+            'name': 'Android',
+            'icon': Icons.android,
+            'color': Colors.green,
+          },
+          'ios': {
+            'name': 'iOS',
+            'icon': Icons.apple,
+            'color': cs.onSurface.withValues(alpha: 0.8),
+          },
+          'web': {'name': 'Web', 'icon': Icons.web, 'color': Colors.blue},
+          'windows': {
+            'name': 'Windows',
+            'icon': Icons.desktop_windows,
+            'color': Colors.lightBlue,
+          },
+          'macos': {
+            'name': 'macOS',
+            'icon': Icons.laptop_mac,
+            'color': cs.onSurface.withValues(alpha: 0.7),
+          },
+          'linux': {
+            'name': 'Linux',
+            'icon': Icons.computer,
+            'color': Colors.orange,
+          },
+          'unknown': {
+            'name': 'Unknown',
+            'icon': Icons.device_unknown,
+            'color': Colors.grey,
+          },
+        };
 
-    // Filter only platforms with users
-    final activePlatforms = platformStats.entries
-        .where((e) => e.value > 0)
-        .toList();
+        // Filter only platforms with users
+        final activePlatforms = platformStats.entries
+            .where((e) => e.value > 0)
+            .toList();
 
-    if (activePlatforms.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.devices_other,
-                  size: 48,
-                  color: Colors.grey.shade400,
+        if (activePlatforms.isEmpty) {
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.devices_other,
+                      size: 48,
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No platform data yet',
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.6),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Platform info is recorded when users log in',
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.4),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  'No platform data yet',
-                  style: TextStyle(color: Colors.grey.shade600),
+              ),
+            ),
+          );
+        }
+
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      'Platform Distribution',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.green.shade100,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: const Text(
+                        'LIVE',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.green,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Platform info is recorded when users log in',
-                  style: TextStyle(color: Colors.grey.shade400, fontSize: 12),
+                  'Where users access the app from',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: activePlatforms.map((entry) {
+                    final config =
+                        platformConfig[entry.key] ?? platformConfig['unknown']!;
+                    return Container(
+                      width: 100,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: (config['color'] as Color).withValues(
+                          alpha: 0.1,
+                        ),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        children: [
+                          Icon(
+                            config['icon'] as IconData,
+                            color: config['color'] as Color,
+                            size: 28,
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            '${entry.value}',
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.bold,
+                              color: config['color'] as Color,
+                            ),
+                          ),
+                          Text(
+                            config['name'] as String,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: cs.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }).toList(),
                 ),
               ],
             ),
           ),
-        ),
-      );
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Text(
-                  'Platform Distribution',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.green.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Text(
-                    'LIVE',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Colors.green,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Where users access the app from',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-            ),
-            const SizedBox(height: 20),
-            Wrap(
-              spacing: 12,
-              runSpacing: 12,
-              children: activePlatforms.map((entry) {
-                final config =
-                    platformConfig[entry.key] ?? platformConfig['unknown']!;
-                return Container(
-                  width: 100,
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: (config['color'] as Color).withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Column(
-                    children: [
-                      Icon(
-                        config['icon'] as IconData,
-                        color: config['color'] as Color,
-                        size: 28,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${entry.value}',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: config['color'] as Color,
-                        ),
-                      ),
-                      Text(
-                        config['name'] as String,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: Colors.grey.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }

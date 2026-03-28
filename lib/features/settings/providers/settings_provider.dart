@@ -263,7 +263,9 @@ enum PrinterTypeOption {
   system('System Printer', 'Uses system print dialog (USB, WiFi, network)'),
   bluetooth('Bluetooth', 'Direct ESC/POS via Bluetooth'),
   usb('USB', 'Direct ESC/POS via USB cable'),
-  wifi('WiFi', 'Direct ESC/POS via network');
+  wifi('WiFi', 'Direct ESC/POS via network'),
+  sunmi('Sunmi Built-in', 'Built-in printer on Sunmi POS devices'),
+  webBluetooth('Web Bluetooth', 'Print via Chrome Web Bluetooth API');
 
   final String label;
   final String description;
@@ -276,6 +278,38 @@ enum PrinterTypeOption {
     return PrinterTypeOption.values.firstWhere(
       (t) => t.name == value,
       orElse: () => PrinterTypeOption.system,
+    );
+  }
+}
+
+/// Receipt language
+enum ReceiptLanguage {
+  english('English'),
+  hindi('हिन्दी');
+
+  final String label;
+  const ReceiptLanguage(this.label);
+
+  static ReceiptLanguage fromString(String value) {
+    return ReceiptLanguage.values.firstWhere(
+      (l) => l.name == value,
+      orElse: () => ReceiptLanguage.english,
+    );
+  }
+}
+
+/// Cut mode for thermal paper
+enum CutMode {
+  fullCut('Full Cut'),
+  partialCut('Partial Cut');
+
+  final String label;
+  const CutMode(this.label);
+
+  static CutMode fromString(String value) {
+    return CutMode.values.firstWhere(
+      (c) => c.name == value,
+      orElse: () => CutMode.fullCut,
     );
   }
 }
@@ -293,6 +327,15 @@ class PrinterState {
   final PrinterTypeOption printerType;
   final bool autoPrint;
   final String receiptFooter;
+  final bool openCashDrawer;
+  final int printCopies; // 1-3
+  final bool showQrOnReceipt;
+  final bool showGstBreakdown;
+  final ReceiptLanguage receiptLanguage;
+  final bool showLogoOnThermal;
+  final CutMode cutMode;
+  final bool showCopyLabel;
+  final bool showHsnOnReceipt;
 
   const PrinterState({
     this.isConnected = false,
@@ -306,6 +349,15 @@ class PrinterState {
     this.printerType = PrinterTypeOption.system,
     this.autoPrint = false,
     this.receiptFooter = '',
+    this.openCashDrawer = false,
+    this.printCopies = 1,
+    this.showQrOnReceipt = false,
+    this.showGstBreakdown = false,
+    this.receiptLanguage = ReceiptLanguage.english,
+    this.showLogoOnThermal = false,
+    this.cutMode = CutMode.fullCut,
+    this.showCopyLabel = false,
+    this.showHsnOnReceipt = false,
   });
 
   String get paperSizeLabel => paperSizeIndex == 0 ? '58mm' : '80mm';
@@ -336,6 +388,15 @@ class PrinterState {
     PrinterTypeOption? printerType,
     bool? autoPrint,
     String? receiptFooter,
+    bool? openCashDrawer,
+    int? printCopies,
+    bool? showQrOnReceipt,
+    bool? showGstBreakdown,
+    ReceiptLanguage? receiptLanguage,
+    bool? showLogoOnThermal,
+    CutMode? cutMode,
+    bool? showCopyLabel,
+    bool? showHsnOnReceipt,
   }) {
     return PrinterState(
       isConnected: isConnected ?? this.isConnected,
@@ -349,6 +410,15 @@ class PrinterState {
       printerType: printerType ?? this.printerType,
       autoPrint: autoPrint ?? this.autoPrint,
       receiptFooter: receiptFooter ?? this.receiptFooter,
+      openCashDrawer: openCashDrawer ?? this.openCashDrawer,
+      printCopies: printCopies ?? this.printCopies,
+      showQrOnReceipt: showQrOnReceipt ?? this.showQrOnReceipt,
+      showGstBreakdown: showGstBreakdown ?? this.showGstBreakdown,
+      receiptLanguage: receiptLanguage ?? this.receiptLanguage,
+      showLogoOnThermal: showLogoOnThermal ?? this.showLogoOnThermal,
+      cutMode: cutMode ?? this.cutMode,
+      showCopyLabel: showCopyLabel ?? this.showCopyLabel,
+      showHsnOnReceipt: showHsnOnReceipt ?? this.showHsnOnReceipt,
     );
   }
 }
@@ -370,6 +440,17 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
     final customWidth = PrinterStorage.getSavedCustomWidth();
     final autoPrint = PrinterStorage.getAutoPrint();
     final receiptFooter = PrinterStorage.getReceiptFooter();
+    final openCashDrawer = PrinterStorage.getOpenCashDrawer();
+    final printCopies = PrinterStorage.getPrintCopies();
+    final showQrOnReceipt = PrinterStorage.getShowQrOnReceipt();
+    final showGstBreakdown = PrinterStorage.getShowGstBreakdown();
+    final receiptLanguage = ReceiptLanguage.fromString(
+      PrinterStorage.getReceiptLanguage(),
+    );
+    final showLogoOnThermal = PrinterStorage.getShowLogoOnThermal();
+    final cutMode = CutMode.fromString(PrinterStorage.getCutMode());
+    final showCopyLabel = PrinterStorage.getShowCopyLabel();
+    final showHsnOnReceipt = PrinterStorage.getShowHsnOnReceipt();
     final printerType = PrinterTypeOption.fromString(
       PrinterStorage.getPrinterType(),
     );
@@ -384,7 +465,16 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
         customWidth: customWidth,
         autoPrint: autoPrint,
         receiptFooter: receiptFooter,
+        openCashDrawer: openCashDrawer,
+        printCopies: printCopies,
+        showQrOnReceipt: showQrOnReceipt,
+        showGstBreakdown: showGstBreakdown,
+        receiptLanguage: receiptLanguage,
+        showLogoOnThermal: showLogoOnThermal,
+        cutMode: cutMode,
         printerType: printerType,
+        showCopyLabel: showCopyLabel,
+        showHsnOnReceipt: showHsnOnReceipt,
       );
     } else {
       state = PrinterState(
@@ -393,7 +483,16 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
         customWidth: customWidth,
         autoPrint: autoPrint,
         receiptFooter: receiptFooter,
+        openCashDrawer: openCashDrawer,
+        printCopies: printCopies,
+        showQrOnReceipt: showQrOnReceipt,
+        showGstBreakdown: showGstBreakdown,
+        receiptLanguage: receiptLanguage,
+        showLogoOnThermal: showLogoOnThermal,
+        cutMode: cutMode,
         printerType: printerType,
+        showCopyLabel: showCopyLabel,
+        showHsnOnReceipt: showHsnOnReceipt,
       );
     }
   }
@@ -452,6 +551,13 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
       customWidth: state.customWidth,
       autoPrint: state.autoPrint,
       receiptFooter: state.receiptFooter,
+      openCashDrawer: state.openCashDrawer,
+      printCopies: state.printCopies,
+      showQrOnReceipt: state.showQrOnReceipt,
+      showGstBreakdown: state.showGstBreakdown,
+      receiptLanguage: state.receiptLanguage,
+      showLogoOnThermal: state.showLogoOnThermal,
+      cutMode: state.cutMode,
       printerType: state.printerType,
     );
   }
@@ -472,6 +578,61 @@ class PrinterNotifier extends StateNotifier<PrinterState> {
   Future<void> setReceiptFooter(String footer) async {
     await PrinterStorage.saveReceiptFooter(footer);
     state = state.copyWith(receiptFooter: footer);
+  }
+
+  /// Set open cash drawer on payment
+  Future<void> setOpenCashDrawer(bool open) async {
+    await PrinterStorage.saveOpenCashDrawer(open);
+    state = state.copyWith(openCashDrawer: open);
+  }
+
+  /// Set number of print copies (1-3)
+  Future<void> setPrintCopies(int copies) async {
+    final clamped = copies.clamp(1, 3);
+    await PrinterStorage.savePrintCopies(clamped);
+    state = state.copyWith(printCopies: clamped);
+  }
+
+  /// Set show QR on receipt
+  Future<void> setShowQrOnReceipt(bool show) async {
+    await PrinterStorage.saveShowQrOnReceipt(show);
+    state = state.copyWith(showQrOnReceipt: show);
+  }
+
+  /// Set show GST breakdown on receipt
+  Future<void> setShowGstBreakdown(bool show) async {
+    await PrinterStorage.saveShowGstBreakdown(show);
+    state = state.copyWith(showGstBreakdown: show);
+  }
+
+  /// Set receipt language
+  Future<void> setReceiptLanguage(ReceiptLanguage lang) async {
+    await PrinterStorage.saveReceiptLanguage(lang.name);
+    state = state.copyWith(receiptLanguage: lang);
+  }
+
+  /// Set show logo on thermal receipt
+  Future<void> setShowLogoOnThermal(bool show) async {
+    await PrinterStorage.saveShowLogoOnThermal(show);
+    state = state.copyWith(showLogoOnThermal: show);
+  }
+
+  /// Set cut mode
+  Future<void> setCutMode(CutMode mode) async {
+    await PrinterStorage.saveCutMode(mode.name);
+    state = state.copyWith(cutMode: mode);
+  }
+
+  /// Set show copy label (Original/Duplicate)
+  Future<void> setShowCopyLabel(bool show) async {
+    await PrinterStorage.saveShowCopyLabel(show);
+    state = state.copyWith(showCopyLabel: show);
+  }
+
+  /// Set show HSN/SAC on receipt
+  Future<void> setShowHsnOnReceipt(bool show) async {
+    await PrinterStorage.saveShowHsnOnReceipt(show);
+    state = state.copyWith(showHsnOnReceipt: show);
   }
 
   /// Set error state

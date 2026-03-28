@@ -9,7 +9,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/app_colors.dart';
+import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
+import 'package:retaillite/core/services/sunmi_printer_service.dart';
+import 'package:retaillite/core/services/web_bluetooth_printer_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/core/services/sync_settings_service.dart';
 import 'package:retaillite/l10n/app_localizations.dart';
@@ -31,30 +34,25 @@ class _HardwareSettingsScreenState
   List<PrinterDevice> _scannedDevices = [];
 
   // WiFi printer state
-  late TextEditingController _wifiIpController;
-  late TextEditingController _wifiPortController;
+  final _wifiIpController = TextEditingController();
+  final _wifiPortController = TextEditingController();
   bool _isWifiConnecting = false;
 
   // USB printer state (Windows)
   List<String> _windowsPrinters = [];
   bool _isLoadingUsbPrinters = false;
 
-  late TextEditingController _barcodePrefixController;
-  late TextEditingController _barcodeSuffixController;
-  late TextEditingController _receiptFooterController;
+  final _barcodePrefixController = TextEditingController();
+  final _barcodeSuffixController = TextEditingController();
+  final _receiptFooterController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _barcodePrefixController = TextEditingController();
-    _barcodeSuffixController = TextEditingController();
-    _receiptFooterController = TextEditingController();
-    _wifiIpController = TextEditingController(
-      text: WifiPrinterService.getSavedIp(),
-    );
-    _wifiPortController = TextEditingController(
-      text: WifiPrinterService.getSavedPort().toString(),
-    );
+    _barcodePrefixController.text = PrinterStorage.getBarcodePrefix();
+    _barcodeSuffixController.text = PrinterStorage.getBarcodeSuffix();
+    _wifiIpController.text = WifiPrinterService.getSavedIp();
+    _wifiPortController.text = WifiPrinterService.getSavedPort().toString();
 
     // Load receipt footer from state
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -198,6 +196,41 @@ class _HardwareSettingsScreenState
         );
         break;
 
+      case PrinterTypeOption.sunmi:
+        final sunmiAvailable = await SunmiPrinterService.isAvailable;
+        if (!sunmiAvailable) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(content: Text('Sunmi printer not available')),
+          );
+          return;
+        }
+        final sunmiSuccess = await SunmiPrinterService.printTestPage();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(sunmiSuccess ? 'Test print sent!' : 'Print failed'),
+            backgroundColor: sunmiSuccess ? AppColors.success : AppColors.error,
+          ),
+        );
+        break;
+
+      case PrinterTypeOption.webBluetooth:
+        if (!WebBluetoothPrinterService.isSupported) {
+          scaffoldMessenger.showSnackBar(
+            const SnackBar(
+              content: Text('Web Bluetooth not supported in this browser'),
+            ),
+          );
+          return;
+        }
+        final wbSuccess = await WebBluetoothPrinterService.printTestPage();
+        scaffoldMessenger.showSnackBar(
+          SnackBar(
+            content: Text(wbSuccess ? 'Test print sent!' : 'Print failed'),
+            backgroundColor: wbSuccess ? AppColors.success : AppColors.error,
+          ),
+        );
+        break;
+
       case PrinterTypeOption.system:
         scaffoldMessenger.showSnackBar(
           const SnackBar(
@@ -329,6 +362,7 @@ class _HardwareSettingsScreenState
                       labelText: 'Barcode Prefix',
                       hintText: 'Optional prefix',
                     ),
+                    onChanged: (v) => PrinterStorage.saveBarcodePrefix(v),
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -337,6 +371,7 @@ class _HardwareSettingsScreenState
                       labelText: 'Barcode Suffix',
                       hintText: 'Optional suffix',
                     ),
+                    onChanged: (v) => PrinterStorage.saveBarcodeSuffix(v),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -504,6 +539,8 @@ class _HardwareSettingsScreenState
     final showBluetooth = !kIsWeb && (Platform.isAndroid || Platform.isIOS);
     const showWifi = !kIsWeb;
     final showUsb = !kIsWeb && Platform.isWindows;
+    final showSunmi = !kIsWeb && Platform.isAndroid;
+    const showWebBluetooth = kIsWeb;
 
     return Card(
       child: Padding(
@@ -550,6 +587,24 @@ class _HardwareSettingsScreenState
                 PrinterTypeOption.usb,
                 printerState.printerType,
                 Icons.usb,
+              ),
+            ],
+            if (showSunmi) ...[
+              const SizedBox(height: 8),
+              _buildPrinterTypeOption(
+                theme,
+                PrinterTypeOption.sunmi,
+                printerState.printerType,
+                Icons.point_of_sale,
+              ),
+            ],
+            if (showWebBluetooth) ...[
+              const SizedBox(height: 8),
+              _buildPrinterTypeOption(
+                theme,
+                PrinterTypeOption.webBluetooth,
+                printerState.printerType,
+                Icons.bluetooth_connected,
               ),
             ],
           ],
@@ -1049,6 +1104,56 @@ class _HardwareSettingsScreenState
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+
+            // Custom width
+            Row(
+              children: [
+                const SizedBox(width: 4),
+                const Icon(Icons.width_normal, size: 20),
+                const SizedBox(width: 12),
+                Text('Width: ${printerState.widthLabel}'),
+              ],
+            ),
+            Slider(
+              value: printerState.customWidth.toDouble(),
+              max: 52,
+              divisions: 52,
+              label: printerState.customWidth == 0
+                  ? 'Auto'
+                  : '${printerState.customWidth}',
+              onChanged: (v) {
+                ref.read(printerProvider.notifier).setCustomWidth(v.toInt());
+              },
+            ),
+            const SizedBox(height: 4),
+
+            // Print copies
+            Row(
+              children: [
+                const SizedBox(width: 4),
+                const Icon(Icons.copy_all, size: 20),
+                const SizedBox(width: 12),
+                const Text('Copies'),
+                const Spacer(),
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 1, label: Text('1')),
+                    ButtonSegment(value: 2, label: Text('2')),
+                    ButtonSegment(value: 3, label: Text('3')),
+                  ],
+                  selected: {printerState.printCopies},
+                  onSelectionChanged: (set) {
+                    ref
+                        .read(printerProvider.notifier)
+                        .setPrintCopies(set.first);
+                  },
+                  style: SegmentedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
+                ),
+              ],
+            ),
             const SizedBox(height: 16),
 
             // Test Print button
@@ -1090,6 +1195,124 @@ class _HardwareSettingsScreenState
                 ref.read(printerProvider.notifier).setAutoPrint(v);
               },
             ),
+            const Divider(),
+
+            // Open cash drawer on payment
+            if (printerState.printerType.isThermal) ...[
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.point_of_sale),
+                title: const Text('Open Cash Drawer'),
+                subtitle: const Text(
+                  'Automatically open cash drawer after payment',
+                ),
+                value: printerState.openCashDrawer,
+                onChanged: (v) {
+                  ref.read(printerProvider.notifier).setOpenCashDrawer(v);
+                },
+              ),
+              const Divider(),
+            ],
+
+            // UPI QR on receipt
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.qr_code),
+              title: const Text('UPI QR on Receipt'),
+              subtitle: const Text('Print UPI payment QR code on receipt'),
+              value: printerState.showQrOnReceipt,
+              onChanged: (v) {
+                ref.read(printerProvider.notifier).setShowQrOnReceipt(v);
+              },
+            ),
+
+            // GST breakdown on receipt
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.receipt_long),
+              title: const Text('GST Breakdown'),
+              subtitle: const Text('Show CGST/SGST split on receipt'),
+              value: printerState.showGstBreakdown,
+              onChanged: (v) {
+                ref.read(printerProvider.notifier).setShowGstBreakdown(v);
+              },
+            ),
+
+            // Receipt language
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.language),
+              title: const Text('Receipt Language'),
+              trailing: SegmentedButton<ReceiptLanguage>(
+                segments: ReceiptLanguage.values
+                    .map((l) => ButtonSegment(value: l, label: Text(l.label)))
+                    .toList(),
+                selected: {printerState.receiptLanguage},
+                onSelectionChanged: (s) {
+                  ref
+                      .read(printerProvider.notifier)
+                      .setReceiptLanguage(s.first);
+                },
+              ),
+            ),
+
+            // Logo on thermal receipt
+            if (printerState.printerType.isThermal)
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.image),
+                title: const Text('Logo on Receipt'),
+                subtitle: const Text('Print shop logo on thermal receipts'),
+                value: printerState.showLogoOnThermal,
+                onChanged: (v) {
+                  ref.read(printerProvider.notifier).setShowLogoOnThermal(v);
+                },
+              ),
+
+            // Copy label (Original/Duplicate)
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.copy),
+              title: const Text('Original/Duplicate Label'),
+              subtitle: const Text(
+                'Mark copies as ORIGINAL or DUPLICATE when printing multiple',
+              ),
+              value: printerState.showCopyLabel,
+              onChanged: (v) {
+                ref.read(printerProvider.notifier).setShowCopyLabel(v);
+              },
+            ),
+
+            // HSN/SAC code on receipt
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              secondary: const Icon(Icons.tag),
+              title: const Text('HSN/SAC Code on Receipt'),
+              subtitle: const Text(
+                'Show HSN/SAC code below each item on receipts',
+              ),
+              value: printerState.showHsnOnReceipt,
+              onChanged: (v) {
+                ref.read(printerProvider.notifier).setShowHsnOnReceipt(v);
+              },
+            ),
+
+            // Cut mode
+            if (printerState.printerType.isThermal)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.content_cut),
+                title: const Text('Paper Cut'),
+                trailing: SegmentedButton<CutMode>(
+                  segments: CutMode.values
+                      .map((c) => ButtonSegment(value: c, label: Text(c.label)))
+                      .toList(),
+                  selected: {printerState.cutMode},
+                  onSelectionChanged: (s) {
+                    ref.read(printerProvider.notifier).setCutMode(s.first);
+                  },
+                ),
+              ),
             const Divider(),
 
             // Receipt footer

@@ -66,7 +66,9 @@ class UserCostsScreen extends ConsumerWidget {
               Icon(
                 Icons.analytics_outlined,
                 size: 64,
-                color: Colors.grey.shade400,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.4),
               ),
               const SizedBox(height: 24),
               const Text(
@@ -78,7 +80,12 @@ class UserCostsScreen extends ConsumerWidget {
                 'Per-user cost tracking requires usage instrumentation.\n'
                 'View actual usage in the Firebase Console.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey.shade600, fontSize: 14),
+                style: TextStyle(
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 24),
               Container(
@@ -248,74 +255,96 @@ class UserCostsScreen extends ConsumerWidget {
   }
 
   Widget _buildAdminCostCard(double cost, int count) {
-    return Card(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.purple.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.admin_panel_settings,
-              color: Colors.purple.shade600,
-              size: 28,
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.purple.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(height: 8),
-            Text(
-              '\$${cost.toStringAsFixed(2)}',
-              style: TextStyle(
-                color: Colors.purple.shade700,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.admin_panel_settings,
+                  color: Colors.purple.shade600,
+                  size: 28,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '\$${cost.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: Colors.purple.shade700,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Admin Cost',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
+                ),
+                Text(
+                  '$count admin${count != 1 ? 's' : ''}',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              'Admin Cost',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
-            ),
-            Text(
-              '$count admin${count != 1 ? 's' : ''}',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
   Widget _buildUserCostCard(double cost, int count) {
-    return Card(
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.blue.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(Icons.people, color: Colors.blue.shade600, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              '\$${cost.toStringAsFixed(2)}',
-              style: TextStyle(
-                color: Colors.blue.shade700,
-                fontSize: 22,
-                fontWeight: FontWeight.bold,
-              ),
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
             ),
-            Text(
-              'Regular Users',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+            child: Column(
+              children: [
+                Icon(Icons.people, color: Colors.blue.shade600, size: 28),
+                const SizedBox(height: 8),
+                Text(
+                  '\$${cost.toStringAsFixed(2)}',
+                  style: TextStyle(
+                    color: Colors.blue.shade700,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                Text(
+                  'Regular Users',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
+                ),
+                Text(
+                  '$count user${count != 1 ? 's' : ''}',
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                    fontSize: 10,
+                  ),
+                ),
+              ],
             ),
-            Text(
-              '$count user${count != 1 ? 's' : ''}',
-              style: TextStyle(color: Colors.grey.shade500, fontSize: 10),
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -327,77 +356,82 @@ class UserCostsScreen extends ConsumerWidget {
     int storageUpload,
     int storageDownload,
   ) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Total Operations & Bandwidth',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                color: Colors.grey.shade700,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                _buildOperationStat(
-                  'Reads',
-                  reads,
-                  Icons.visibility,
-                  Colors.green,
+                Text(
+                  'Total Operations & Bandwidth',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
                 ),
-                Container(width: 1, height: 40, color: Colors.grey.shade300),
-                _buildOperationStat(
-                  'Writes',
-                  writes,
-                  Icons.edit,
-                  Colors.orange,
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildOperationStat(
+                      'Reads',
+                      reads,
+                      Icons.visibility,
+                      Colors.green,
+                    ),
+                    Container(width: 1, height: 40, color: cs.outlineVariant),
+                    _buildOperationStat(
+                      'Writes',
+                      writes,
+                      Icons.edit,
+                      Colors.orange,
+                    ),
+                    Container(width: 1, height: 40, color: cs.outlineVariant),
+                    _buildOperationStat(
+                      'Functions',
+                      functionCalls,
+                      Icons.functions,
+                      Colors.purple,
+                    ),
+                  ],
                 ),
-                Container(width: 1, height: 40, color: Colors.grey.shade300),
-                _buildOperationStat(
-                  'Functions',
-                  functionCalls,
-                  Icons.functions,
-                  Colors.purple,
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildOperationStat(
+                      'Bandwidth',
+                      _formatBytes(networkBytes),
+                      Icons.cloud_download,
+                      Colors.blue,
+                    ),
+                    Container(width: 1, height: 40, color: cs.outlineVariant),
+                    _buildOperationStat(
+                      'Uploads',
+                      _formatBytes(storageUpload),
+                      Icons.cloud_upload,
+                      Colors.teal,
+                    ),
+                    Container(width: 1, height: 40, color: cs.outlineVariant),
+                    _buildOperationStat(
+                      'Downloads',
+                      _formatBytes(storageDownload),
+                      Icons.download,
+                      Colors.indigo,
+                    ),
+                  ],
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildOperationStat(
-                  'Bandwidth',
-                  _formatBytes(networkBytes),
-                  Icons.cloud_download,
-                  Colors.blue,
-                ),
-                Container(width: 1, height: 40, color: Colors.grey.shade300),
-                _buildOperationStat(
-                  'Uploads',
-                  _formatBytes(storageUpload),
-                  Icons.cloud_upload,
-                  Colors.teal,
-                ),
-                Container(width: 1, height: 40, color: Colors.grey.shade300),
-                _buildOperationStat(
-                  'Downloads',
-                  _formatBytes(storageDownload),
-                  Icons.download,
-                  Colors.indigo,
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -408,23 +442,31 @@ class UserCostsScreen extends ConsumerWidget {
     Color color,
   ) {
     final displayValue = value is int ? _formatNumber(value) : value.toString();
-    return Column(
-      children: [
-        Icon(icon, color: color, size: 24),
-        const SizedBox(height: 4),
-        Text(
-          displayValue,
-          style: TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
-            color: color,
-          ),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-        ),
-      ],
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(
+              displayValue,
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -450,28 +492,36 @@ class UserCostsScreen extends ConsumerWidget {
 
   Widget _buildUserList(List<UserUsage> users) {
     if (users.isEmpty) {
-      return Card(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Center(
-            child: Column(
-              children: [
-                Icon(
-                  Icons.hourglass_empty,
-                  size: 48,
-                  color: Colors.grey.shade400,
+      return Builder(
+        builder: (context) {
+          final cs = Theme.of(context).colorScheme;
+          return Card(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.hourglass_empty,
+                      size: 48,
+                      color: cs.onSurface.withValues(alpha: 0.4),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text('No usage data yet'),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Usage will appear as users interact with the app',
+                      style: TextStyle(
+                        color: cs.onSurface.withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                const Text('No usage data yet'),
-                const SizedBox(height: 8),
-                Text(
-                  'Usage will appear as users interact with the app',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
-                ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       );
     }
 
@@ -549,9 +599,16 @@ class UserCostsScreen extends ConsumerWidget {
                         color: Colors.amber.shade700,
                       ),
                     ),
-                    const Text(
-                      'est. cost',
-                      style: TextStyle(fontSize: 10, color: Colors.grey),
+                    Builder(
+                      builder: (context) => Text(
+                        'est. cost',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.5),
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -611,12 +668,16 @@ class UserCostsScreen extends ConsumerWidget {
             const SizedBox(height: 8),
 
             // Cost Breakdown
-            Text(
-              'Cost Breakdown',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Colors.grey.shade600,
+            Builder(
+              builder: (context) => Text(
+                'Cost Breakdown',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
               ),
             ),
             const SizedBox(height: 6),
@@ -676,19 +737,27 @@ class UserCostsScreen extends ConsumerWidget {
   Widget _buildUserStat(String label, dynamic value, IconData icon) {
     final displayValue = value is int ? _formatNumber(value) : value.toString();
 
-    return Column(
-      children: [
-        Icon(icon, size: 16, color: Colors.grey.shade600),
-        const SizedBox(height: 2),
-        Text(
-          displayValue,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-        ),
-        Text(
-          label,
-          style: TextStyle(color: Colors.grey.shade600, fontSize: 10),
-        ),
-      ],
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Column(
+          children: [
+            Icon(icon, size: 16, color: cs.onSurface.withValues(alpha: 0.6)),
+            const SizedBox(height: 2),
+            Text(
+              displayValue,
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontSize: 10,
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

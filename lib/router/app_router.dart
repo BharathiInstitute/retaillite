@@ -40,6 +40,7 @@ import 'package:retaillite/features/notifications/screens/notifications_screen.d
 import 'package:retaillite/features/subscription/screens/subscription_screen.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/error_logging_service.dart';
+import 'package:retaillite/core/services/performance_service.dart';
 import 'package:retaillite/core/widgets/splash_screen.dart';
 
 /// Route paths
@@ -441,6 +442,11 @@ class _ErrorRouteObserver extends NavigatorObserver {
       ErrorLoggingService.setCurrentScreen(name);
       // Log screen view to Firebase Analytics
       AnalyticsService.logScreenView(name);
+      // Track screen load timing for performance dashboard
+      PerformanceService.startScreenTiming(name);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        PerformanceService.endScreenTiming(name);
+      });
     }
   }
 }

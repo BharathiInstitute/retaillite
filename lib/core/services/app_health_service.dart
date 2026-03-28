@@ -182,21 +182,26 @@ class AppHealthService {
       // Get last 24 hours of data
       final yesterday = DateTime.now().subtract(const Duration(hours: 24));
 
-      final healthSnapshot = await _firestore
-          .collection('app_health')
-          .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
-          .limit(1000)
-          .get();
+      // Parallelize: light health sample + error count
+      final results = await Future.wait([
+        _firestore
+            .collection('app_health')
+            .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+            .limit(200)
+            .get(),
+        _firestore
+            .collection('error_logs')
+            .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
+            .count()
+            .get(),
+      ]);
 
-      final errorSnapshot = await _firestore
-          .collection('error_logs')
-          .where('timestamp', isGreaterThan: Timestamp.fromDate(yesterday))
-          .limit(1000)
-          .get();
+      final healthSnapshot = results[0] as QuerySnapshot<Map<String, dynamic>>;
+      final errorCount = (results[1] as AggregateQuerySnapshot).count ?? 0;
 
       // Calculate metrics
       final int totalSessions = healthSnapshot.docs.length;
-      final int totalErrors = errorSnapshot.docs.length;
+      final int totalErrors = errorCount;
 
       // Calculate average startup time
       double avgStartup = 0;

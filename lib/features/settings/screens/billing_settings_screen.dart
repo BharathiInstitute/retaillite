@@ -24,10 +24,10 @@ class BillingSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
-  late TextEditingController _invoiceTitleController;
-  late TextEditingController _taxRateController;
-  late TextEditingController _termsController;
-  late TextEditingController _upiIdController;
+  final _invoiceTitleController = TextEditingController();
+  final _taxRateController = TextEditingController();
+  final _termsController = TextEditingController();
+  final _upiIdController = TextEditingController();
 
   bool _taxEnabled = true;
   bool _taxInclusive = false;
@@ -40,14 +40,11 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
     super.initState();
     final user = ref.read(currentUserProvider);
     final settings = user?.settings;
-    _invoiceTitleController = TextEditingController(text: 'Tax Invoice');
-    _taxRateController = TextEditingController(
-      text: (settings?.taxRate ?? 5.0).toStringAsFixed(0),
-    );
-    _termsController = TextEditingController(
-      text: settings?.receiptFooter ?? 'Thank you for your business!',
-    );
-    _upiIdController = TextEditingController(text: PaymentLinkService.upiId);
+    _invoiceTitleController.text = 'Tax Invoice';
+    _taxRateController.text = (settings?.taxRate ?? 5.0).toStringAsFixed(0);
+    _termsController.text =
+        settings?.receiptFooter ?? 'Thank you for your business!';
+    _upiIdController.text = PaymentLinkService.upiId;
     _upiIdController.addListener(_validateUpiId);
     _taxEnabled = settings?.gstEnabled ?? true;
   }
@@ -238,8 +235,7 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                             ).colorScheme.surfaceContainerHighest,
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child:
-                              _invoiceLogoBytes != null
+                          child: _invoiceLogoBytes != null
                               ? ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
                                   child: Image.memory(
@@ -547,8 +543,7 @@ class _BillingSettingsScreenState extends ConsumerState<BillingSettingsScreen> {
                         borderRadius: BorderRadius.circular(8),
                         boxShadow: AppShadows.small,
                       ),
-                      child:
-                          _upiQrBytes != null
+                      child: _upiQrBytes != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(8),
                               child: Image.memory(

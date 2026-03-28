@@ -259,6 +259,14 @@ service cloud.firestore {
       }
 
       // ===================
+      // SURVEYS (sub-collection for NPS / feedback surveys)
+      // ===================
+      match /surveys/{surveyId} {
+        allow read: if isAuthenticated() && isOwner(userId);
+        allow write: if isAuthenticated() && isOwner(userId) && isReasonableSize();
+      }
+
+      // ===================
       // COUNTERS (sub-collection for atomic bill numbering etc.)
       // ===================
       match /counters/{counterId} {
@@ -298,6 +306,12 @@ service cloud.firestore {
     }
     
     match /screen_performance/{docId} {
+      allow create: if isAuthenticated() && request.resource.size() < 10000;
+      allow read: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+    
+    match /network_metrics/{docId} {
       allow create: if isAuthenticated() && request.resource.size() < 10000;
       allow read: if isAdmin();
       allow update, delete: if isAdmin();

@@ -3,8 +3,9 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show Uint8List, kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -14,6 +15,8 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
+import 'package:retaillite/core/services/sunmi_printer_service.dart';
+import 'package:retaillite/core/services/web_bluetooth_printer_service.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/core/utils/formatters.dart';
@@ -253,63 +256,161 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
       final footer = printerState.receiptFooter.isNotEmpty
           ? printerState.receiptFooter
           : null;
+      final copies = printerState.printCopies;
+      final upiId = printerState.showQrOnReceipt ? user?.upiId : null;
+      final taxRate = printerState.showGstBreakdown
+          ? user?.settings.taxRate
+          : null;
+      final partialCut = printerState.cutMode == CutMode.partialCut;
+      final isHindi = printerState.receiptLanguage == ReceiptLanguage.hindi;
+      final showCopyLabel = printerState.showCopyLabel && copies > 1;
+      final showHsn = printerState.showHsnOnReceipt;
+
+      // Load logo bytes for thermal printers
+      Uint8List? logoBytes;
+      if (printerState.showLogoOnThermal &&
+          printerState.printerType != PrinterTypeOption.system &&
+          user?.shopLogoPath != null) {
+        try {
+          final path = user!.shopLogoPath!;
+          if (path.startsWith('http')) {
+            final response = await http.get(Uri.parse(path));
+            if (response.statusCode == 200) logoBytes = response.bodyBytes;
+          }
+        } catch (_) {}
+      }
 
       bool? directSuccess;
 
-      switch (printerState.printerType) {
-        case PrinterTypeOption.bluetooth:
-          if (ThermalPrinterService.isAvailable) {
-            directSuccess = await ThermalPrinterService.printReceipt(
+      for (var copy = 0; copy < copies; copy++) {
+        directSuccess = null;
+        final copyLabel = showCopyLabel
+            ? (copy == 0 ? 'ORIGINAL' : 'DUPLICATE')
+            : null;
+
+        switch (printerState.printerType) {
+          case PrinterTypeOption.bluetooth:
+            if (ThermalPrinterService.isAvailable) {
+              directSuccess = await ThermalPrinterService.printReceipt(
+                bill: bill,
+                shopName: user?.shopName,
+                shopAddress: user?.address,
+                shopPhone: user?.phone,
+                gstNumber: user?.gstNumber,
+                receiptFooter: footer,
+                upiId: upiId,
+                taxRate: taxRate,
+                partialCut: partialCut,
+                isHindi: isHindi,
+                copyLabel: copyLabel,
+                showHsnOnReceipt: showHsn,
+                logoBytes: logoBytes,
+              );
+            }
+            break;
+
+          case PrinterTypeOption.wifi:
+            if (WifiPrinterService.isConnected) {
+              directSuccess = await WifiPrinterService.printReceipt(
+                bill: bill,
+                shopName: user?.shopName,
+                shopAddress: user?.address,
+                shopPhone: user?.phone,
+                gstNumber: user?.gstNumber,
+                receiptFooter: footer,
+                upiId: upiId,
+                taxRate: taxRate,
+                partialCut: partialCut,
+                isHindi: isHindi,
+                copyLabel: copyLabel,
+                showHsnOnReceipt: showHsn,
+                logoBytes: logoBytes,
+              );
+            }
+            break;
+
+          case PrinterTypeOption.usb:
+            final usbName = UsbPrinterService.getSavedPrinterName();
+            if (usbName.isNotEmpty) {
+              directSuccess = await UsbPrinterService.printReceipt(
+                printerName: usbName,
+                bill: bill,
+                shopName: user?.shopName,
+                shopAddress: user?.address,
+                shopPhone: user?.phone,
+                gstNumber: user?.gstNumber,
+                receiptFooter: footer,
+                upiId: upiId,
+                taxRate: taxRate,
+                partialCut: partialCut,
+                isHindi: isHindi,
+                copyLabel: copyLabel,
+                showHsnOnReceipt: showHsn,
+                logoBytes: logoBytes,
+              );
+            }
+            break;
+
+          case PrinterTypeOption.sunmi:
+            if (await SunmiPrinterService.isAvailable) {
+              directSuccess = await SunmiPrinterService.printReceipt(
+                bill: bill,
+                shopName: user?.shopName,
+                shopAddress: user?.address,
+                shopPhone: user?.phone,
+                gstNumber: user?.gstNumber,
+                receiptFooter: footer,
+                upiId: upiId,
+                taxRate: taxRate,
+                partialCut: partialCut,
+                isHindi: isHindi,
+                copyLabel: copyLabel,
+                showHsnOnReceipt: showHsn,
+                logoBytes: logoBytes,
+              );
+            }
+            break;
+
+          case PrinterTypeOption.webBluetooth:
+            if (WebBluetoothPrinterService.isSupported) {
+              directSuccess = await WebBluetoothPrinterService.printReceipt(
+                bill: bill,
+                shopName: user?.shopName,
+                shopAddress: user?.address,
+                shopPhone: user?.phone,
+                gstNumber: user?.gstNumber,
+                receiptFooter: footer,
+                upiId: upiId,
+                taxRate: taxRate,
+                partialCut: partialCut,
+                isHindi: isHindi,
+                copyLabel: copyLabel,
+                showHsnOnReceipt: showHsn,
+                logoBytes: logoBytes,
+              );
+            }
+            break;
+
+          case PrinterTypeOption.system:
+            // Use system print dialog (PDF) — copies handled by print dialog
+            await ReceiptService.printReceipt(
               bill: bill,
               shopName: user?.shopName,
               shopAddress: user?.address,
               shopPhone: user?.phone,
               gstNumber: user?.gstNumber,
               receiptFooter: footer,
+              shopLogoPath: user?.shopLogoPath,
+              upiId: upiId,
+              taxRate: taxRate,
+              copyLabel: copyLabel,
+              showHsnOnReceipt: showHsn,
             );
-          }
-          break;
+            return;
+        }
 
-        case PrinterTypeOption.wifi:
-          if (WifiPrinterService.isConnected) {
-            directSuccess = await WifiPrinterService.printReceipt(
-              bill: bill,
-              shopName: user?.shopName,
-              shopAddress: user?.address,
-              shopPhone: user?.phone,
-              gstNumber: user?.gstNumber,
-              receiptFooter: footer,
-            );
-          }
-          break;
-
-        case PrinterTypeOption.usb:
-          final usbName = UsbPrinterService.getSavedPrinterName();
-          if (usbName.isNotEmpty) {
-            directSuccess = await UsbPrinterService.printReceipt(
-              printerName: usbName,
-              bill: bill,
-              shopName: user?.shopName,
-              shopAddress: user?.address,
-              shopPhone: user?.phone,
-              gstNumber: user?.gstNumber,
-              receiptFooter: footer,
-            );
-          }
-          break;
-
-        case PrinterTypeOption.system:
-          // Use system print dialog (PDF)
-          await ReceiptService.printReceipt(
-            bill: bill,
-            shopName: user?.shopName,
-            shopAddress: user?.address,
-            shopPhone: user?.phone,
-            gstNumber: user?.gstNumber,
-            receiptFooter: footer,
-            shopLogoPath: user?.shopLogoPath,
-          );
-          return;
+        // Stop printing copies if one fails
+        if (directSuccess == false) break;
       }
 
       if (directSuccess == false) {
@@ -322,7 +423,12 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
             ),
           ),
         );
-      } else if (directSuccess == null) {
+      } else if (directSuccess == true && printerState.openCashDrawer) {
+        // Auto-kick cash drawer after successful thermal print
+        unawaited(_sendCashDrawerKick(printerState));
+      }
+
+      if (directSuccess == null) {
         // Printer type selected but not available — fallback to system
         await ReceiptService.printReceipt(
           bill: bill,
@@ -332,12 +438,46 @@ class _PaymentModalState extends ConsumerState<PaymentModal> {
           gstNumber: user?.gstNumber,
           receiptFooter: footer,
           shopLogoPath: user?.shopLogoPath,
+          upiId: upiId,
+          taxRate: taxRate,
+          showHsnOnReceipt: showHsn,
         );
       }
     } catch (e) {
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Print failed: $e')),
       );
+    }
+  }
+
+  /// Send cash drawer kick command to the connected thermal printer.
+  Future<void> _sendCashDrawerKick(PrinterState printerState) async {
+    try {
+      final kickBytes = EscPosBuilder.cashDrawerKick();
+      switch (printerState.printerType) {
+        case PrinterTypeOption.bluetooth:
+          await ThermalPrinterService.sendBytes(kickBytes);
+          break;
+        case PrinterTypeOption.wifi:
+          await WifiPrinterService.sendRawBytes(kickBytes);
+          break;
+        case PrinterTypeOption.usb:
+          final usbName = UsbPrinterService.getSavedPrinterName();
+          if (usbName.isNotEmpty) {
+            await UsbPrinterService.sendRawBytes(usbName, kickBytes);
+          }
+          break;
+        case PrinterTypeOption.sunmi:
+          await SunmiPrinterService.openCashDrawer();
+          break;
+        case PrinterTypeOption.webBluetooth:
+          await WebBluetoothPrinterService.sendBytes(kickBytes);
+          break;
+        case PrinterTypeOption.system:
+          break;
+      }
+    } catch (e) {
+      debugPrint('Cash drawer kick failed: $e');
     }
   }
 

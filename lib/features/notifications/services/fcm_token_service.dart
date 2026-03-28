@@ -43,12 +43,7 @@ class FCMTokenService {
         token = await _messaging.getToken();
       }
 
-      if (token == null) {
-        debugPrint('⚠️ FCM token is null');
-        return;
-      }
-
-      debugPrint('📱 FCM token: ${token.substring(0, 20)}...');
+      debugPrint('📱 FCM token: ${token?.substring(0, 20)}...');
 
       // Save token to Firestore under the user's document
       await _firestore.collection('users').doc(userId).set({

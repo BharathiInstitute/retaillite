@@ -21,6 +21,9 @@ class ProductsWebScreen extends ConsumerStatefulWidget {
 
 class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
   String _searchQuery = '';
+  int _currentPage = 0;
+  static const int _pageSize = 20;
+  bool _isGridView = false;
 
   @override
   Widget build(BuildContext context) {
@@ -51,12 +54,38 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                     borderSide: BorderSide.none,
                   ),
                 ),
-                onChanged: (value) =>
-                    setState(() => _searchQuery = value.toLowerCase()),
+                onChanged: (value) => setState(() {
+                  _searchQuery = value.toLowerCase();
+                  _currentPage = 0;
+                }),
               ),
               const SizedBox(height: 12),
               Row(
                 children: [
+                  // View toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _viewToggleButton(
+                          icon: Icons.view_list,
+                          selected: !_isGridView,
+                          onTap: () => setState(() => _isGridView = false),
+                        ),
+                        _viewToggleButton(
+                          icon: Icons.grid_view,
+                          selected: _isGridView,
+                          onTap: () => setState(() => _isGridView = true),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () => _handleExportCsv(),
@@ -118,9 +147,35 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                             borderSide: BorderSide.none,
                           ),
                         ),
-                        onChanged: (value) =>
-                            setState(() => _searchQuery = value.toLowerCase()),
+                        onChanged: (value) => setState(() {
+                          _searchQuery = value.toLowerCase();
+                          _currentPage = 0;
+                        }),
                       ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  // View toggle
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).cardColor,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Theme.of(context).dividerColor),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _viewToggleButton(
+                          icon: Icons.view_list,
+                          selected: !_isGridView,
+                          onTap: () => setState(() => _isGridView = false),
+                        ),
+                        _viewToggleButton(
+                          icon: Icons.grid_view,
+                          selected: _isGridView,
+                          onTap: () => setState(() => _isGridView = true),
+                        ),
+                      ],
                     ),
                   ),
                   const Spacer(),
@@ -162,6 +217,17 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                 child: productsAsync.when(
                   data: (products) {
                     final filtered = _filterProducts(products);
+                    final totalItems = filtered.length;
+                    final totalPages = (totalItems / _pageSize).ceil();
+                    if (_currentPage >= totalPages && totalPages > 0) {
+                      _currentPage = totalPages - 1;
+                    }
+                    final startIndex = _currentPage * _pageSize;
+                    final endIndex = (startIndex + _pageSize).clamp(
+                      0,
+                      totalItems,
+                    );
+                    final pageItems = filtered.sublist(startIndex, endIndex);
                     if (filtered.isEmpty) {
                       return EmptyState(
                         icon: Icons.inventory_2_outlined,
@@ -181,24 +247,29 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         if (isMobile) ...[
-                          // Mobile: Card-based list
-                          Expanded(
-                            child: ListView.separated(
-                              itemCount: filtered.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final product = filtered[index];
-                                return _MobileProductCard(
-                                  product: product,
-                                  hasPendingWrites:
-                                      syncStatus[product.id] ?? false,
-                                  onEdit: () =>
-                                      _showAddProductModal(product: product),
-                                );
-                              },
+                          // Mobile: Grid or Card list
+                          if (_isGridView)
+                            Expanded(
+                              child: _buildProductGrid(pageItems, syncStatus),
+                            )
+                          else
+                            Expanded(
+                              child: ListView.separated(
+                                itemCount: pageItems.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 8),
+                                itemBuilder: (context, index) {
+                                  final product = pageItems[index];
+                                  return _MobileProductCard(
+                                    product: product,
+                                    hasPendingWrites:
+                                        syncStatus[product.id] ?? false,
+                                    onEdit: () =>
+                                        _showAddProductModal(product: product),
+                                  );
+                                },
+                              ),
                             ),
-                          ),
                           // Mobile pagination footer
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -209,7 +280,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
                               children: [
                                 Text(
-                                  '${filtered.length} products',
+                                  'Showing ${startIndex + 1} to $endIndex of $totalItems products',
                                   style: TextStyle(
                                     color: Theme.of(
                                       context,
@@ -220,7 +291,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 Row(
                                   children: [
                                     OutlinedButton(
-                                      onPressed: null,
+                                      onPressed: _currentPage > 0
+                                          ? () => setState(() => _currentPage--)
+                                          : null,
                                       style: OutlinedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 12,
@@ -235,7 +308,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                     ),
                                     const SizedBox(width: 8),
                                     OutlinedButton(
-                                      onPressed: null,
+                                      onPressed: _currentPage < totalPages - 1
+                                          ? () => setState(() => _currentPage++)
+                                          : null,
                                       style: OutlinedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
                                           horizontal: 12,
@@ -254,260 +329,274 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                             ),
                           ),
                         ] else ...[
-                          // Desktop: DataTable
-                          Expanded(
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.all(0),
-                              child: SizedBox(
-                                width: double.infinity,
-                                child: DataTable(
-                                  headingRowColor: WidgetStateProperty.all(
-                                    Theme.of(
-                                      context,
-                                    ).colorScheme.surfaceContainerHighest,
-                                  ),
-                                  headingRowHeight: 44,
-                                  dataRowMinHeight: 48,
-                                  dataRowMaxHeight: 56,
-                                  horizontalMargin: 16,
-                                  columnSpacing: 16,
-                                  columns: [
-                                    DataColumn(
-                                      label: Text(
-                                        'Product Name',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
+                          // Desktop: Grid or Table
+                          if (_isGridView) ...[
+                            Expanded(
+                              child: _buildProductGrid(pageItems, syncStatus),
+                            ),
+                          ] else ...[
+                            // Desktop: DataTable
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(0),
+                                child: SizedBox(
+                                  width: double.infinity,
+                                  child: DataTable(
+                                    headingRowColor: WidgetStateProperty.all(
+                                      Theme.of(
+                                        context,
+                                      ).colorScheme.surfaceContainerHighest,
                                     ),
-                                    DataColumn(
-                                      label: Text(
-                                        'SKU',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    DataColumn(
-                                      label: Text(
-                                        'Category',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    DataColumn(
-                                      label: Text(
-                                        'Stock Level',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    DataColumn(
-                                      label: Text(
-                                        'Price',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ),
-                                    DataColumn(
-                                      label: Text(
-                                        'Actions',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                      numeric: true,
-                                    ),
-                                  ],
-                                  rows: filtered.map((product) {
-                                    return DataRow(
-                                      cells: [
-                                        DataCell(
-                                          Row(
-                                            children: [
-                                              Container(
-                                                width: 32,
-                                                height: 32,
-                                                decoration: BoxDecoration(
-                                                  color: Theme.of(
-                                                    context,
-                                                  ).scaffoldBackgroundColor,
-                                                  borderRadius:
-                                                      BorderRadius.circular(6),
-                                                  image:
-                                                      product.imageUrl != null
-                                                      ? DecorationImage(
-                                                          image: NetworkImage(
-                                                            product.imageUrl!,
-                                                          ),
-                                                          fit: BoxFit.cover,
-                                                        )
-                                                      : null,
-                                                ),
-                                                child: product.imageUrl == null
-                                                    ? Icon(
-                                                        Icons
-                                                            .image_not_supported_outlined,
-                                                        color: Theme.of(
-                                                          context,
-                                                        ).colorScheme.outline,
-                                                        size: 16,
-                                                      )
-                                                    : null,
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Flexible(
-                                                child: Text(
-                                                  product.name,
-                                                  style: const TextStyle(
-                                                    fontSize: 13,
-                                                    fontWeight: FontWeight.w500,
-                                                  ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                ),
-                                              ),
-                                              const SizedBox(width: 4),
-                                              SyncBadge(
-                                                hasPendingWrites:
-                                                    syncStatus[product.id] ??
-                                                    false,
-                                              ),
-                                            ],
-                                          ),
-                                          onTap: () => _showAddProductModal(
-                                            product: product,
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            product.barcode ?? 'N/A',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              fontFamily: 'monospace',
-                                              color: Theme.of(
-                                                context,
-                                              ).colorScheme.onSurfaceVariant,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            product.category ?? '—',
-                                            style: TextStyle(
-                                              fontSize: 12,
-                                              color: product.category != null
-                                                  ? Theme.of(context)
-                                                        .colorScheme
-                                                        .onSurfaceVariant
-                                                  : Theme.of(
-                                                      context,
-                                                    ).colorScheme.outline,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 4,
-                                            ),
-                                            decoration: BoxDecoration(
-                                              color: product.isOutOfStock
-                                                  ? AppColors.error.withValues(
-                                                      alpha: 0.1,
-                                                    )
-                                                  : (product.isLowStock
-                                                        ? AppColors.warning
-                                                              .withValues(
-                                                                alpha: 0.1,
-                                                              )
-                                                        : AppColors.success
-                                                              .withValues(
-                                                                alpha: 0.1,
-                                                              )),
-                                              borderRadius:
-                                                  BorderRadius.circular(20),
-                                            ),
-                                            child: Text(
-                                              product.isOutOfStock
-                                                  ? 'Out of stock'
-                                                  : (product.isLowStock
-                                                        ? '${product.stock} (Low)'
-                                                        : '${product.stock} in stock'),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w500,
-                                                color: product.isOutOfStock
-                                                    ? AppColors.error
-                                                    : (product.isLowStock
-                                                          ? AppColors.warning
-                                                          : AppColors.success),
-                                              ),
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          Text(
-                                            product.price.asCurrency,
-                                            style: const TextStyle(
-                                              fontWeight: FontWeight.w600,
-                                            ),
-                                          ),
-                                        ),
-                                        DataCell(
-                                          IconButton(
-                                            icon: const Icon(
-                                              Icons.edit_outlined,
-                                            ),
+                                    headingRowHeight: 44,
+                                    dataRowMinHeight: 48,
+                                    dataRowMaxHeight: 56,
+                                    horizontalMargin: 16,
+                                    columnSpacing: 16,
+                                    columns: [
+                                      DataColumn(
+                                        label: Text(
+                                          'Product Name',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
                                             color: Theme.of(
                                               context,
                                             ).colorScheme.onSurfaceVariant,
-                                            onPressed: () =>
-                                                _showAddProductModal(
-                                                  product: product,
-                                                ),
                                           ),
                                         ),
-                                      ],
-                                    );
-                                  }).toList(),
+                                      ),
+                                      DataColumn(
+                                        label: Text(
+                                          'SKU',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                      DataColumn(
+                                        label: Text(
+                                          'Category',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                      DataColumn(
+                                        label: Text(
+                                          'Stock Level',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                      DataColumn(
+                                        label: Text(
+                                          'Price',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                      ),
+                                      DataColumn(
+                                        label: Text(
+                                          'Actions',
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.onSurfaceVariant,
+                                          ),
+                                        ),
+                                        numeric: true,
+                                      ),
+                                    ],
+                                    rows: pageItems.map((product) {
+                                      return DataRow(
+                                        cells: [
+                                          DataCell(
+                                            Row(
+                                              children: [
+                                                Container(
+                                                  width: 32,
+                                                  height: 32,
+                                                  decoration: BoxDecoration(
+                                                    color: Theme.of(
+                                                      context,
+                                                    ).scaffoldBackgroundColor,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          6,
+                                                        ),
+                                                    image:
+                                                        product.imageUrl != null
+                                                        ? DecorationImage(
+                                                            image: NetworkImage(
+                                                              product.imageUrl!,
+                                                            ),
+                                                            fit: BoxFit.cover,
+                                                          )
+                                                        : null,
+                                                  ),
+                                                  child:
+                                                      product.imageUrl == null
+                                                      ? Icon(
+                                                          Icons
+                                                              .image_not_supported_outlined,
+                                                          color: Theme.of(
+                                                            context,
+                                                          ).colorScheme.outline,
+                                                          size: 16,
+                                                        )
+                                                      : null,
+                                                ),
+                                                const SizedBox(width: 10),
+                                                Flexible(
+                                                  child: Text(
+                                                    product.name,
+                                                    style: const TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w500,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 4),
+                                                SyncBadge(
+                                                  hasPendingWrites:
+                                                      syncStatus[product.id] ??
+                                                      false,
+                                                ),
+                                              ],
+                                            ),
+                                            onTap: () => _showAddProductModal(
+                                              product: product,
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Text(
+                                              product.barcode ?? 'N/A',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontFamily: 'monospace',
+                                                color: Theme.of(
+                                                  context,
+                                                ).colorScheme.onSurfaceVariant,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Text(
+                                              product.category ?? '—',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                color: product.category != null
+                                                    ? Theme.of(context)
+                                                          .colorScheme
+                                                          .onSurfaceVariant
+                                                    : Theme.of(
+                                                        context,
+                                                      ).colorScheme.outline,
+                                              ),
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 10,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
+                                                color: product.isOutOfStock
+                                                    ? AppColors.error
+                                                          .withValues(
+                                                            alpha: 0.1,
+                                                          )
+                                                    : (product.isLowStock
+                                                          ? AppColors.warning
+                                                                .withValues(
+                                                                  alpha: 0.1,
+                                                                )
+                                                          : AppColors.success
+                                                                .withValues(
+                                                                  alpha: 0.1,
+                                                                )),
+                                                borderRadius:
+                                                    BorderRadius.circular(20),
+                                              ),
+                                              child: Text(
+                                                product.isOutOfStock
+                                                    ? 'Out of stock'
+                                                    : (product.isLowStock
+                                                          ? '${product.stock} (Low)'
+                                                          : '${product.stock} in stock'),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: product.isOutOfStock
+                                                      ? AppColors.error
+                                                      : (product.isLowStock
+                                                            ? AppColors.warning
+                                                            : AppColors
+                                                                  .success),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            Text(
+                                              product.price.asCurrency,
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
+                                              ),
+                                            ),
+                                          ),
+                                          DataCell(
+                                            IconButton(
+                                              icon: const Icon(
+                                                Icons.edit_outlined,
+                                              ),
+                                              color: Theme.of(
+                                                context,
+                                              ).colorScheme.onSurfaceVariant,
+                                              onPressed: () =>
+                                                  _showAddProductModal(
+                                                    product: product,
+                                                  ),
+                                            ),
+                                          ),
+                                        ],
+                                      );
+                                    }).toList(),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                          ],
                           // Desktop pagination footer
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -518,7 +607,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                             child: Row(
                               children: [
                                 Text(
-                                  'Showing 1 to ${filtered.length} of ${filtered.length} results',
+                                  'Showing ${startIndex + 1} to $endIndex of $totalItems results',
                                   style: TextStyle(
                                     color: Theme.of(
                                       context,
@@ -528,7 +617,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 ),
                                 const Spacer(),
                                 OutlinedButton(
-                                  onPressed: null,
+                                  onPressed: _currentPage > 0
+                                      ? () => setState(() => _currentPage--)
+                                      : null,
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -539,7 +630,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 ),
                                 const SizedBox(width: 8),
                                 OutlinedButton(
-                                  onPressed: null,
+                                  onPressed: _currentPage < totalPages - 1
+                                      ? () => setState(() => _currentPage++)
+                                      : null,
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
                                       horizontal: 16,
@@ -566,6 +659,63 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
           ],
         ),
       ),
+    );
+  }
+
+  Widget _viewToggleButton({
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(6),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: selected ? cs.primaryContainer : Colors.transparent,
+          borderRadius: BorderRadius.circular(6),
+        ),
+        child: Icon(
+          icon,
+          size: 20,
+          color: selected ? cs.onPrimaryContainer : cs.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProductGrid(
+    List<ProductModel> products,
+    Map<String, bool> syncStatus,
+  ) {
+    final width = MediaQuery.of(context).size.width;
+    final crossAxisCount = width < 600
+        ? 2
+        : width < 1024
+        ? 3
+        : width < 1440
+        ? 4
+        : 5;
+
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: crossAxisCount,
+        crossAxisSpacing: 12,
+        mainAxisSpacing: 12,
+        childAspectRatio: 0.85,
+      ),
+      itemCount: products.length,
+      itemBuilder: (context, index) {
+        final product = products[index];
+        return _ProductGridTile(
+          product: product,
+          hasPendingWrites: syncStatus[product.id] ?? false,
+          onTap: () => _showAddProductModal(product: product),
+        );
+      },
     );
   }
 
@@ -998,6 +1148,125 @@ class _MobileProductCard extends StatelessWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Grid tile for product grid view
+class _ProductGridTile extends StatelessWidget {
+  final ProductModel product;
+  final bool hasPendingWrites;
+  final VoidCallback onTap;
+
+  const _ProductGridTile({
+    required this.product,
+    this.hasPendingWrites = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(12),
+      child: Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).cardColor,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: AppShadows.small,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Product image
+              Expanded(
+                child: Center(
+                  child: Container(
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      image: product.imageUrl != null
+                          ? DecorationImage(
+                              image: NetworkImage(product.imageUrl!),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: product.imageUrl == null
+                        ? Icon(
+                            Icons.inventory_2_outlined,
+                            size: 36,
+                            color: cs.outline,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Product name + sync
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      product.name,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                      ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  SyncBadge(hasPendingWrites: hasPendingWrites),
+                ],
+              ),
+              const SizedBox(height: 4),
+              // Price
+              Text(
+                product.price.asCurrency,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: cs.primary,
+                ),
+              ),
+              const SizedBox(height: 4),
+              // Stock badge
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: product.isOutOfStock
+                      ? AppColors.error.withValues(alpha: 0.1)
+                      : (product.isLowStock
+                            ? AppColors.warning.withValues(alpha: 0.1)
+                            : AppColors.success.withValues(alpha: 0.1)),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  product.isOutOfStock
+                      ? 'Out of stock'
+                      : (product.isLowStock
+                            ? '${product.stock} low'
+                            : '${product.stock} in stock'),
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w500,
+                    color: product.isOutOfStock
+                        ? AppColors.error
+                        : (product.isLowStock
+                              ? AppColors.warning
+                              : AppColors.success),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

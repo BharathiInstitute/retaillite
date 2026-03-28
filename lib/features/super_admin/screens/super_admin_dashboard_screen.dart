@@ -59,8 +59,8 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Super Admin Dashboard'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         leading: ResponsiveHelper.isDesktop(context)
             ? null
             : IconButton(
@@ -257,7 +257,9 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                       user.shopName.isNotEmpty
                           ? user.shopName[0].toUpperCase()
                           : '?',
-                      style: const TextStyle(color: Colors.white),
+                      style: TextStyle(
+                        color: Theme.of(context).colorScheme.onPrimary,
+                      ),
                     ),
                   ),
                   title: Text(user.shopName),
@@ -271,7 +273,9 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                         user.activity.lastActiveAgo,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade600,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -322,29 +326,34 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
               Colors.purple,
             ),
             const SizedBox(height: 24),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Colors.deepPurple, Colors.purple],
+            Builder(
+              builder: (context) => Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      Theme.of(context).colorScheme.primary,
+                      Colors.purple,
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                children: [
-                  const Text(
-                    'Monthly Revenue',
-                    style: TextStyle(color: Colors.white70),
-                  ),
-                  Text(
-                    '₹${stats.mrr.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
+                child: Column(
+                  children: [
+                    const Text(
+                      'Monthly Revenue',
+                      style: TextStyle(color: Colors.white70),
                     ),
-                  ),
-                ],
+                    Text(
+                      '₹${stats.mrr.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -373,10 +382,14 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           ],
         ),
         const SizedBox(height: 4),
-        LinearProgressIndicator(
-          value: percentage,
-          backgroundColor: Colors.grey.shade200,
-          valueColor: AlwaysStoppedAnimation(color),
+        Builder(
+          builder: (context) => LinearProgressIndicator(
+            value: percentage,
+            backgroundColor: Theme.of(
+              context,
+            ).colorScheme.surfaceContainerHighest,
+            valueColor: AlwaysStoppedAnimation(color),
+          ),
         ),
       ],
     );
@@ -421,7 +434,10 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.notifications, color: Colors.deepPurple),
+                Icon(
+                  Icons.notifications,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Recent Notifications',
@@ -454,12 +470,18 @@ class SuperAdminDashboardScreen extends ConsumerWidget {
                           Icon(
                             Icons.notifications_none,
                             size: 40,
-                            color: Colors.grey.shade400,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurface.withValues(alpha: 0.4),
                           ),
                           const SizedBox(height: 8),
                           Text(
                             'No notifications sent yet',
-                            style: TextStyle(color: Colors.grey.shade600),
+                            style: TextStyle(
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
                           ),
                         ],
                       ),
@@ -561,7 +583,12 @@ class _StatCard extends StatelessWidget {
             ),
             Text(
               title,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
               textAlign: TextAlign.center,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,

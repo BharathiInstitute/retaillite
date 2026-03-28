@@ -20,11 +20,11 @@ class GeneralSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
-  late TextEditingController _shopNameController;
-  late TextEditingController _ownerNameController;
-  late TextEditingController _contactController;
-  late TextEditingController _addressController;
-  late TextEditingController _gstController;
+  final _shopNameController = TextEditingController();
+  final _ownerNameController = TextEditingController();
+  final _contactController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _gstController = TextEditingController();
 
   String _currency = 'INR';
   String _timezone = 'Asia/Kolkata';
@@ -33,11 +33,11 @@ class _GeneralSettingsScreenState extends ConsumerState<GeneralSettingsScreen> {
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
-    _shopNameController = TextEditingController(text: user?.shopName ?? '');
-    _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
-    _contactController = TextEditingController(text: user?.phone ?? '');
-    _addressController = TextEditingController(text: user?.address ?? '');
-    _gstController = TextEditingController(text: user?.gstNumber ?? '');
+    _shopNameController.text = user?.shopName ?? '';
+    _ownerNameController.text = user?.ownerName ?? '';
+    _contactController.text = user?.phone ?? '';
+    _addressController.text = user?.address ?? '';
+    _gstController.text = user?.gstNumber ?? '';
     _currency = user?.currency ?? 'INR';
     _timezone = user?.timezone ?? 'Asia/Kolkata';
   }

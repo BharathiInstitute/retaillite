@@ -1,5 +1,8 @@
 import 'dart:async';
+
+import 'package:flutter/foundation.dart' show Uint8List;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:retaillite/core/design/design_system.dart';
@@ -23,6 +26,8 @@ import 'package:retaillite/features/reports/providers/reports_provider.dart';
 import 'package:retaillite/features/billing/providers/billing_provider.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
+import 'package:retaillite/core/services/sunmi_printer_service.dart';
+import 'package:retaillite/core/services/web_bluetooth_printer_service.dart';
 import 'package:retaillite/features/billing/services/bill_share_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/features/notifications/services/notification_firestore_service.dart';
@@ -41,6 +46,7 @@ class PosWebScreen extends ConsumerStatefulWidget {
 
 class _PosWebScreenState extends ConsumerState<PosWebScreen> {
   String _searchQuery = '';
+  int _gridColumns = 4;
   CustomerModel? _selectedCustomer;
   final _tabletScaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -120,7 +126,13 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
             // Search Bar
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              child: _buildMobileSearchBar(),
+              child: Row(
+                children: [
+                  Expanded(child: _buildMobileSearchBar()),
+                  const SizedBox(width: 8),
+                  _buildGridColumnSelector(),
+                ],
+              ),
             ),
             // Product Grid
             Expanded(
@@ -140,7 +152,7 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
                   return GridView.builder(
                     padding: const EdgeInsets.all(12),
                     gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: ResponsiveHelper.gridColumns(context),
+                      crossAxisCount: _gridColumns,
                       childAspectRatio: 0.75,
                       crossAxisSpacing: 10,
                       mainAxisSpacing: 10,
@@ -222,13 +234,12 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
                     }
                     return GridView.builder(
                       padding: const EdgeInsets.symmetric(horizontal: 16),
-                      gridDelegate:
-                          const SliverGridDelegateWithFixedCrossAxisCount(
-                            crossAxisCount: 3,
-                            childAspectRatio: 0.78,
-                            crossAxisSpacing: 14,
-                            mainAxisSpacing: 14,
-                          ),
+                      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: _gridColumns,
+                        childAspectRatio: 0.78,
+                        crossAxisSpacing: 14,
+                        mainAxisSpacing: 14,
+                      ),
                       itemCount: filtered.length,
                       itemBuilder: (context, index) {
                         return _WebProductCard(
@@ -308,11 +319,8 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
                         }
                         return GridView.builder(
                           gridDelegate:
-                              SliverGridDelegateWithMaxCrossAxisExtent(
-                                maxCrossAxisExtent:
-                                    ResponsiveHelper.isDesktopLarge(context)
-                                    ? 240
-                                    : 220,
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount: _gridColumns,
                                 childAspectRatio: 0.75,
                                 crossAxisSpacing: 16,
                                 mainAxisSpacing: 16,
@@ -471,33 +479,148 @@ class _PosWebScreenState extends ConsumerState<PosWebScreen> {
   }
 
   Widget _buildSearchAndFilter() {
-    return Column(
+    return Row(
       children: [
         // Search Bar
-        TextField(
-          decoration: InputDecoration(
-            hintText: 'Search item by name or code...',
-            prefixIcon: const Icon(Icons.search),
-            filled: true,
-            fillColor: Theme.of(context).cardColor,
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(50),
-              borderSide: BorderSide.none,
+        Expanded(
+          child: TextField(
+            decoration: InputDecoration(
+              hintText: 'Search item by name or code...',
+              prefixIcon: const Icon(Icons.search),
+              filled: true,
+              fillColor: Theme.of(context).cardColor,
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(50),
+                borderSide: BorderSide.none,
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(50),
+                borderSide: BorderSide.none,
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(50),
+                borderSide: BorderSide(color: AppColors.primary),
+              ),
             ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(50),
-              borderSide: BorderSide.none,
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(50),
-              borderSide: BorderSide(color: AppColors.primary),
-            ),
+            onChanged: (value) =>
+                setState(() => _searchQuery = value.toLowerCase()),
           ),
-          onChanged: (value) =>
-              setState(() => _searchQuery = value.toLowerCase()),
         ),
+        const SizedBox(width: 12),
+        // Open Cash Drawer button (only for thermal printers)
+        _buildCashDrawerButton(),
+        const SizedBox(width: 12),
+        // Grid column selector
+        _buildGridColumnSelector(),
       ],
     );
+  }
+
+  Widget _buildGridColumnSelector() {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      decoration: BoxDecoration(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(50),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [2, 3, 4, 5].map((count) {
+          final selected = _gridColumns == count;
+          return GestureDetector(
+            onTap: () => setState(() => _gridColumns = count),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : Colors.transparent,
+                shape: BoxShape.circle,
+              ),
+              child: Text(
+                '$count',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: selected ? FontWeight.bold : FontWeight.w500,
+                  color: selected ? Colors.white : cs.onSurfaceVariant,
+                ),
+              ),
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildCashDrawerButton() {
+    final printerState = ref.watch(printerProvider);
+    if (!printerState.printerType.isThermal) return const SizedBox.shrink();
+    return Tooltip(
+      message: 'Open Cash Drawer',
+      child: Material(
+        color: Theme.of(context).cardColor,
+        borderRadius: BorderRadius.circular(50),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(50),
+          onTap: () => _openCashDrawer(printerState),
+          child: const Padding(
+            padding: EdgeInsets.all(10),
+            child: Icon(Icons.point_of_sale, size: 20),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openCashDrawer(PrinterState printerState) async {
+    bool success = false;
+    switch (printerState.printerType) {
+      case PrinterTypeOption.bluetooth:
+        if (ThermalPrinterService.isAvailable) {
+          success = await ThermalPrinterService.sendBytes(
+            EscPosBuilder.cashDrawerKick(),
+          );
+        }
+        break;
+      case PrinterTypeOption.wifi:
+        if (WifiPrinterService.isConnected) {
+          success = await WifiPrinterService.sendRawBytes(
+            EscPosBuilder.cashDrawerKick(),
+          );
+        }
+        break;
+      case PrinterTypeOption.usb:
+        final usbName = UsbPrinterService.getSavedPrinterName();
+        if (usbName.isNotEmpty) {
+          success = await UsbPrinterService.sendRawBytes(
+            usbName,
+            EscPosBuilder.cashDrawerKick(),
+          );
+        }
+        break;
+      case PrinterTypeOption.sunmi:
+        success = await SunmiPrinterService.openCashDrawer();
+        break;
+      case PrinterTypeOption.webBluetooth:
+        success = await WebBluetoothPrinterService.sendBytes(
+          EscPosBuilder.cashDrawerKick(),
+        );
+        break;
+      case PrinterTypeOption.system:
+        break;
+    }
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success ? 'Cash drawer opened' : 'Failed to open cash drawer',
+          ),
+          duration: const Duration(seconds: 1),
+        ),
+      );
+    }
   }
 
   List<ProductModel> _filterProducts(List<ProductModel> products) {

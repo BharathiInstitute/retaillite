@@ -10,11 +10,14 @@ import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart'
 final screenPerformanceProvider = FutureProvider<Map<String, dynamic>>((
   ref,
 ) async {
+  // Flush any buffered timings so latest data is visible
+  await PerformanceService.flush();
   return PerformanceService.getScreenPerformanceSummary();
 });
 
 /// Provider for network health data
 final networkHealthProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  await PerformanceService.flush();
   return PerformanceService.getNetworkHealthSummary();
 });
 
@@ -34,11 +37,13 @@ class PerformanceScreen extends ConsumerWidget {
     final networkHealthAsync = ref.watch(networkHealthProvider);
     final crashFreeAsync = ref.watch(crashFreeStatsProvider);
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Performance'),
         backgroundColor: Colors.teal.shade700,
-        foregroundColor: Colors.white,
+        foregroundColor: cs.onPrimary,
         leading: MediaQuery.of(context).size.width >= 1024
             ? null
             : IconButton(
@@ -67,6 +72,7 @@ class PerformanceScreen extends ConsumerWidget {
             // Overview Cards Row
             crashFreeAsync.when(
               data: (stats) => _buildOverviewCards(
+                context,
                 stats,
                 screenPerfAsync.valueOrNull,
                 networkHealthAsync.valueOrNull,
@@ -81,7 +87,7 @@ class PerformanceScreen extends ConsumerWidget {
             _buildSectionHeader('Screen Performance', Icons.speed, Colors.blue),
             const SizedBox(height: 12),
             screenPerfAsync.when(
-              data: (data) => _buildScreenPerformanceCard(data),
+              data: (data) => _buildScreenPerformanceCard(context, data),
               loading: () => _buildLoadingCard(),
               error: (e, _) => Text('Error: $e'),
             ),
@@ -92,7 +98,7 @@ class PerformanceScreen extends ConsumerWidget {
             _buildSectionHeader('Network Health', Icons.wifi, Colors.green),
             const SizedBox(height: 12),
             networkHealthAsync.when(
-              data: (data) => _buildNetworkHealthCard(data),
+              data: (data) => _buildNetworkHealthCard(context, data),
               loading: () => _buildLoadingCard(),
               error: (e, _) => Text('Error: $e'),
             ),
@@ -106,7 +112,7 @@ class PerformanceScreen extends ConsumerWidget {
               Colors.orange,
             ),
             const SizedBox(height: 12),
-            _buildBreadcrumbsCard(),
+            _buildBreadcrumbsCard(context),
           ],
         ),
       ),
@@ -143,6 +149,7 @@ class PerformanceScreen extends ConsumerWidget {
   }
 
   Widget _buildOverviewCards(
+    BuildContext context,
     Map<String, dynamic> crashStats,
     Map<String, dynamic>? screenStats,
     Map<String, dynamic>? networkStats,
@@ -165,15 +172,24 @@ class PerformanceScreen extends ConsumerWidget {
               Expanded(child: _buildCrashFreeCard(crashFree)),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildAvgScreenLoadCard(avgScreenLoad, hasScreenData),
+                child: _buildAvgScreenLoadCard(
+                  context,
+                  avgScreenLoad,
+                  hasScreenData,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
-                child: _buildAvgLatencyCard(avgNetworkLatency, hasNetworkData),
+                child: _buildAvgLatencyCard(
+                  context,
+                  avgNetworkLatency,
+                  hasNetworkData,
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: _buildSuccessRateCard(
+                  context,
                   networkSuccessRate,
                   hasNetworkData,
                 ),
@@ -189,6 +205,7 @@ class PerformanceScreen extends ConsumerWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildAvgScreenLoadCard(
+                      context,
                       avgScreenLoad,
                       hasScreenData,
                     ),
@@ -200,6 +217,7 @@ class PerformanceScreen extends ConsumerWidget {
                 children: [
                   Expanded(
                     child: _buildAvgLatencyCard(
+                      context,
                       avgNetworkLatency,
                       hasNetworkData,
                     ),
@@ -207,6 +225,7 @@ class PerformanceScreen extends ConsumerWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: _buildSuccessRateCard(
+                      context,
                       networkSuccessRate,
                       hasNetworkData,
                     ),
@@ -268,7 +287,12 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvgScreenLoadCard(int avgMs, bool hasData) {
+  Widget _buildAvgScreenLoadCard(
+    BuildContext context,
+    int avgMs,
+    bool hasData,
+  ) {
+    final cs = Theme.of(context).colorScheme;
     final Color color = !hasData
         ? Colors.grey
         : avgMs < 300
@@ -296,7 +320,10 @@ class PerformanceScreen extends ConsumerWidget {
             ),
             Text(
               'Avg Screen Load',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -304,7 +331,8 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildAvgLatencyCard(int avgMs, bool hasData) {
+  Widget _buildAvgLatencyCard(BuildContext context, int avgMs, bool hasData) {
+    final cs = Theme.of(context).colorScheme;
     final Color color = !hasData
         ? Colors.grey
         : avgMs < 200
@@ -332,7 +360,10 @@ class PerformanceScreen extends ConsumerWidget {
             ),
             Text(
               'Avg API Latency',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -340,7 +371,8 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildSuccessRateCard(int rate, bool hasData) {
+  Widget _buildSuccessRateCard(BuildContext context, int rate, bool hasData) {
+    final cs = Theme.of(context).colorScheme;
     final Color color = !hasData
         ? Colors.grey
         : rate >= 99
@@ -368,7 +400,10 @@ class PerformanceScreen extends ConsumerWidget {
             ),
             Text(
               'API Success Rate',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+              style: TextStyle(
+                color: cs.onSurface.withValues(alpha: 0.6),
+                fontSize: 12,
+              ),
             ),
           ],
         ),
@@ -376,7 +411,11 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildScreenPerformanceCard(Map<String, dynamic> data) {
+  Widget _buildScreenPerformanceCard(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final cs = Theme.of(context).colorScheme;
     final rawScreens = data['screens'] as Map? ?? {};
     final screens = rawScreens.map(
       (k, v) => MapEntry(k.toString(), (v as num).toInt()),
@@ -393,14 +432,17 @@ class PerformanceScreen extends ConsumerWidget {
                 Icon(
                   Icons.hourglass_empty,
                   size: 48,
-                  color: Colors.grey.shade400,
+                  color: cs.onSurface.withValues(alpha: 0.4),
                 ),
                 const SizedBox(height: 16),
                 const Text('No screen data yet'),
                 const SizedBox(height: 8),
                 Text(
                   'Data will appear as users navigate the app',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -423,7 +465,10 @@ class PerformanceScreen extends ConsumerWidget {
               children: [
                 Text(
                   '$totalMeasurements measurements (24h)',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
                 const Spacer(),
                 Container(
@@ -448,7 +493,7 @@ class PerformanceScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 16),
             ...sortedScreens.map(
-              (entry) => _buildScreenRow(entry.key, entry.value),
+              (entry) => _buildScreenRow(context, entry.key, entry.value),
             ),
           ],
         ),
@@ -456,7 +501,7 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildScreenRow(String screenName, int avgMs) {
+  Widget _buildScreenRow(BuildContext context, String screenName, int avgMs) {
     // Normalize for progress bar (max 1000ms)
     final progress = (avgMs / 1000).clamp(0.0, 1.0);
 
@@ -515,7 +560,9 @@ class PerformanceScreen extends ConsumerWidget {
             child: LinearProgressIndicator(
               value: progress,
               minHeight: 8,
-              backgroundColor: Colors.grey.shade200,
+              backgroundColor: Theme.of(
+                context,
+              ).colorScheme.surfaceContainerHighest,
               valueColor: AlwaysStoppedAnimation(color),
             ),
           ),
@@ -524,7 +571,11 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildNetworkHealthCard(Map<String, dynamic> data) {
+  Widget _buildNetworkHealthCard(
+    BuildContext context,
+    Map<String, dynamic> data,
+  ) {
+    final cs = Theme.of(context).colorScheme;
     final rawOps = data['operations'] as Map? ?? {};
     final operations = rawOps.map(
       (k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)),
@@ -538,13 +589,20 @@ class PerformanceScreen extends ConsumerWidget {
           child: Center(
             child: Column(
               children: [
-                Icon(Icons.cloud_off, size: 48, color: Colors.grey.shade400),
+                Icon(
+                  Icons.cloud_off,
+                  size: 48,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
                 const Text('No network data yet'),
                 const SizedBox(height: 8),
                 Text(
                   'Data will appear as API calls are made',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -563,7 +621,10 @@ class PerformanceScreen extends ConsumerWidget {
               children: [
                 Text(
                   '$totalRequests requests (24h)',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
                 const Spacer(),
                 Container(
@@ -589,6 +650,7 @@ class PerformanceScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             ...operations.entries.map(
               (entry) => _buildNetworkRow(
+                context,
                 entry.key,
                 entry.value['avgLatency'] as int? ?? 0,
                 entry.value['successRate'] as int? ?? 100,
@@ -602,6 +664,7 @@ class PerformanceScreen extends ConsumerWidget {
   }
 
   Widget _buildNetworkRow(
+    BuildContext context,
     String type,
     int avgLatency,
     int successRate,
@@ -640,10 +703,16 @@ class PerformanceScreen extends ConsumerWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(icon, size: 20, color: Colors.grey.shade700),
+            child: Icon(
+              icon,
+              size: 20,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -656,7 +725,12 @@ class PerformanceScreen extends ConsumerWidget {
                 ),
                 Text(
                   '$count calls',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 11),
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    fontSize: 11,
+                  ),
                 ),
               ],
             ),
@@ -696,7 +770,8 @@ class PerformanceScreen extends ConsumerWidget {
     );
   }
 
-  Widget _buildBreadcrumbsCard() {
+  Widget _buildBreadcrumbsCard(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final breadcrumbs = PerformanceService.getBreadcrumbs();
 
     if (breadcrumbs.isEmpty) {
@@ -706,13 +781,20 @@ class PerformanceScreen extends ConsumerWidget {
           child: Center(
             child: Column(
               children: [
-                Icon(Icons.timeline, size: 48, color: Colors.grey.shade400),
+                Icon(
+                  Icons.timeline,
+                  size: 48,
+                  color: cs.onSurface.withValues(alpha: 0.4),
+                ),
                 const SizedBox(height: 16),
                 const Text('No breadcrumbs recorded'),
                 const SizedBox(height: 8),
                 Text(
                   'Breadcrumbs track user actions for debugging',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
               ],
             ),
@@ -734,7 +816,10 @@ class PerformanceScreen extends ConsumerWidget {
               children: [
                 Text(
                   '${breadcrumbs.length} total breadcrumbs',
-                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                  style: TextStyle(
+                    color: cs.onSurface.withValues(alpha: 0.6),
+                    fontSize: 12,
+                  ),
                 ),
                 const Spacer(),
                 TextButton.icon(
@@ -747,14 +832,14 @@ class PerformanceScreen extends ConsumerWidget {
               ],
             ),
             const SizedBox(height: 12),
-            ...recentBreadcrumbs.map((b) => _buildBreadcrumbRow(b)),
+            ...recentBreadcrumbs.map((b) => _buildBreadcrumbRow(context, b)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildBreadcrumbRow(Breadcrumb breadcrumb) {
+  Widget _buildBreadcrumbRow(BuildContext context, Breadcrumb breadcrumb) {
     // Icon based on type
     IconData icon;
     Color color;
@@ -817,7 +902,12 @@ class PerformanceScreen extends ConsumerWidget {
           ),
           Text(
             timeStr,
-            style: TextStyle(color: Colors.grey.shade500, fontSize: 11),
+            style: TextStyle(
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.5),
+              fontSize: 11,
+            ),
           ),
         ],
       ),

@@ -11,6 +11,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart' show DateTimeRange;
 import 'package:retaillite/core/constants/app_constants.dart';
+import 'package:retaillite/core/services/performance_service.dart';
 import 'package:retaillite/core/services/sync_status_service.dart';
 import 'package:retaillite/core/services/user_usage_service.dart';
 import 'package:retaillite/core/utils/id_generator.dart';
@@ -57,6 +58,17 @@ class PrinterStorage {
   static const String _wifiIpKey = 'printer_wifi_ip';
   static const String _wifiPortKey = 'printer_wifi_port';
   static const String _usbPrinterNameKey = 'printer_usb_name';
+  static const String _openCashDrawerKey = 'printer_open_cash_drawer';
+  static const String _printCopiesKey = 'printer_print_copies';
+  static const String _barcodePrefixKey = 'barcode_prefix';
+  static const String _barcodeSuffixKey = 'barcode_suffix';
+  static const String _showQrOnReceiptKey = 'printer_show_qr';
+  static const String _showGstBreakdownKey = 'printer_show_gst_breakdown';
+  static const String _receiptLanguageKey = 'printer_receipt_language';
+  static const String _showLogoOnThermalKey = 'printer_show_logo_thermal';
+  static const String _cutModeKey = 'printer_cut_mode';
+  static const String _showCopyLabelKey = 'printer_show_copy_label';
+  static const String _showHsnOnReceiptKey = 'printer_show_hsn';
 
   static SharedPreferences? _prefs;
 
@@ -189,6 +201,143 @@ class PrinterStorage {
   static Future<void> saveUsbPrinterName(String name) async {
     await _ensurePrefs();
     await _prefs?.setString(_usbPrinterNameKey, name);
+  }
+
+  // ── Cash drawer settings ──
+
+  /// Get open cash drawer on payment setting
+  static bool getOpenCashDrawer() {
+    return _prefs?.getBool(_openCashDrawerKey) ?? false;
+  }
+
+  /// Save open cash drawer setting
+  static Future<void> saveOpenCashDrawer(bool open) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_openCashDrawerKey, open);
+  }
+
+  // ── Print copies settings ──
+
+  /// Get number of print copies (1-3)
+  static int getPrintCopies() {
+    return _prefs?.getInt(_printCopiesKey) ?? 1;
+  }
+
+  /// Save number of print copies
+  static Future<void> savePrintCopies(int copies) async {
+    await _ensurePrefs();
+    await _prefs?.setInt(_printCopiesKey, copies.clamp(1, 3));
+  }
+
+  // ── QR on receipt settings ──
+
+  /// Get show QR on receipt setting
+  static bool getShowQrOnReceipt() {
+    return _prefs?.getBool(_showQrOnReceiptKey) ?? false;
+  }
+
+  /// Save show QR on receipt setting
+  static Future<void> saveShowQrOnReceipt(bool show) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_showQrOnReceiptKey, show);
+  }
+
+  // ── GST breakdown settings ──
+
+  /// Get show GST breakdown on receipt setting
+  static bool getShowGstBreakdown() {
+    return _prefs?.getBool(_showGstBreakdownKey) ?? false;
+  }
+
+  /// Save show GST breakdown on receipt setting
+  static Future<void> saveShowGstBreakdown(bool show) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_showGstBreakdownKey, show);
+  }
+
+  // ── Receipt language settings ──
+
+  /// Get receipt language ('english' or 'hindi')
+  static String getReceiptLanguage() {
+    return _prefs?.getString(_receiptLanguageKey) ?? 'english';
+  }
+
+  /// Save receipt language
+  static Future<void> saveReceiptLanguage(String lang) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_receiptLanguageKey, lang);
+  }
+
+  // ── Logo on thermal settings ──
+
+  /// Get show logo on thermal receipt setting
+  static bool getShowLogoOnThermal() {
+    return _prefs?.getBool(_showLogoOnThermalKey) ?? false;
+  }
+
+  /// Save show logo on thermal receipt setting
+  static Future<void> saveShowLogoOnThermal(bool show) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_showLogoOnThermalKey, show);
+  }
+
+  // ── Cut mode settings ──
+
+  /// Get cut mode ('fullCut' or 'partialCut')
+  static String getCutMode() {
+    return _prefs?.getString(_cutModeKey) ?? 'fullCut';
+  }
+
+  /// Save cut mode
+  static Future<void> saveCutMode(String mode) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_cutModeKey, mode);
+  }
+
+  // ── Barcode scanner settings ──
+
+  /// Get barcode prefix
+  static String getBarcodePrefix() {
+    return _prefs?.getString(_barcodePrefixKey) ?? '';
+  }
+
+  /// Save barcode prefix
+  static Future<void> saveBarcodePrefix(String prefix) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_barcodePrefixKey, prefix);
+  }
+
+  /// Get barcode suffix
+  static String getBarcodeSuffix() {
+    return _prefs?.getString(_barcodeSuffixKey) ?? '';
+  }
+
+  /// Save barcode suffix
+  static Future<void> saveBarcodeSuffix(String suffix) async {
+    await _ensurePrefs();
+    await _prefs?.setString(_barcodeSuffixKey, suffix);
+  }
+
+  /// Get show copy label (Original/Duplicate)
+  static bool getShowCopyLabel() {
+    return _prefs?.getBool(_showCopyLabelKey) ?? false;
+  }
+
+  /// Save show copy label
+  static Future<void> saveShowCopyLabel(bool show) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_showCopyLabelKey, show);
+  }
+
+  /// Get show HSN/SAC on receipt
+  static bool getShowHsnOnReceipt() {
+    return _prefs?.getBool(_showHsnOnReceiptKey) ?? false;
+  }
+
+  /// Save show HSN/SAC on receipt
+  static Future<void> saveShowHsnOnReceipt(bool show) async {
+    await _ensurePrefs();
+    await _prefs?.setBool(_showHsnOnReceiptKey, show);
   }
 
   /// Initialize (called during app startup)
@@ -352,7 +501,11 @@ class OfflineStorageService {
   /// Save bill
   static Future<void> saveBill(BillModel bill) async {
     if (_basePath.isEmpty) return;
-    await _firestore.doc('$_basePath/bills/${bill.id}').set(bill.toFirestore());
+    await PerformanceService.trackOperation('saveBill', 'firestore', () async {
+      await _firestore
+          .doc('$_basePath/bills/${bill.id}')
+          .set(bill.toFirestore());
+    });
     UserUsageService.trackWrite();
   }
 
@@ -370,7 +523,8 @@ class OfflineStorageService {
       // callbacks on non-platform threads, crashing Flutter.
       if (!kIsWeb && Platform.isWindows) {
         final snapshot = await counterRef.get();
-        final current = (snapshot.data()?['billNumber'] as int?) ?? 1000;
+        final current =
+            (snapshot.data()?['billNumber'] as num?)?.toInt() ?? 1000;
         final next = current + 1;
         await counterRef.set({'billNumber': next}, SetOptions(merge: true));
         UserUsageService.trackRead();
@@ -382,7 +536,8 @@ class OfflineStorageService {
         transaction,
       ) async {
         final snapshot = await transaction.get(counterRef);
-        final current = (snapshot.data()?['billNumber'] as int?) ?? 1000;
+        final current =
+            (snapshot.data()?['billNumber'] as num?)?.toInt() ?? 1000;
         final next = current + 1;
         transaction.set(counterRef, {
           'billNumber': next,
@@ -758,32 +913,38 @@ class OfflineStorageService {
     String paymentMode = 'cash',
   }) async {
     if (_basePath.isEmpty) return;
-    final batch = _firestore.batch();
+    await PerformanceService.trackOperation(
+      'recordPayment',
+      'firestore',
+      () async {
+        final batch = _firestore.batch();
 
-    // 1. Update customer balance (subtract payment)
-    batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
-      'balance': FieldValue.increment(-amount),
-      'updatedAt': FieldValue.serverTimestamp(),
-    });
+        // 1. Update customer balance (subtract payment)
+        batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
+          'balance': FieldValue.increment(-amount),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
 
-    // 2. Create transaction record
-    final txnId = generateSafeId('txn');
-    final transaction = TransactionModel(
-      id: txnId,
-      customerId: customerId,
-      type: TransactionType.payment,
-      amount: amount,
-      note: note ?? paymentMode,
-      paymentMode: paymentMode,
-      createdAt: DateTime.now(),
+        // 2. Create transaction record
+        final txnId = generateSafeId('txn');
+        final transaction = TransactionModel(
+          id: txnId,
+          customerId: customerId,
+          type: TransactionType.payment,
+          amount: amount,
+          note: note ?? paymentMode,
+          paymentMode: paymentMode,
+          createdAt: DateTime.now(),
+        );
+        batch.set(
+          _firestore.doc('$_basePath/transactions/$txnId'),
+          transaction.toFirestore(),
+        );
+
+        // Atomic commit — both succeed or both fail
+        await batch.commit();
+      },
     );
-    batch.set(
-      _firestore.doc('$_basePath/transactions/$txnId'),
-      transaction.toFirestore(),
-    );
-
-    // Atomic commit — both succeed or both fail
-    await batch.commit();
     UserUsageService.trackWrite(count: 2);
   }
 
@@ -795,32 +956,34 @@ class OfflineStorageService {
     String? note,
   }) async {
     if (_basePath.isEmpty) return;
-    final batch = _firestore.batch();
+    await PerformanceService.trackOperation('addCredit', 'firestore', () async {
+      final batch = _firestore.batch();
 
-    // 1. Update customer balance (add credit)
-    batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
-      'balance': FieldValue.increment(amount),
-      'updatedAt': FieldValue.serverTimestamp(),
+      // 1. Update customer balance (add credit)
+      batch.update(_firestore.doc('$_basePath/customers/$customerId'), {
+        'balance': FieldValue.increment(amount),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+
+      // 2. Create transaction record
+      final txnId = generateSafeId('txn');
+      final transaction = TransactionModel(
+        id: txnId,
+        customerId: customerId,
+        type: TransactionType.purchase,
+        amount: amount,
+        note: note ?? 'Credit given',
+        billId: billId,
+        createdAt: DateTime.now(),
+      );
+      batch.set(
+        _firestore.doc('$_basePath/transactions/$txnId'),
+        transaction.toFirestore(),
+      );
+
+      // Atomic commit
+      await batch.commit();
     });
-
-    // 2. Create transaction record
-    final txnId = generateSafeId('txn');
-    final transaction = TransactionModel(
-      id: txnId,
-      customerId: customerId,
-      type: TransactionType.purchase,
-      amount: amount,
-      note: note ?? 'Credit given',
-      billId: billId,
-      createdAt: DateTime.now(),
-    );
-    batch.set(
-      _firestore.doc('$_basePath/transactions/$txnId'),
-      transaction.toFirestore(),
-    );
-
-    // Atomic commit
-    await batch.commit();
     UserUsageService.trackWrite(count: 2);
   }
 
@@ -945,20 +1108,35 @@ class OfflineStorageService {
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
-      final snapshot = await _firestore
+      final query = _firestore
           .collection('$_basePath/transactions')
           .where('type', isEqualTo: 'payment')
           .where(
             'createdAt',
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
           )
-          .get();
+          .orderBy('createdAt', descending: true);
+
+      // Force server read to avoid stale cache; fall back to cache if offline
+      QuerySnapshot<Map<String, dynamic>> snapshot;
+      try {
+        snapshot = await query.get(const GetOptions(source: Source.server));
+      } catch (e) {
+        debugPrint('[KhataStats] Server read failed, using cache: $e');
+        snapshot = await query.get();
+      }
+
       UserUsageService.trackRead(count: snapshot.docs.length);
-      return snapshot.docs.fold<double>(0, (total, doc) {
+      final total = snapshot.docs.fold<double>(0, (total, doc) {
         final amount = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
         return total + amount;
       });
+      debugPrint(
+        '[KhataStats] getTodayPaymentTotal: ${snapshot.docs.length} docs, total=$total',
+      );
+      return total;
     } catch (e) {
+      debugPrint('[KhataStats] getTodayPaymentTotal error: $e');
       return 0;
     }
   }

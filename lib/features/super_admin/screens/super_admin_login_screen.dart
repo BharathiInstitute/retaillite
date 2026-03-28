@@ -180,8 +180,6 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
                   Icons.email_outlined,
                   color: AppColors.textSecondary,
                 ),
-                filled: true,
-                fillColor: Colors.white,
               ),
               keyboardType: TextInputType.emailAddress,
               onChanged: (_) {
@@ -238,7 +236,7 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
                   ),
                 ),
                 filled: true,
-                fillColor: Colors.white,
+                fillColor: AppColors.surface,
               ),
               obscureText: _obscurePassword,
               validator: (value) {
@@ -337,19 +335,19 @@ class _SuperAdminLoginScreenState extends ConsumerState<SuperAdminLoginScreen> {
                 onPressed: _isLoading ? null : _handleLogin,
                 style: ElevatedButton.styleFrom(
                   backgroundColor: const Color(0xFF7C3AED),
-                  foregroundColor: Colors.white,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
                 ),
                 child: _isLoading
-                    ? const SizedBox(
+                    ? SizedBox(
                         height: 24,
                         width: 24,
                         child: CircularProgressIndicator(
                           strokeWidth: 2.5,
-                          color: Colors.white,
+                          color: Theme.of(context).colorScheme.onPrimary,
                         ),
                       )
                     : const Text(

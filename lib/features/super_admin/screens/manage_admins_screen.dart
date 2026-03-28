@@ -15,11 +15,13 @@ class ManageAdminsScreen extends ConsumerWidget {
     final adminEmailsAsync = ref.watch(adminEmailsProvider);
     final isPrimaryOwner = ref.watch(isPrimaryOwnerProvider);
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Manage Admins'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         leading: MediaQuery.of(context).size.width >= 1024
             ? null
             : IconButton(
@@ -38,8 +40,8 @@ class ManageAdminsScreen extends ConsumerWidget {
       floatingActionButton: isPrimaryOwner
           ? FloatingActionButton.extended(
               onPressed: () => _showAddAdminDialog(context, ref),
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
+              backgroundColor: cs.primary,
+              foregroundColor: cs.onPrimary,
               icon: const Icon(Icons.person_add),
               label: const Text('Add Admin'),
             )
@@ -72,6 +74,7 @@ class ManageAdminsScreen extends ConsumerWidget {
     List<String> emails,
     bool isPrimaryOwner,
   ) {
+    final cs = Theme.of(context).colorScheme;
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
@@ -79,23 +82,19 @@ class ManageAdminsScreen extends ConsumerWidget {
         Container(
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: Colors.deepPurple.withValues(alpha: 0.08),
+            color: cs.primary.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.deepPurple.withValues(alpha: 0.2)),
+            border: Border.all(color: cs.primary.withValues(alpha: 0.2)),
           ),
           child: Row(
             children: [
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple.withValues(alpha: 0.15),
+                  color: cs.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: const Icon(
-                  Icons.info_outline,
-                  color: Colors.deepPurple,
-                  size: 20,
-                ),
+                child: Icon(Icons.info_outline, color: cs.primary, size: 20),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -103,10 +102,7 @@ class ManageAdminsScreen extends ConsumerWidget {
                   isPrimaryOwner
                       ? 'You are the primary owner. You can add or remove other admins.'
                       : 'Only the primary owner can add or remove admins.',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: Colors.deepPurple.shade700,
-                  ),
+                  style: TextStyle(fontSize: 14, color: cs.primary),
                 ),
               ),
             ],
@@ -119,10 +115,10 @@ class ManageAdminsScreen extends ConsumerWidget {
           padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
           child: Text(
             '${emails.length} Admin${emails.length != 1 ? 's' : ''}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: cs.onSurface,
             ),
           ),
         ),
@@ -135,11 +131,13 @@ class ManageAdminsScreen extends ConsumerWidget {
             child: ListTile(
               leading: CircleAvatar(
                 backgroundColor: isOwner
-                    ? Colors.deepPurple
-                    : Colors.grey.shade300,
+                    ? cs.primary
+                    : cs.surfaceContainerHighest,
                 child: Icon(
                   isOwner ? Icons.shield : Icons.admin_panel_settings,
-                  color: isOwner ? Colors.white : Colors.grey.shade700,
+                  color: isOwner
+                      ? cs.onPrimary
+                      : cs.onSurface.withValues(alpha: 0.7),
                   size: 20,
                 ),
               ),
@@ -154,7 +152,9 @@ class ManageAdminsScreen extends ConsumerWidget {
                 isOwner ? 'Primary Owner (cannot be removed)' : 'Admin',
                 style: TextStyle(
                   fontSize: 13,
-                  color: isOwner ? Colors.deepPurple : Colors.grey.shade600,
+                  color: isOwner
+                      ? cs.primary
+                      : cs.onSurface.withValues(alpha: 0.6),
                 ),
               ),
               trailing: isOwner
@@ -164,21 +164,21 @@ class ManageAdminsScreen extends ConsumerWidget {
                         vertical: 4,
                       ),
                       decoration: BoxDecoration(
-                        color: Colors.deepPurple.withValues(alpha: 0.1),
+                        color: cs.primary.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: Colors.deepPurple),
+                        border: Border.all(color: cs.primary),
                       ),
-                      child: const Row(
+                      child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Icon(Icons.lock, size: 14, color: Colors.deepPurple),
-                          SizedBox(width: 4),
+                          Icon(Icons.lock, size: 14, color: cs.primary),
+                          const SizedBox(width: 4),
                           Text(
                             'Owner',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
-                              color: Colors.deepPurple,
+                              color: cs.primary,
                             ),
                           ),
                         ],
@@ -259,8 +259,8 @@ class ManageAdminsScreen extends ConsumerWidget {
               ref.invalidate(adminEmailsProvider);
             },
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
-              foregroundColor: Colors.white,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
             ),
             child: const Text('Add'),
           ),

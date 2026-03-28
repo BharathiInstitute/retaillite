@@ -131,11 +131,13 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _onFiltersChanged());
     }
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: Text('All Users (${_users.length}${_hasMore ? '+' : ''})'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         leading: isWide
             ? null
             : IconButton(
@@ -155,7 +157,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
           // Search and Filter Bar
           Container(
             padding: const EdgeInsets.all(16),
-            color: Colors.grey.shade100,
+            color: cs.surfaceContainerHighest,
             child: Row(
               children: [
                 Expanded(
@@ -182,7 +184,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                         borderSide: BorderSide.none,
                       ),
                       filled: true,
-                      fillColor: Colors.white,
+                      fillColor: cs.surface,
                     ),
                     onChanged: (value) {
                       ref.read(usersSearchQueryProvider.notifier).state = value;
@@ -193,13 +195,14 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: cs.surfaceContainerHighest,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: DropdownButton<SubscriptionPlan?>(
                     value: planFilter,
                     hint: const Text('All Plans'),
                     underline: const SizedBox(),
+                    dropdownColor: cs.surface,
                     items: [
                       const DropdownMenuItem(child: Text('All Plans')),
                       ...SubscriptionPlan.values.map(
@@ -232,14 +235,16 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                         Icon(
                           Icons.people_outline,
                           size: 64,
-                          color: Colors.grey.shade400,
+                          color: cs.onSurface.withValues(alpha: 0.4),
                         ),
                         const SizedBox(height: 16),
                         Text(
                           searchQuery.isNotEmpty || planFilter != null
                               ? 'No users match your filters'
                               : 'No users found',
-                          style: TextStyle(color: Colors.grey.shade600),
+                          style: TextStyle(
+                            color: cs.onSurface.withValues(alpha: 0.6),
+                          ),
                         ),
                       ],
                     ),
@@ -257,6 +262,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
   }
 
   Widget _buildLoadMoreFooter() {
+    final cs = Theme.of(context).colorScheme;
     if (_isLoadingMore) {
       return const Padding(
         padding: EdgeInsets.all(16),
@@ -281,13 +287,17 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
       child: Center(
         child: Text(
           'All ${_users.length} users loaded',
-          style: TextStyle(color: Colors.grey.shade500, fontSize: 12),
+          style: TextStyle(
+            color: cs.onSurface.withValues(alpha: 0.5),
+            fontSize: 12,
+          ),
         ),
       ),
     );
   }
 
   Widget _buildDataTable() {
+    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: SingleChildScrollView(
@@ -337,7 +347,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                                 user.ownerName,
                                 style: TextStyle(
                                   fontSize: 12,
-                                  color: Colors.grey.shade600,
+                                  color: cs.onSurface.withValues(alpha: 0.6),
                                 ),
                               ),
                             ],
@@ -359,7 +369,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                             width: 80,
                             child: LinearProgressIndicator(
                               value: user.limits.usagePercentage,
-                              backgroundColor: Colors.grey.shade200,
+                              backgroundColor: cs.surfaceContainerHighest,
                               valueColor: AlwaysStoppedAnimation(
                                 user.limits.isNearLimit
                                     ? Colors.orange
@@ -376,7 +386,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                         style: TextStyle(
                           color: user.activity.isActiveToday
                               ? Colors.green
-                              : Colors.grey.shade600,
+                              : cs.onSurface.withValues(alpha: 0.6),
                           fontWeight: user.activity.isActiveToday
                               ? FontWeight.bold
                               : FontWeight.normal,
@@ -403,6 +413,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
     return ListView.builder(
       itemCount: _users.length,
       itemBuilder: (context, index) {
+        final cs = Theme.of(context).colorScheme;
         final user = _users[index];
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -427,7 +438,7 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
                     Expanded(
                       child: LinearProgressIndicator(
                         value: user.limits.usagePercentage,
-                        backgroundColor: Colors.grey.shade200,
+                        backgroundColor: cs.surfaceContainerHighest,
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -463,21 +474,27 @@ class _UsersListScreenState extends ConsumerState<UsersListScreen> {
   }
 
   Widget _buildPlanBadge(SubscriptionPlan plan) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(
-        color: _getPlanColor(plan).withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: _getPlanColor(plan)),
-      ),
-      child: Text(
-        plan.name.toUpperCase(),
-        style: TextStyle(
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-          color: _getPlanColor(plan),
-        ),
-      ),
+    return Builder(
+      builder: (context) {
+        final isDark = Theme.of(context).brightness == Brightness.dark;
+        final planColor = _getPlanColor(plan);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          decoration: BoxDecoration(
+            color: planColor.withValues(alpha: isDark ? 0.25 : 0.1),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: planColor),
+          ),
+          child: Text(
+            plan.name.toUpperCase(),
+            style: TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.bold,
+              color: isDark ? planColor.withValues(alpha: 0.9) : planColor,
+            ),
+          ),
+        );
+      },
     );
   }
 

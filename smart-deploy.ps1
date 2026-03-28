@@ -1,12 +1,12 @@
 ﻿# Smart Deploy Agent v4.0 - Tulasi Stores
 # Asks smart questions first, then runs everything automatically
 #
-# Usage: .\smart-deploy.ps1
+# Usage .\smart-deploy.ps1
 #        .\smart-deploy.ps1 -Rollback                    # Rollback all platforms
 #        .\smart-deploy.ps1 -Rollback -RollbackTarget web  # Rollback web only
 #        .\smart-deploy.ps1 -DryRun                      # Preview without deploying
 #        .\smart-deploy.ps1 -SetupMonitoring             # One-time GCP monitoring setup
-
+:
 param(
     [switch]$Rollback,
     [switch]$DryRun,

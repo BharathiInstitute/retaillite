@@ -144,12 +144,21 @@ final filteredUsersProvider = FutureProvider<List<AdminUser>>((ref) async {
   );
 });
 
+/// Recalculate stats once — shared by platform & feature usage providers.
+/// Ensures `app_config/stats` has fresh `platformCounts` and
+/// `featureUsageCounts` before either provider reads from it.
+final analyticsRecalcProvider = FutureProvider<void>((ref) async {
+  await AdminFirestoreService.recalculateStats();
+});
+
 /// Platform distribution stats provider
 final platformStatsProvider = FutureProvider<Map<String, int>>((ref) async {
+  await ref.watch(analyticsRecalcProvider.future);
   return AdminFirestoreService.getPlatformStats();
 });
 
 /// Feature usage stats provider
 final featureUsageProvider = FutureProvider<Map<String, double>>((ref) async {
+  await ref.watch(analyticsRecalcProvider.future);
   return AdminFirestoreService.getFeatureUsageStats();
 });

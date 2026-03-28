@@ -8,6 +8,7 @@ import 'package:retaillite/core/services/razorpay_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
@@ -116,6 +117,7 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
+      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);
@@ -176,6 +178,7 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
               ref.invalidate(customerProvider(widget.customer.id));
               ref.invalidate(customerTransactionsProvider(widget.customer.id));
               ref.invalidate(customersProvider);
+              ref.invalidate(khataStatsProvider);
 
               if (mounted) {
                 Navigator.pop(context);
@@ -388,15 +391,6 @@ class _RecordPaymentModalState extends ConsumerState<RecordPaymentModal> {
                       icon: Icons.qr_code,
                       isSelected: _paymentMode == 'upi',
                       onTap: () => setState(() => _paymentMode = 'upi'),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: _PaymentModeButton(
-                      label: 'Online',
-                      icon: Icons.credit_card,
-                      isSelected: _paymentMode == 'online',
-                      onTap: () => setState(() => _paymentMode = 'online'),
                     ),
                   ),
                 ],

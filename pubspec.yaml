@@ -1,10 +1,10 @@
 name: retaillite
 description: "LITE - Retail Management System"
 publish_to: 'none'
-version: 9.1.0+43
+version: 9.2.0+44
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.9.0
 
 dependencies:
   flutter:
@@ -63,6 +63,9 @@ dependencies:
   # Bluetooth Thermal Printing (Android)
   print_bluetooth_thermal: ^1.1.0
   
+  # Sunmi Built-in Printer (Sunmi POS terminals)
+  sunmi_printer_plus: ^4.1.1
+  
   # Connectivity
   connectivity_plus: ^5.0.0
   crypto: ^3.0.7
@@ -83,7 +86,10 @@ dependencies:
   
   # HTTP for Barcode API
   http: ^1.1.0
-  
+
+  # Web platform interop
+  web: ^1.1.0
+
   # Voice Input
   speech_to_text: ^7.0.0
   in_app_update: ^4.2.5
@@ -150,7 +156,7 @@ msix_config:
   publisher_display_name: Tulasi ERP
   publisher: CN=E031B94D-44BC-474E-A0E4-80CF69D69C2D
   identity_name: 39648TulasiERP.TulasiStores
-  msix_version: 9.1.0.0
+  msix_version: 9.2.0.0
   logo_path: assets\images\app_icon.png
   capabilities: internetClient,internetClientServer
   languages: en-us,hi-in,te-in

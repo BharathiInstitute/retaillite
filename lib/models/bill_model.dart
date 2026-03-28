@@ -30,6 +30,7 @@ class CartItem {
   final double price;
   final int quantity;
   final String unit;
+  final String? hsnCode;
 
   const CartItem({
     required this.productId,
@@ -37,6 +38,7 @@ class CartItem {
     required this.price,
     required this.quantity,
     required this.unit,
+    this.hsnCode,
   });
 
   double get total => price * quantity;
@@ -48,6 +50,7 @@ class CartItem {
       price: price,
       quantity: quantity ?? this.quantity,
       unit: unit,
+      hsnCode: hsnCode,
     );
   }
 
@@ -58,6 +61,7 @@ class CartItem {
       'price': price,
       'quantity': quantity,
       'unit': unit,
+      if (hsnCode != null) 'hsnCode': hsnCode,
     };
   }
 
@@ -66,8 +70,9 @@ class CartItem {
       productId: (map['productId'] as String?) ?? '',
       name: (map['name'] as String?) ?? '',
       price: (map['price'] as num?)?.toDouble() ?? 0.0,
-      quantity: (map['quantity'] as int?) ?? 1,
+      quantity: (map['quantity'] as num?)?.toInt() ?? 1,
       unit: (map['unit'] as String?) ?? 'pcs',
+      hsnCode: map['hsnCode'] as String?,
     );
   }
 }
@@ -111,7 +116,7 @@ class BillModel {
     final data = doc.data() as Map<String, dynamic>;
     return BillModel(
       id: doc.id,
-      billNumber: (data['billNumber'] as int?) ?? 0,
+      billNumber: (data['billNumber'] as num?)?.toInt() ?? 0,
       items:
           (data['items'] as List<dynamic>?)
               ?.map((e) => CartItem.fromMap(e as Map<String, dynamic>))

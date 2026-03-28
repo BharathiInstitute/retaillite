@@ -40,7 +40,11 @@ class ReceiptService {
     String? gstNumber,
     String? receiptFooter,
     String? shopLogoPath,
+    String? upiId,
+    double? taxRate,
     int? paperSizeIndex,
+    String? copyLabel,
+    bool showHsnOnReceipt = false,
   }) async {
     final pdf = pw.Document();
     final effectivePaperSize =
@@ -64,6 +68,10 @@ class ReceiptService {
           gstNumber: gstNumber,
           receiptFooter: receiptFooter ?? 'Thank you for shopping!',
           logoImage: logoImage,
+          upiId: upiId,
+          taxRate: taxRate,
+          copyLabel: copyLabel,
+          showHsnOnReceipt: showHsnOnReceipt,
         ),
       ),
     );
@@ -80,7 +88,11 @@ class ReceiptService {
     String? gstNumber,
     String? receiptFooter,
     String? shopLogoPath,
+    String? upiId,
+    double? taxRate,
     int? paperSizeIndex,
+    String? copyLabel,
+    bool showHsnOnReceipt = false,
   }) async {
     final effectivePaperSize =
         paperSizeIndex ?? PrinterStorage.getSavedPaperSize();
@@ -92,7 +104,11 @@ class ReceiptService {
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
       shopLogoPath: shopLogoPath,
+      upiId: upiId,
+      taxRate: taxRate,
       paperSizeIndex: effectivePaperSize,
+      copyLabel: copyLabel,
+      showHsnOnReceipt: showHsnOnReceipt,
     );
 
     return await Printing.layoutPdf(
@@ -111,7 +127,11 @@ class ReceiptService {
     String? gstNumber,
     String? receiptFooter,
     String? shopLogoPath,
+    String? upiId,
+    double? taxRate,
     int? paperSizeIndex,
+    String? copyLabel,
+    bool showHsnOnReceipt = false,
   }) async {
     final pdf = await generateReceipt(
       bill: bill,
@@ -121,7 +141,11 @@ class ReceiptService {
       gstNumber: gstNumber,
       receiptFooter: receiptFooter,
       shopLogoPath: shopLogoPath,
+      upiId: upiId,
+      taxRate: taxRate,
       paperSizeIndex: paperSizeIndex,
+      copyLabel: copyLabel,
+      showHsnOnReceipt: showHsnOnReceipt,
     );
 
     await Printing.sharePdf(
@@ -162,6 +186,10 @@ class ReceiptService {
     String? gstNumber,
     required String receiptFooter,
     pw.MemoryImage? logoImage,
+    String? upiId,
+    double? taxRate,
+    String? copyLabel,
+    bool showHsnOnReceipt = false,
   }) {
     final createdAt = bill.createdAt;
 
@@ -222,6 +250,18 @@ class ReceiptService {
             ),
           ],
         ),
+
+        // Copy label (ORIGINAL / DUPLICATE)
+        if (copyLabel != null) ...[
+          pw.SizedBox(height: 2),
+          pw.Center(
+            child: pw.Text(
+              '*** $copyLabel ***',
+              style: pw.TextStyle(fontSize: 9, fontWeight: pw.FontWeight.bold),
+            ),
+          ),
+        ],
+
         pw.Row(
           mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
           children: [
@@ -318,6 +358,16 @@ class ReceiptService {
                           color: PdfColors.grey700,
                         ),
                       ),
+                      if (showHsnOnReceipt &&
+                          item.hsnCode != null &&
+                          item.hsnCode!.isNotEmpty)
+                        pw.Text(
+                          'HSN: ${item.hsnCode}',
+                          style: const pw.TextStyle(
+                            fontSize: 7,
+                            color: PdfColors.grey700,
+                          ),
+                        ),
                     ],
                   ),
                 ),
@@ -371,6 +421,19 @@ class ReceiptService {
           ],
         ),
 
+        // GST breakdown (inclusive — tax already in total)
+        if (taxRate != null && taxRate > 0 && gstNumber != null) ...[
+          pw.SizedBox(height: 2),
+          _gstRow(
+            'CGST @${(taxRate / 2).toStringAsFixed(1)}%',
+            bill.total * taxRate / (100 + taxRate) / 2,
+          ),
+          _gstRow(
+            'SGST @${(taxRate / 2).toStringAsFixed(1)}%',
+            bill.total * taxRate / (100 + taxRate) / 2,
+          ),
+        ],
+
         // Cash payment details
         if (bill.paymentMethod == PaymentMethod.cash &&
             bill.receivedAmount != null) ...[
@@ -414,6 +477,28 @@ class ReceiptService {
         pw.SizedBox(height: 12),
         pw.Divider(thickness: 0.3),
 
+        // UPI QR code
+        if (upiId != null && upiId.isNotEmpty) ...[
+          pw.SizedBox(height: 8),
+          pw.Center(
+            child: pw.Text(
+              'Scan to pay via UPI',
+              style: const pw.TextStyle(fontSize: 8),
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Center(
+            child: pw.BarcodeWidget(
+              barcode: pw.Barcode.qrCode(),
+              data:
+                  'upi://pay?pa=$upiId&pn=${Uri.encodeComponent(shopName)}&am=${bill.total.toStringAsFixed(2)}&cu=INR',
+              width: 80,
+              height: 80,
+            ),
+          ),
+          pw.SizedBox(height: 4),
+        ],
+
         // Footer
         pw.SizedBox(height: 4),
         pw.Text(
@@ -433,6 +518,19 @@ class ReceiptService {
           textAlign: pw.TextAlign.center,
         ),
         pw.SizedBox(height: 20), // Space for tear
+      ],
+    );
+  }
+
+  static pw.Widget _gstRow(String label, double amount) {
+    return pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(label, style: const pw.TextStyle(fontSize: 8)),
+        pw.Text(
+          '₹${amount.toStringAsFixed(2)}',
+          style: const pw.TextStyle(fontSize: 8),
+        ),
       ],
     );
   }
