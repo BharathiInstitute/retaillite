@@ -419,6 +419,23 @@ if (Test-Path $statePath) {
         }
         Write-Host ""
         Write-Ok "Resuming deploy with saved settings!"
+
+        # Auto-disable platforms with missing toolchains on resume
+        $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+        $hasVS = $false
+        if (Test-Path $vsWhere) { if (& $vsWhere -latest -property installationPath 2>$null) { $hasVS = $true } }
+        if ($deployWindows -and -not $hasVS -and -not (Is-StepDone "windows")) {
+            Write-Warn "Visual Studio not found — skipping Windows build"
+            $deployWindows = $false; $buildMsix = $false; $buildExe = $false
+            $script:currentState.deployWindows = $false; $script:currentState.buildMsix = $false; $script:currentState.buildExe = $false
+        }
+        $hasSDK = ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) -or ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT))
+        if ($deployAndroid -and -not $hasSDK -and -not (Is-StepDone "android")) {
+            Write-Warn "Android SDK not found — skipping Android build"
+            $deployAndroid = $false
+            $script:currentState.deployAndroid = $false
+        }
+
         if ($script:completedSteps.Count -gt 0) {
             Write-Ok "Will skip: $($script:completedSteps -join ', ')"
         }
@@ -455,6 +472,17 @@ if (-not $resumed) {
     $deployWindows = $false
     $deployAndroid = $false
 
+    # --- Pre-flight: detect available toolchains ---
+    $hasVisualStudio = $false
+    $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+    if (Test-Path $vsWhere) {
+        $vsInstalls = & $vsWhere -latest -property installationPath 2>$null
+        if ($vsInstalls) { $hasVisualStudio = $true }
+    }
+    $hasAndroidSdk = $false
+    if ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) { $hasAndroidSdk = $true }
+    elseif ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT)) { $hasAndroidSdk = $true }
+
     # --- Q2: Platforms ---
     if (-not $skipBuild) {
         $platformChoice = Pick "Q2: Deploy to which platforms?" @(
@@ -474,6 +502,24 @@ if (-not $resumed) {
             5 { $deployWeb = $true; $deployAndroid = $true }
             6 { $deployWindows = $true; $deployAndroid = $true }
             7 { $deployWeb = $true; $deployWindows = $true; $deployAndroid = $true }
+        }
+
+        # Auto-disable platforms with missing toolchains
+        if ($deployWindows -and -not $hasVisualStudio) {
+            Write-Warn "Visual Studio not found — skipping Windows build"
+            Write-Info "Install Visual Studio Build Tools with 'Desktop development with C++' workload to enable"
+            $deployWindows = $false
+            $buildMsix = $false
+            $buildExe = $false
+        }
+        if ($deployAndroid -and -not $hasAndroidSdk) {
+            Write-Warn "Android SDK not found — skipping Android build"
+            Write-Info "Install Android Studio or set ANDROID_HOME to enable"
+            $deployAndroid = $false
+        }
+        if (-not $deployWeb -and -not $deployWindows -and -not $deployAndroid) {
+            Write-Fail "No deployable platforms available! Install required toolchains."
+            exit 1
         }
     }
 
