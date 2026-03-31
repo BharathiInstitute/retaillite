@@ -83,7 +83,7 @@ function Invoke-WithRetry {
 # --- Step-tracking for granular resume ---
 $script:completedSteps = @()
 
-function Is-StepDone {
+function Test-StepDone {
     param([string]$StepName)
     return $script:completedSteps -contains $StepName
 }
@@ -192,7 +192,7 @@ if ($SetupMonitoring) {
     Write-Step "Budget alert setup instructions..."
     Write-Host ""
     Write-Host "  +-------------------------------------------------+" -ForegroundColor Yellow
-    Write-Host "  |  GCP Budget Alerts (manual — requires billing    |" -ForegroundColor Yellow
+    Write-Host "  |  GCP Budget Alerts (manual � requires billing    |" -ForegroundColor Yellow
     Write-Host "  |  admin access via console):                      |" -ForegroundColor Yellow
     Write-Host "  |                                                  |" -ForegroundColor Yellow
     Write-Host "  |  1. Go to: console.cloud.google.com/billing     |" -ForegroundColor White
@@ -213,7 +213,7 @@ if ($SetupMonitoring) {
     Write-Host "  - Backup retention: 30 days auto-delete" -ForegroundColor Green
     Write-Host "  - Budget alerts: follow instructions above" -ForegroundColor Yellow
     Write-Host ""
-    Write-DeployLog "MONITORING | Setup complete — uptime checks + backup retention"
+    Write-DeployLog "MONITORING | Setup complete � uptime checks + backup retention"
     exit 0
 }
 
@@ -295,7 +295,7 @@ if ($Rollback) {
                     Write-DeployLog "ROLLBACK | Windows version.json restored from $($latestWinBackup.Name)"
                     $rollbackPerformed = $true
                 } else {
-                    Write-Warn "gsutil not found — upload installer/version.json manually"
+                    Write-Warn "gsutil not found � upload installer/version.json manually"
                 }
             }
         } else {
@@ -326,7 +326,7 @@ if ($Rollback) {
                     Write-DeployLog "ROLLBACK | Android version.json restored from $($latestAndBackup.Name)"
                     $rollbackPerformed = $true
                 } else {
-                    Write-Warn "gsutil not found — upload installer/android-version.json manually"
+                    Write-Warn "gsutil not found � upload installer/android-version.json manually"
                 }
             }
         } else {
@@ -423,15 +423,15 @@ if (Test-Path $statePath) {
         # Auto-disable platforms with missing toolchains on resume
         $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
         $hasVS = $false
-        if (Test-Path $vsWhere) { if (& $vsWhere -products * -latest -property installationPath 2>$null) { $hasVS = $true } }
-        if ($deployWindows -and -not $hasVS -and -not (Is-StepDone "windows")) {
-            Write-Warn "Visual Studio not found — skipping Windows build"
+        if (Test-Path $vsWhere) { try { $vsResult = & $vsWhere -products * -latest -property installationPath -ErrorAction SilentlyContinue; if ($vsResult) { $hasVS = $true } } catch {} }
+        if ($deployWindows -and -not $hasVS -and -not (Test-StepDone "windows")) {
+            Write-Warn "Visual Studio not found � skipping Windows build"
             $deployWindows = $false; $buildMsix = $false; $buildExe = $false
             $script:currentState.deployWindows = $false; $script:currentState.buildMsix = $false; $script:currentState.buildExe = $false
         }
         $hasSDK = ($env:ANDROID_HOME -and (Test-Path $env:ANDROID_HOME)) -or ($env:ANDROID_SDK_ROOT -and (Test-Path $env:ANDROID_SDK_ROOT))
-        if ($deployAndroid -and -not $hasSDK -and -not (Is-StepDone "android")) {
-            Write-Warn "Android SDK not found — skipping Android build"
+        if ($deployAndroid -and -not $hasSDK -and -not (Test-StepDone "android")) {
+            Write-Warn "Android SDK not found � skipping Android build"
             $deployAndroid = $false
             $script:currentState.deployAndroid = $false
         }
@@ -506,14 +506,14 @@ if (-not $resumed) {
 
         # Auto-disable platforms with missing toolchains
         if ($deployWindows -and -not $hasVisualStudio) {
-            Write-Warn "Visual Studio not found — skipping Windows build"
+            Write-Warn "Visual Studio not found � skipping Windows build"
             Write-Info "Install Visual Studio Build Tools with 'Desktop development with C++' workload to enable"
             $deployWindows = $false
             $buildMsix = $false
             $buildExe = $false
         }
         if ($deployAndroid -and -not $hasAndroidSdk) {
-            Write-Warn "Android SDK not found — skipping Android build"
+            Write-Warn "Android SDK not found � skipping Android build"
             Write-Info "Install Android Studio or set ANDROID_HOME to enable"
             $deployAndroid = $false
         }
@@ -747,7 +747,7 @@ try {
     # <- Catch ALL errors -- nothing can stop us!
 
     # --- Update pubspec.yaml ---
-    if (-not $skipBuild -and -not (Is-StepDone "version_bump")) {
+    if (-not $skipBuild -and -not (Test-StepDone "version_bump")) {
         Write-Step "Updating version to $newVersion+$newBuild"
         $pubspecContent = Get-Content $pubspecPath -Raw
         $pubspecContent = $pubspecContent -replace 'version:\s*\d+\.\d+\.\d+\+\d+', "version: $newVersion+$newBuild"
@@ -755,12 +755,12 @@ try {
         Write-Ok "pubspec.yaml updated"
         Complete-Step "version_bump"
     }
-    elseif (Is-StepDone "version_bump") {
+    elseif (Test-StepDone "version_bump") {
         Write-Info "SKIP: Version already bumped"
     }
 
     # --- Run Tests ---
-    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "tests")) {
+    if (-not $skipBuild -and -not $failed -and -not (Test-StepDone "tests")) {
         Write-Step "Running tests..."
         $ErrorActionPreference = "Continue"
         flutter test --reporter compact
@@ -775,12 +775,12 @@ try {
             Write-DeployLog "TESTS PASSED"
         }
     }
-    elseif (Is-StepDone "tests") {
+    elseif (Test-StepDone "tests") {
         Write-Info "SKIP: Tests already passed"
     }
 
     # --- Run Analyzer ---
-    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "analyzer")) {
+    if (-not $skipBuild -and -not $failed -and -not (Test-StepDone "analyzer")) {
         Write-Step "Running analyzer..."
         $ErrorActionPreference = "Continue"
         flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
@@ -797,7 +797,7 @@ try {
             Complete-Step "analyzer"
         }
     }
-    elseif (Is-StepDone "analyzer") {
+    elseif (Test-StepDone "analyzer") {
         Write-Info "SKIP: Analyzer already passed"
     }
 
@@ -834,7 +834,7 @@ try {
     }
 
     # --- Build and Deploy: Windows (MSIX + Inno Setup EXE) --- [RUNS FIRST to update download.html before web deploy]
-    if (-not $failed -and $deployWindows -and -not (Is-StepDone "windows")) {
+    if (-not $failed -and $deployWindows -and -not (Test-StepDone "windows")) {
         Write-Step "Building Windows -- $winChoiceLabel..."
 
         # Update MSIX version in pubspec.yaml (MSIX needs x.x.x.0 format)
@@ -897,6 +897,9 @@ try {
                 Write-Step "Creating Inno Setup EXE installer (for web download)..."
                 $issPath = Join-Path $root "installer\TulasiStores_Setup.iss"
                 $isccPath = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+                if (-not (Test-Path $isccPath)) {
+                    $isccPath = "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
+                }
 
                 if ((Test-Path $issPath) -and (Test-Path $isccPath)) {
                     # Update version in .iss file
@@ -1061,7 +1064,6 @@ WScript.Quit 0
                     Write-Ok "MSIX path copied to clipboard"
 
                     # Open MSIX folder in Explorer (so you can drag & drop)
-                    $msixFolder = Split-Path $msixFile -Parent
                     Start-Process explorer.exe -ArgumentList "/select,`"$msixFile`""
                     Write-Ok "Opened MSIX file in Explorer"
 
@@ -1083,12 +1085,12 @@ WScript.Quit 0
             Complete-Step "windows"
         }
     }
-    elseif (Is-StepDone "windows") {
+    elseif (Test-StepDone "windows") {
         Write-Info "SKIP: Windows already built + uploaded"
     }
 
     # --- Build and Deploy: Android --- [RUNS BEFORE Web so download.html has APK link before web deploy]
-    if (-not $failed -and $deployAndroid -and -not (Is-StepDone "android")) {
+    if (-not $failed -and $deployAndroid -and -not (Test-StepDone "android")) {
         Write-Step "Building Android APK..."
         $ErrorActionPreference = "Continue"
         flutter build apk --release
@@ -1209,24 +1211,24 @@ WScript.Quit 0
                     Write-DeployLog "PLAY STORE | AAB v$newVersion uploaded to closed testing"
                 }
                 else {
-                    Write-Warn "Skipped Play Store upload — remember to upload manually!"
+                    Write-Warn "Skipped Play Store upload � remember to upload manually!"
                     Write-DeployLog "PLAY STORE | AAB v$newVersion built but upload skipped"
                 }
             }
             else {
-                Write-Warn "AAB build failed — APK was uploaded to Firebase Storage, but Play Store upload skipped"
+                Write-Warn "AAB build failed � APK was uploaded to Firebase Storage, but Play Store upload skipped"
                 Write-DeployLog "ANDROID AAB FAILED | APK upload OK, AAB failed"
             }
 
             Complete-Step "android"
         }
     }
-    elseif (Is-StepDone "android") {
+    elseif (Test-StepDone "android") {
         Write-Info "SKIP: Android already built + uploaded"
     }
 
     # --- Build and Deploy: Web --- [RUNS LAST so download.html has ALL updated links (Windows + Android)]
-    if (-not $failed -and $deployWeb -and -not (Is-StepDone "web")) {
+    if (-not $failed -and $deployWeb -and -not (Test-StepDone "web")) {
         Write-Step "Building Web..."
         $distDir = Join-Path $root "dist"
         $websiteDir = Join-Path $root "website"
@@ -1291,7 +1293,7 @@ WScript.Quit 0
             Complete-Step "web"
         }
     }
-    elseif (Is-StepDone "web") {
+    elseif (Test-StepDone "web") {
         Write-Info "SKIP: Web already built + deployed"
     }
 
