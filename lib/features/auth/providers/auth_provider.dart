@@ -52,6 +52,12 @@ class AuthState {
   /// Desktop auth: when the link code expires (A19)
   final DateTime? desktopLinkExpiresAt;
 
+  /// Account linking: email of the account that needs linking
+  final String? pendingLinkEmail;
+
+  /// Account linking: true when a password dialog should be shown
+  final bool pendingAccountLink;
+
   const AuthState({
     this.status = AuthStatus.unauthenticated,
     this.firebaseUser,
@@ -64,6 +70,8 @@ class AuthState {
     this.error,
     this.desktopLinkCode,
     this.desktopLinkExpiresAt,
+    this.pendingLinkEmail,
+    this.pendingAccountLink = false,
   });
 
   AuthState copyWith({
@@ -78,6 +86,8 @@ class AuthState {
     String? error,
     String? desktopLinkCode,
     DateTime? desktopLinkExpiresAt,
+    Object? pendingLinkEmail = _sentinel,
+    bool? pendingAccountLink,
   }) {
     return AuthState(
       status: status ?? this.status,
@@ -93,6 +103,10 @@ class AuthState {
       error: error,
       desktopLinkCode: desktopLinkCode ?? this.desktopLinkCode,
       desktopLinkExpiresAt: desktopLinkExpiresAt ?? this.desktopLinkExpiresAt,
+      pendingLinkEmail: pendingLinkEmail == _sentinel
+          ? this.pendingLinkEmail
+          : pendingLinkEmail as String?,
+      pendingAccountLink: pendingAccountLink ?? this.pendingAccountLink,
     );
   }
 }
@@ -108,6 +122,9 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   bool _pendingReauth = false;
   bool _signOutTriggered = false;
   bool _profileLoadInProgress = false;
+
+  /// Stores a Google credential while waiting for password to complete linking
+  AuthCredential? _pendingGoogleCredential;
 
   FirebaseAuthNotifier(this._ref) : super(const AuthState()) {
     _init();
@@ -173,6 +190,16 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
             }
           })
           .catchError((e) {
+            if (e is FirebaseAuthException &&
+                e.code == 'account-exists-with-different-credential') {
+              _pendingGoogleCredential = e.credential;
+              state = state.copyWith(
+                isLoading: false,
+                pendingAccountLink: true,
+                pendingLinkEmail: e.email,
+              );
+              return;
+            }
             debugPrint('🔐 Redirect result check: $e');
           });
     }
@@ -444,12 +471,13 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         return false;
       }
 
-      // Account conflict - show specific message, don't try other layers
+      // Account conflict — save credential for linking after password entry
       if (e.code == 'account-exists-with-different-credential') {
+        _pendingGoogleCredential = e.credential;
         state = state.copyWith(
           isLoading: false,
-          error:
-              'An account already exists with this email using a different sign-in method.',
+          pendingAccountLink: true,
+          pendingLinkEmail: e.email,
         );
         return false;
       }
@@ -489,6 +517,18 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         debugPrint('✅ Google Sign-In Layer 2 success: ${user.email}');
         return true;
       }
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        _pendingGoogleCredential = e.credential;
+        state = state.copyWith(
+          isLoading: false,
+          pendingAccountLink: true,
+          pendingLinkEmail: e.email,
+        );
+        return false;
+      }
+      debugPrint('🔐 Layer 2 failed: ${e.code} - ${e.message}');
+      // Continue to Layer 3
     } catch (e) {
       debugPrint('🔐 Layer 2 failed: $e');
       // Continue to Layer 3
@@ -676,14 +716,27 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
       idToken: googleAuth.idToken,
     );
 
-    final userCredential = await _auth.signInWithCredential(credential);
-    final user = userCredential.user;
-    if (user != null) {
-      await _ensureFirestoreDoc(user);
-      debugPrint('✅ Google Sign-In: ${user.email}');
-      return true;
+    try {
+      final userCredential = await _auth.signInWithCredential(credential);
+      final user = userCredential.user;
+      if (user != null) {
+        await _ensureFirestoreDoc(user);
+        debugPrint('✅ Google Sign-In: ${user.email}');
+        return true;
+      }
+      return false;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'account-exists-with-different-credential') {
+        _pendingGoogleCredential = credential;
+        state = state.copyWith(
+          isLoading: false,
+          pendingAccountLink: true,
+          pendingLinkEmail: googleUser.email,
+        );
+        return false;
+      }
+      rethrow;
     }
-    return false;
   }
 
   /// Sign in with email and password
@@ -1737,6 +1790,187 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
     }
   }
 
+  // ── Account Linking ─────────────────────────────────────────────
+
+  /// Complete account linking: user enters their email/password,
+  /// then the pending Google credential is linked to that account.
+  Future<bool> completeLinkWithPassword(String password) async {
+    final pendingCredential = _pendingGoogleCredential;
+    final email = state.pendingLinkEmail;
+    if (pendingCredential == null || email == null) return false;
+
+    try {
+      state = state.copyWith(isLoading: true);
+
+      // Sign in with existing email+password account
+      final result = await _auth.signInWithEmailAndPassword(
+        email: email,
+        password: password,
+      );
+      final user = result.user;
+      if (user == null) {
+        state = state.copyWith(
+          isLoading: false,
+          error: 'Sign-in failed. Please try again.',
+        );
+        return false;
+      }
+
+      // Link the Google credential to this account
+      await user.linkWithCredential(pendingCredential);
+      debugPrint('✅ Google account linked to email/password account');
+
+      // Clear pending state
+      _pendingGoogleCredential = null;
+      state = state.copyWith(
+        pendingAccountLink: false,
+        pendingLinkEmail: null,
+      );
+
+      // Update Firestore doc (mark emailVerified, add photoUrl if available)
+      await _ensureFirestoreDoc(user);
+
+      // Let authStateChanges pick up the signed-in user
+      _pendingReauth = true;
+      _profileLoaded = false;
+      _authResolved = false;
+      await _loadUserProfile(user);
+      return true;
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'wrong-password':
+        case 'invalid-credential':
+          message = 'Wrong password. Please try again.';
+          break;
+        case 'too-many-requests':
+          message = 'Too many attempts. Please try later.';
+          break;
+        case 'provider-already-linked':
+          // Already linked — just sign in normally
+          _pendingGoogleCredential = null;
+          state = state.copyWith(
+            pendingAccountLink: false,
+            pendingLinkEmail: null,
+          );
+          _pendingReauth = true;
+          _profileLoaded = false;
+          _authResolved = false;
+          await _loadUserProfile(_auth.currentUser!);
+          return true;
+        default:
+          message = 'Linking failed. Please try again.';
+      }
+      state = state.copyWith(isLoading: false, error: message);
+      return false;
+    } catch (e) {
+      debugPrint('🔐 completeLinkWithPassword error: $e');
+      state = state.copyWith(
+        isLoading: false,
+        error: 'Linking failed. Please try again.',
+      );
+      return false;
+    }
+  }
+
+  /// Cancel the pending account link dialog
+  void cancelPendingLink() {
+    _pendingGoogleCredential = null;
+    state = state.copyWith(
+      pendingAccountLink: false,
+      pendingLinkEmail: null,
+    );
+  }
+
+  /// Link Google to the currently signed-in email/password account.
+  /// Call from settings when user wants to add Google sign-in.
+  Future<bool> linkGoogleToCurrentAccount() async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null) return false;
+
+      // Windows desktop doesn't support Google Sign-In natively
+      if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+        debugPrint('🖥️ Google linking not supported on Windows desktop');
+        return false;
+      }
+
+      if (kIsWeb) {
+        final googleProvider = GoogleAuthProvider();
+        googleProvider.addScope('email');
+        googleProvider.addScope('profile');
+        await user.linkWithPopup(googleProvider);
+      } else {
+        final googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
+        final googleUser = await googleSignIn.signIn();
+        if (googleUser == null) return false;
+        final googleAuth = await googleUser.authentication;
+        final credential = GoogleAuthProvider.credential(
+          accessToken: googleAuth.accessToken,
+          idToken: googleAuth.idToken,
+        );
+        await user.linkWithCredential(credential);
+      }
+
+      // Update photoUrl in Firestore if available
+      await user.reload();
+      final freshUser = _auth.currentUser;
+      if (freshUser?.photoURL != null) {
+        await _firestore.collection('users').doc(freshUser!.uid).update({
+          'photoUrl': freshUser.photoURL,
+        });
+      }
+
+      debugPrint('✅ Google linked to current account');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'provider-already-linked' ||
+          e.code == 'credential-already-in-use') {
+        debugPrint('🔐 Google already linked: ${e.code}');
+        return true; // Already linked, treat as success
+      }
+      debugPrint('🔐 linkGoogle error: ${e.code} - ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('🔐 linkGoogle error: $e');
+      return false;
+    }
+  }
+
+  /// Link email+password to the currently signed-in Google account.
+  /// Call from settings when user wants to add a password.
+  Future<bool> linkEmailPasswordToCurrentAccount(String password) async {
+    try {
+      final user = _auth.currentUser;
+      if (user == null || user.email == null) return false;
+
+      final credential = EmailAuthProvider.credential(
+        email: user.email!,
+        password: password,
+      );
+      await user.linkWithCredential(credential);
+      debugPrint('✅ Email/password linked to current account');
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'provider-already-linked') {
+        return true; // Already linked
+      }
+      debugPrint('🔐 linkEmailPassword error: ${e.code} - ${e.message}');
+      return false;
+    } catch (e) {
+      debugPrint('🔐 linkEmailPassword error: $e');
+      return false;
+    }
+  }
+
+  /// Get list of linked provider IDs for the current user
+  List<String> get linkedProviders {
+    return _auth.currentUser?.providerData
+            .map((p) => p.providerId)
+            .toList() ??
+        [];
+  }
+
   /// Start demo mode (keeps local data for demo)
   Future<void> startDemoMode() async {
     // Load demo data BEFORE setting state
@@ -1798,4 +2032,16 @@ final authErrorProvider = Provider<String?>((ref) {
 /// Is demo mode provider
 final isDemoModeProvider = Provider<bool>((ref) {
   return ref.watch(authNotifierProvider).isDemoMode;
+});
+
+/// Pending account link provider (true when linking dialog should show)
+final pendingAccountLinkProvider = Provider<bool>((ref) {
+  return ref.watch(authNotifierProvider).pendingAccountLink;
+});
+
+/// Linked providers for current user
+final linkedProvidersProvider = Provider<List<String>>((ref) {
+  // Re-read when auth state changes
+  ref.watch(authNotifierProvider);
+  return ref.read(authNotifierProvider.notifier).linkedProviders;
 });

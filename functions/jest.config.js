@@ -4,8 +4,8 @@ module.exports = {
   testEnvironment: "node",
   testMatch: ["**/src/__tests__/**/*.test.ts"],
   // Exclude emulator-dependent rules tests from default `npm test`
-  // Run rules tests separately: npx jest src/__tests__/rules.test.ts
-  testPathIgnorePatterns: ["/node_modules/", "rules\\.test\\.ts$"],
+  // Run rules tests separately: npx jest --testPathPattern=rules
+  testPathIgnorePatterns: ["/node_modules/", "rules[._]test\\.ts$"],
   moduleFileExtensions: ["ts", "js", "json"],
   transform: {
     "^.+\\.ts$": "ts-jest",

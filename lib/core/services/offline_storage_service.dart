@@ -195,6 +195,12 @@ class PrinterStorage {
   static Future<void> initialize() async {
     await _ensurePrefs();
   }
+
+  /// Reset internal state — only for tests.
+  @visibleForTesting
+  static void resetForTesting() {
+    _prefs = null;
+  }
 }
 
 /// Offline storage service using Firestore with offline persistence

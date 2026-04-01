@@ -313,12 +313,6 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
         ref.read(cartProvider.notifier).clearCart();
 
-        final printerState = ref.read(printerProvider);
-        if (printerState.autoPrint) {
-          final messenger = ScaffoldMessenger.of(context);
-          unawaited(_printReceipt(bill, messenger));
-        }
-
         _showBillCompleteDialog(bill);
       }
     } catch (e) {
@@ -355,94 +349,17 @@ class _WebCartSectionState extends ConsumerState<_WebCartSection> {
 
   Future<void> _printReceipt(
     BillModel bill,
-    ScaffoldMessengerState scaffoldMessenger,
-  ) async {
-    try {
-      final user = ref.read(currentUserProvider);
-      final printerState = ref.read(printerProvider);
-      final footer = printerState.receiptFooter.isNotEmpty
-          ? printerState.receiptFooter
-          : null;
-      bool? directSuccess;
-
-      switch (printerState.printerType) {
-        case PrinterTypeOption.bluetooth:
-          if (ThermalPrinterService.isAvailable) {
-            directSuccess = await ThermalPrinterService.printReceipt(
-              bill: bill,
-              shopName: user?.shopName,
-              shopAddress: user?.address,
-              shopPhone: user?.phone,
-              gstNumber: user?.gstNumber,
-              receiptFooter: footer,
-            );
-          }
-          break;
-        case PrinterTypeOption.wifi:
-          if (WifiPrinterService.isConnected) {
-            directSuccess = await WifiPrinterService.printReceipt(
-              bill: bill,
-              shopName: user?.shopName,
-              shopAddress: user?.address,
-              shopPhone: user?.phone,
-              gstNumber: user?.gstNumber,
-              receiptFooter: footer,
-            );
-          }
-          break;
-        case PrinterTypeOption.usb:
-          final usbName = UsbPrinterService.getSavedPrinterName();
-          if (usbName.isNotEmpty) {
-            directSuccess = await UsbPrinterService.printReceipt(
-              printerName: usbName,
-              bill: bill,
-              shopName: user?.shopName,
-              shopAddress: user?.address,
-              shopPhone: user?.phone,
-              gstNumber: user?.gstNumber,
-              receiptFooter: footer,
-            );
-          }
-          break;
-        case PrinterTypeOption.system:
-          await ReceiptService.printReceipt(
-            bill: bill,
-            shopName: user?.shopName,
-            shopAddress: user?.address,
-            shopPhone: user?.phone,
-            gstNumber: user?.gstNumber,
-            receiptFooter: footer,
-            shopLogoPath: user?.shopLogoPath,
-          );
-          return;
-      }
-
-      if (directSuccess == false) {
-        scaffoldMessenger.showSnackBar(
-          SnackBar(
-            content: const Text('Print failed: Printer not connected'),
-            action: SnackBarAction(
-              label: 'Retry',
-              onPressed: () => _printReceipt(bill, scaffoldMessenger),
-            ),
-          ),
-        );
-      } else if (directSuccess == null) {
-        await ReceiptService.printReceipt(
-          bill: bill,
-          shopName: user?.shopName,
-          shopAddress: user?.address,
-          shopPhone: user?.phone,
-          gstNumber: user?.gstNumber,
-          receiptFooter: footer,
-          shopLogoPath: user?.shopLogoPath,
-        );
-      }
-    } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Print failed: $e')),
-      );
-    }
+    ScaffoldMessengerState scaffoldMessenger, {
+    bool isAutoPrint = false,
+  }) {
+    return PrintHelper.printReceipt(
+      bill: bill,
+      printerState: ref.read(printerProvider),
+      user: ref.read(currentUserProvider),
+      scaffoldMessenger: scaffoldMessenger,
+      isAutoPrint: isAutoPrint,
+      onRetry: () => _printReceipt(bill, scaffoldMessenger),
+    );
   }
 
   void _showBillCompleteDialog(BillModel bill) {

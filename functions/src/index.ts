@@ -1108,6 +1108,100 @@ export const checkLowStock = functions
             });
     });
 
+// ─── Razorpay Plan IDs (created via API) ───
+// TEST pricing: Pro ₹10/₹20, Business ₹20/₹30
+// PRODUCTION pricing (swap back after testing):
+//   pro:      { monthly: "plan_SY9CBfmDTbSXHV", annual: "plan_SY9CPMsAtVz46Z" }
+//   business: { monthly: "plan_SY9CYJ4KOmSdbr", annual: "plan_SY9ChNaBTBBnzj" }
+const RAZORPAY_PLAN_IDS: Record<string, Record<string, string>> = {
+    pro: {
+        monthly: "plan_SY9W1ASLrxRreg",
+        annual: "plan_SY9W1v4s3qPFcH",
+    },
+    business: {
+        monthly: "plan_SY9W2ApFAYQPYI",
+        annual: "plan_SY9W2Q0ydG6k7G",
+    },
+};
+
+/**
+ * Create a Razorpay Subscription — called from Flutter before opening checkout.
+ * Creates a subscription on Razorpay's side and returns the subscription ID
+ * which the client uses to open the Razorpay checkout flow.
+ *
+ * Callable function: requires authenticated user.
+ */
+export const createSubscription = functions
+    .region("asia-south1")
+    .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 10 })
+    .https.onCall(async (data: {
+        plan: "pro" | "business";
+        cycle: "monthly" | "annual";
+    }, context) => {
+        if (!context.auth) {
+            throw new functions.https.HttpsError("unauthenticated", "Login required");
+        }
+
+        const { plan, cycle } = data;
+        if (!plan || !cycle || !["pro", "business"].includes(plan) || !["monthly", "annual"].includes(cycle)) {
+            throw new functions.https.HttpsError("invalid-argument", "Valid plan and cycle are required");
+        }
+
+        const razorpayConfig = getRazorpayConfig();
+        if (!razorpayConfig.keyId || !razorpayConfig.keySecret) {
+            throw new functions.https.HttpsError("failed-precondition", "Razorpay not configured");
+        }
+
+        const planId = RAZORPAY_PLAN_IDS[plan]?.[cycle];
+        if (!planId) {
+            throw new functions.https.HttpsError("not-found", `No Razorpay plan found for ${plan}/${cycle}`);
+        }
+
+        try {
+            const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
+            const totalCount = cycle === "annual" ? 1 : 12; // annual = 1 charge, monthly = 12 charges then renew
+
+            const response = await fetch("https://api.razorpay.com/v1/subscriptions", {
+                method: "POST",
+                headers: {
+                    "Authorization": `Basic ${auth}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({
+                    plan_id: planId,
+                    total_count: totalCount,
+                    quantity: 1,
+                    notes: {
+                        userId: context.auth.uid,
+                        plan,
+                        cycle,
+                    },
+                }),
+            });
+
+            const result = await response.json();
+            if (!response.ok) {
+                console.error("Razorpay create subscription error:", result);
+                throw new functions.https.HttpsError("internal",
+                    result?.error?.description || "Failed to create subscription");
+            }
+
+            console.log(`✅ createSubscription: ${result.id} for user ${context.auth.uid} (${plan}/${cycle})`);
+
+            return {
+                success: true,
+                subscriptionId: result.id,
+                planId,
+                plan,
+                cycle,
+            };
+        } catch (err) {
+            if (err instanceof functions.https.HttpsError) throw err;
+            console.error("createSubscription error:", err);
+            throw new functions.https.HttpsError("internal", "Could not create subscription");
+        }
+    });
+
 /**
  * Activate Subscription — called from the Flutter app after a successful
  * Razorpay payment. Verifies the payment ID with Razorpay, then updates

@@ -54,13 +54,135 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.read(authNotifierProvider.notifier).clearError();
 
     try {
-      await ref.read(authNotifierProvider.notifier).signInWithGoogle();
+      final success =
+          await ref.read(authNotifierProvider.notifier).signInWithGoogle();
+      // If linking is needed, show password dialog
+      if (!success && mounted) {
+        final authState = ref.read(authNotifierProvider);
+        if (authState.pendingAccountLink) {
+          _showLinkPasswordDialog(authState.pendingLinkEmail ?? '');
+        }
+      }
       // Router redirect handles navigation automatically
     } finally {
       if (mounted) {
         setState(() => _isGoogleLoading = false);
       }
     }
+  }
+
+  /// Show dialog to enter password for account linking
+  void _showLinkPasswordDialog(String email) {
+    final linkPasswordController = TextEditingController();
+    bool obscure = true;
+    bool linking = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Link Your Account'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'An account with $email already exists. '
+                'Enter your password to link Google sign-in to this account.',
+                style: const TextStyle(fontSize: 14),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: linkPasswordController,
+                obscureText: obscure,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  prefixIcon: const Icon(Icons.lock_outlined),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+                onSubmitted: linking
+                    ? null
+                    : (_) async {
+                        setDialogState(() => linking = true);
+                        final success = await ref
+                            .read(authNotifierProvider.notifier)
+                            .completeLinkWithPassword(
+                              linkPasswordController.text,
+                            );
+                        if (ctx.mounted) {
+                          Navigator.pop(ctx);
+                        }
+                        if (!success && mounted) {
+                          final error = ref.read(authErrorProvider);
+                          if (error != null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text(error)),
+                            );
+                          }
+                        }
+                      },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: linking
+                  ? null
+                  : () {
+                      ref
+                          .read(authNotifierProvider.notifier)
+                          .cancelPendingLink();
+                      Navigator.pop(ctx);
+                    },
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: linking
+                  ? null
+                  : () async {
+                      setDialogState(() => linking = true);
+                      final success = await ref
+                          .read(authNotifierProvider.notifier)
+                          .completeLinkWithPassword(
+                            linkPasswordController.text,
+                          );
+                      if (ctx.mounted) {
+                        Navigator.pop(ctx);
+                      }
+                      if (!success && mounted) {
+                        final error = ref.read(authErrorProvider);
+                        if (error != null) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text(error)),
+                          );
+                        }
+                      }
+                    },
+              child: linking
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Link & Sign In'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _handleEmailLogin() async {

@@ -18,6 +18,7 @@ import 'package:retaillite/l10n/app_localizations.dart';
 import 'package:retaillite/models/user_model.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
+import 'package:retaillite/shared/widgets/plan_badge.dart';
 
 class AppShell extends ConsumerWidget {
   final Widget child;
@@ -100,6 +101,8 @@ class AppShell extends ConsumerWidget {
                 ],
               ),
               actions: [
+                const PlanBadge(),
+                const SizedBox(width: 4),
                 const GlobalSyncIndicator(),
                 const NotificationBell(),
                 IconButton(
@@ -266,6 +269,8 @@ class AppShell extends ConsumerWidget {
                 ),
               ],
 
+              const SizedBox(height: 8),
+              const PlanBadge(),
               const SizedBox(height: 16),
               const Divider(height: 1),
 

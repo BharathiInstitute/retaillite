@@ -21,6 +21,7 @@ import 'package:retaillite/core/services/privacy_consent_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/features/referral/services/referral_service.dart';
+import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
@@ -56,12 +57,17 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   UserSubscription _subscription = UserSubscription();
   UserLimits _limits = UserLimits();
 
+  // Printer state
+  List<String> _availablePrinters = [];
+  bool _isLoadingPrinters = false;
+
   @override
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
     _loadReferral();
     _loadSubscription();
+    _loadAvailablePrinters();
     _shopNameController = TextEditingController(text: user?.shopName ?? '');
     _ownerNameController = TextEditingController(text: user?.ownerName ?? '');
     _contactNumberController = TextEditingController(text: user?.phone ?? '');
@@ -89,6 +95,61 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     _upiController.dispose();
     _termsController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadAvailablePrinters() async {
+    if (kIsWeb) return;
+    setState(() => _isLoadingPrinters = true);
+    try {
+      if (!kIsWeb && Platform.isWindows) {
+        final printers = await UsbPrinterService.getWindowsPrinters();
+        if (mounted) setState(() => _availablePrinters = printers);
+      }
+    } catch (_) {}
+    if (mounted) setState(() => _isLoadingPrinters = false);
+  }
+
+  Future<void> _handleTestPrint() async {
+    final messenger = ScaffoldMessenger.of(context);
+
+    if (!kIsWeb && Platform.isWindows) {
+      final usbName = UsbPrinterService.getSavedPrinterName();
+      if (usbName.isEmpty) {
+        messenger.showSnackBar(
+          const SnackBar(content: Text('No printer selected')),
+        );
+        return;
+      }
+      final success = await UsbPrinterService.printTestPage(usbName);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(success ? 'Test print sent!' : 'Print failed'),
+          backgroundColor: success ? AppColors.success : AppColors.error,
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'System printer: Use the print dialog when printing a receipt',
+          ),
+        ),
+      );
+    }
+  }
+
+  Future<void> _selectPrinter(String? printerName) async {
+    if (printerName == null) return;
+    if (printerName == 'None') {
+      await ref.read(printerProvider.notifier).disconnectPrinter();
+    } else {
+      if (!kIsWeb && Platform.isWindows) {
+        await UsbPrinterService.saveUsbPrinter(printerName);
+        await ref
+            .read(printerProvider.notifier)
+            .connectPrinter('USB: $printerName', printerName);
+      }
+    }
   }
 
   Future<void> _loadReferral() async {
@@ -1740,7 +1801,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
           trailing: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             decoration: BoxDecoration(
-              color: AppColors.success.withValues(alpha: 0.12),
+              color:
+                  (printerState.isConnected ? AppColors.success : Colors.grey)
+                      .withValues(alpha: 0.12),
               borderRadius: BorderRadius.circular(20),
             ),
             child: Row(
@@ -1749,16 +1812,20 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                 Container(
                   width: 8,
                   height: 8,
-                  decoration: const BoxDecoration(
-                    color: AppColors.success,
+                  decoration: BoxDecoration(
+                    color: printerState.isConnected
+                        ? AppColors.success
+                        : Colors.grey,
                     shape: BoxShape.circle,
                   ),
                 ),
                 const SizedBox(width: 6),
-                const Text(
-                  'Connected',
+                Text(
+                  printerState.isConnected ? 'Connected' : 'Not connected',
                   style: TextStyle(
-                    color: AppColors.success,
+                    color: printerState.isConnected
+                        ? AppColors.success
+                        : Colors.grey,
                     fontSize: 12,
                     fontWeight: FontWeight.w500,
                   ),
@@ -1770,10 +1837,24 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _buildFieldLabel('Select Printer'),
-              _buildDropdown(
-                printerState.printerName ?? 'Epson TM-T82 (Bluetooth)',
-                ['Epson TM-T82 (Bluetooth)', 'None'],
-              ),
+              _isLoadingPrinters
+                  ? const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  : _buildDropdown(printerState.printerName ?? 'None', [
+                      'None',
+                      ..._availablePrinters,
+                      // Include current printer if not in list
+                      if (printerState.printerName != null &&
+                          printerState.printerName != 'None' &&
+                          !_availablePrinters.contains(
+                            printerState.printerName,
+                          ))
+                        printerState.printerName!,
+                    ], onChanged: _selectPrinter),
               const SizedBox(height: 20),
               _responsiveFields([
                 Column(
@@ -1783,9 +1864,25 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
                     const SizedBox(height: 8),
                     Row(
                       children: [
-                        _buildToggleChip('58mm', false),
+                        GestureDetector(
+                          onTap: () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(0),
+                          child: _buildToggleChip(
+                            '58mm',
+                            printerState.paperSizeIndex == 0,
+                          ),
+                        ),
                         const SizedBox(width: 8),
-                        _buildToggleChip('80mm', true),
+                        GestureDetector(
+                          onTap: () => ref
+                              .read(printerProvider.notifier)
+                              .setPaperSize(1),
+                          child: _buildToggleChip(
+                            '80mm',
+                            printerState.paperSizeIndex == 1,
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -1814,7 +1911,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               Align(
                 alignment: Alignment.centerRight,
                 child: OutlinedButton.icon(
-                  onPressed: () {},
+                  onPressed: _handleTestPrint,
                   icon: const Icon(Icons.print, size: 18),
                   label: const Text('Test Print'),
                 ),

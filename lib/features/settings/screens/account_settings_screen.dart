@@ -241,6 +241,11 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
           ),
           const SizedBox(height: 24),
 
+          // ── Linked Accounts Section ──
+          _buildSectionHeader(theme, 'Linked Accounts'),
+          _buildLinkedAccountsCard(theme),
+          const SizedBox(height: 24),
+
           // ── Subscription Section ──
           _buildSectionHeader(theme, 'Subscription'),
           Card(
@@ -522,6 +527,211 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
         style: theme.textTheme.titleMedium?.copyWith(
           fontWeight: FontWeight.bold,
           color: theme.colorScheme.primary,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLinkedAccountsCard(ThemeData theme) {
+    final providers = ref.watch(linkedProvidersProvider);
+    final hasGoogle = providers.contains('google.com');
+    final hasPassword = providers.contains('password');
+
+    return Card(
+      child: Column(
+        children: [
+          // Google provider
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: hasGoogle
+                  ? Colors.green.withAlpha(30)
+                  : theme.colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.g_mobiledata,
+                color: hasGoogle ? Colors.green : theme.colorScheme.outline,
+                size: 28,
+              ),
+            ),
+            title: const Text('Google Sign-In'),
+            subtitle: Text(hasGoogle ? 'Linked' : 'Not linked'),
+            trailing: hasGoogle
+                ? const Icon(Icons.check_circle, color: Colors.green)
+                : TextButton(
+                    onPressed: _linkGoogle,
+                    child: const Text('Link'),
+                  ),
+          ),
+          const Divider(height: 1),
+          // Email/Password provider
+          ListTile(
+            leading: CircleAvatar(
+              backgroundColor: hasPassword
+                  ? Colors.green.withAlpha(30)
+                  : theme.colorScheme.surfaceContainerHighest,
+              child: Icon(
+                Icons.email_outlined,
+                color: hasPassword ? Colors.green : theme.colorScheme.outline,
+              ),
+            ),
+            title: const Text('Email & Password'),
+            subtitle: Text(hasPassword ? 'Linked' : 'Not linked'),
+            trailing: hasPassword
+                ? const Icon(Icons.check_circle, color: Colors.green)
+                : TextButton(
+                    onPressed: _showSetPasswordDialog,
+                    child: const Text('Set Password'),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _linkGoogle() async {
+    // Windows desktop doesn't support Google Sign-In linking
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.windows) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Google linking is not available on Windows. '
+              'Please use the web or mobile app.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
+    final messenger = ScaffoldMessenger.of(context);
+    final success = await ref
+        .read(authNotifierProvider.notifier)
+        .linkGoogleToCurrentAccount();
+    if (!mounted) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(
+          success
+              ? 'Google account linked successfully!'
+              : 'Failed to link Google account.',
+        ),
+        backgroundColor: success ? Colors.green : AppColors.error,
+      ),
+    );
+    if (success) setState(() {}); // Refresh providers list
+  }
+
+  void _showSetPasswordDialog() {
+    final passwordCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    bool obscure = true;
+    bool saving = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('Set Password'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Set a password so you can also sign in with email & password.',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(ctx).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextField(
+                controller: passwordCtrl,
+                obscureText: obscure,
+                autofocus: true,
+                decoration: InputDecoration(
+                  labelText: 'New Password',
+                  prefixIcon: const Icon(Icons.lock_outlined),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      obscure
+                          ? Icons.visibility_off_outlined
+                          : Icons.visibility_outlined,
+                    ),
+                    onPressed: () =>
+                        setDialogState(() => obscure = !obscure),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: confirmCtrl,
+                obscureText: obscure,
+                decoration: const InputDecoration(
+                  labelText: 'Confirm Password',
+                  prefixIcon: Icon(Icons.lock_outlined),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: saving ? null : () => Navigator.pop(ctx),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (passwordCtrl.text.length < 6) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text(
+                              'Password must be at least 6 characters',
+                            ),
+                          ),
+                        );
+                        return;
+                      }
+                      if (passwordCtrl.text != confirmCtrl.text) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(
+                            content: Text('Passwords do not match'),
+                          ),
+                        );
+                        return;
+                      }
+                      setDialogState(() => saving = true);
+                      final success = await ref
+                          .read(authNotifierProvider.notifier)
+                          .linkEmailPasswordToCurrentAccount(
+                            passwordCtrl.text,
+                          );
+                      if (ctx.mounted) Navigator.pop(ctx);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              success
+                                  ? 'Password set! You can now sign in with email & password.'
+                                  : 'Failed to set password.',
+                            ),
+                            backgroundColor:
+                                success ? Colors.green : AppColors.error,
+                          ),
+                        );
+                        if (success) setState(() {});
+                      }
+                    },
+              child: saving
+                  ? const SizedBox(
+                      height: 20,
+                      width: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Set Password'),
+            ),
+          ],
         ),
       ),
     );

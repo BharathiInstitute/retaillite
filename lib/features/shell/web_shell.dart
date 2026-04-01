@@ -12,6 +12,7 @@ import 'package:retaillite/features/auth/widgets/demo_mode_banner.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:retaillite/shared/widgets/shop_logo_widget.dart';
 import 'package:retaillite/shared/widgets/offline_banner.dart';
+import 'package:retaillite/shared/widgets/plan_badge.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// User-toggled sidebar collapse state. null = auto (follow screen width)
@@ -368,12 +369,21 @@ class _WebSidebar extends ConsumerWidget {
                             ? Border.all(color: AppColors.primary, width: 1.5)
                             : null,
                       ),
-                      child: Icon(
-                        Icons.settings_outlined,
-                        size: 22,
-                        color: isSettings
-                            ? AppColors.primary
-                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.settings_outlined,
+                            size: 22,
+                            color: isSettings
+                                ? AppColors.primary
+                                : Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                          ),
+                          const SizedBox(height: 6),
+                          const PlanBadge(compact: true),
+                        ],
                       ),
                     ),
                   )
@@ -423,6 +433,8 @@ class _WebSidebar extends ConsumerWidget {
                                 ),
                                 overflow: TextOverflow.ellipsis,
                               ),
+                              const SizedBox(height: 4),
+                              const PlanBadge(),
                             ],
                           ),
                         ),

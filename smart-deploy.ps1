@@ -7,6 +7,8 @@
 #        .\smart-deploy.ps1 -DryRun                      # Preview without deploying
 #        .\smart-deploy.ps1 -SetupMonitoring             # One-time GCP monitoring setup
 
+[Diagnostics.CodeAnalysis.SuppressMessageAttribute('PSUseDeclaredVarsMoreThanAssignments', '', Justification='Editor diagnostics can lag after variable cleanup')]
+
 param(
     [switch]$Rollback,
     [switch]$DryRun,
@@ -80,10 +82,10 @@ function Invoke-WithRetry {
     return $false
 }
 
-# --- Step-tracking for granular resume ---
+# --- Step-tracking for granular resume (internal state only) ---
 $script:completedSteps = @()
 
-function Is-StepDone {
+function Get-StepDone {
     param([string]$StepName)
     return $script:completedSteps -contains $StepName
 }
@@ -701,7 +703,7 @@ try {
     # <- Catch ALL errors -- nothing can stop us!
 
     # --- Update pubspec.yaml ---
-    if (-not $skipBuild -and -not (Is-StepDone "version_bump")) {
+    if (-not $skipBuild -and -not (Get-StepDone "version_bump")) {
         Write-Step "Updating version to $newVersion+$newBuild"
         $pubspecContent = Get-Content $pubspecPath -Raw
         $pubspecContent = $pubspecContent -replace 'version:\s*\d+\.\d+\.\d+\+\d+', "version: $newVersion+$newBuild"
@@ -709,12 +711,12 @@ try {
         Write-Ok "pubspec.yaml updated"
         Complete-Step "version_bump"
     }
-    elseif (Is-StepDone "version_bump") {
+    elseif (Get-StepDone "version_bump") {
         Write-Info "SKIP: Version already bumped"
     }
 
     # --- Run Tests ---
-    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "tests")) {
+    if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "tests")) {
         Write-Step "Running tests..."
         $ErrorActionPreference = "Continue"
         flutter test --reporter compact
@@ -729,12 +731,51 @@ try {
             Write-DeployLog "TESTS PASSED"
         }
     }
-    elseif (Is-StepDone "tests") {
+    elseif (Get-StepDone "tests") {
         Write-Info "SKIP: Tests already passed"
     }
 
+    # --- Coverage Check ---
+    if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "coverage")) {
+        Write-Step "Checking test coverage..."
+        $ErrorActionPreference = "Continue"
+        flutter test --coverage --no-pub
+        $covExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($covExit -eq 0 -and (Test-Path "coverage/lcov.info")) {
+            $lcov = Get-Content "coverage/lcov.info" -Raw
+            $lf = ([regex]::Matches($lcov, "LF:(\d+)") |
+                   ForEach-Object { [int]$_.Groups[1].Value } |
+                   Measure-Object -Sum).Sum
+            $lh = ([regex]::Matches($lcov, "LH:(\d+)") |
+                   ForEach-Object { [int]$_.Groups[1].Value } |
+                   Measure-Object -Sum).Sum
+            $pct = if ($lf -gt 0) { [math]::Round(($lh / $lf) * 100, 1) } else { 0 }
+
+            Write-Info "Coverage: $pct% ($lh / $lf lines)"
+            Write-DeployLog "COVERAGE | $pct% ($lh/$lf)"
+
+            if ($pct -lt 85) {
+                Write-Fail "Coverage $pct% is below 85% minimum! Fix before deploying."
+                $failed = $true
+            } elseif ($pct -lt 90) {
+                Write-Warn "Coverage $pct% is below 90% target. Consider adding tests."
+                Complete-Step "coverage"
+            } else {
+                Write-Ok "Coverage $pct% meets target"
+                Complete-Step "coverage"
+            }
+        } else {
+            Write-Warn "Coverage report not generated — skipping check"
+            Complete-Step "coverage"
+        }
+    }
+    elseif (Get-StepDone "coverage") {
+        Write-Info "SKIP: Coverage already checked"
+    }
+
     # --- Run Analyzer ---
-    if (-not $skipBuild -and -not $failed -and -not (Is-StepDone "analyzer")) {
+    if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "analyzer")) {
         Write-Step "Running analyzer..."
         $ErrorActionPreference = "Continue"
         flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings
@@ -751,7 +792,7 @@ try {
             Complete-Step "analyzer"
         }
     }
-    elseif (Is-StepDone "analyzer") {
+    elseif (Get-StepDone "analyzer") {
         Write-Info "SKIP: Analyzer already passed"
     }
 
@@ -788,7 +829,7 @@ try {
     }
 
     # --- Build and Deploy: Windows (MSIX + Inno Setup EXE) --- [RUNS FIRST to update download.html before web deploy]
-    if (-not $failed -and $deployWindows -and -not (Is-StepDone "windows")) {
+    if (-not $failed -and $deployWindows -and -not (Get-StepDone "windows")) {
         Write-Step "Building Windows -- $winChoiceLabel..."
 
         # Update MSIX version in pubspec.yaml (MSIX needs x.x.x.0 format)
@@ -1015,7 +1056,6 @@ WScript.Quit 0
                     Write-Ok "MSIX path copied to clipboard"
 
                     # Open MSIX folder in Explorer (so you can drag & drop)
-                    $msixFolder = Split-Path $msixFile -Parent
                     Start-Process explorer.exe -ArgumentList "/select,`"$msixFile`""
                     Write-Ok "Opened MSIX file in Explorer"
 
@@ -1037,12 +1077,12 @@ WScript.Quit 0
             Complete-Step "windows"
         }
     }
-    elseif (Is-StepDone "windows") {
+    elseif (Get-StepDone "windows") {
         Write-Info "SKIP: Windows already built + uploaded"
     }
 
     # --- Build and Deploy: Android --- [RUNS BEFORE Web so download.html has APK link before web deploy]
-    if (-not $failed -and $deployAndroid -and -not (Is-StepDone "android")) {
+    if (-not $failed -and $deployAndroid -and -not (Get-StepDone "android")) {
         Write-Step "Building Android APK..."
         $ErrorActionPreference = "Continue"
         flutter build apk --release
@@ -1175,12 +1215,12 @@ WScript.Quit 0
             Complete-Step "android"
         }
     }
-    elseif (Is-StepDone "android") {
+    elseif (Get-StepDone "android") {
         Write-Info "SKIP: Android already built + uploaded"
     }
 
     # --- Build and Deploy: Web --- [RUNS LAST so download.html has ALL updated links (Windows + Android)]
-    if (-not $failed -and $deployWeb -and -not (Is-StepDone "web")) {
+    if (-not $failed -and $deployWeb -and -not (Get-StepDone "web")) {
         Write-Step "Building Web..."
         $distDir = Join-Path $root "dist"
         $websiteDir = Join-Path $root "website"
@@ -1245,7 +1285,7 @@ WScript.Quit 0
             Complete-Step "web"
         }
     }
-    elseif (Is-StepDone "web") {
+    elseif (Get-StepDone "web") {
         Write-Info "SKIP: Web already built + deployed"
     }
 
