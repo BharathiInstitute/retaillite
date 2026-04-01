@@ -130,19 +130,20 @@ class _NotificationsAdminScreenState
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text(
           'Notifications Manager',
           style: TextStyle(fontWeight: FontWeight.w700, fontSize: 20),
         ),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         elevation: 0,
         flexibleSpace: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
-              colors: [Colors.deepPurple, Color(0xFF7C4DFF)],
+              colors: [cs.primary, const Color(0xFF7C4DFF)],
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
             ),
@@ -158,11 +159,11 @@ class _NotificationsAdminScreenState
               ),
         bottom: TabBar(
           controller: _tabController,
-          indicatorColor: Colors.white,
+          indicatorColor: cs.onPrimary,
           indicatorWeight: 3,
           indicatorSize: TabBarIndicatorSize.label,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white60,
+          labelColor: cs.onPrimary,
+          unselectedLabelColor: cs.onPrimary.withValues(alpha: 0.6),
           labelStyle: const TextStyle(
             fontWeight: FontWeight.w600,
             fontSize: 13,
@@ -198,7 +199,9 @@ class _NotificationsAdminScreenState
                       Icon(
                         Icons.notifications_none,
                         size: 64,
-                        color: Colors.grey.shade400,
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.4),
                       ),
                       const SizedBox(height: 16),
                       const Text(
@@ -365,9 +368,9 @@ class _ComposeTabState extends State<_ComposeTab> {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final cardColor = isDark ? Colors.grey.shade900 : Colors.white;
-    final surfaceColor = isDark ? Colors.grey.shade800 : Colors.grey.shade50;
+    final cs = Theme.of(context).colorScheme;
+    final cardColor = cs.surface;
+    final surfaceColor = cs.surfaceContainerHighest;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -411,7 +414,9 @@ class _ComposeTabState extends State<_ComposeTab> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -457,7 +462,9 @@ class _ComposeTabState extends State<_ComposeTab> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -532,7 +539,7 @@ class _ComposeTabState extends State<_ComposeTab> {
                       color: surfaceColor,
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(
-                        color: Colors.deepPurple.withValues(alpha: 0.2),
+                        color: cs.primary.withValues(alpha: 0.2),
                       ),
                     ),
                     child: Column(
@@ -542,7 +549,7 @@ class _ComposeTabState extends State<_ComposeTab> {
                             Icon(
                               Icons.people_alt_outlined,
                               size: 18,
-                              color: Colors.deepPurple.shade300,
+                              color: cs.primary.withValues(alpha: 0.7),
                             ),
                             const SizedBox(width: 8),
                             Expanded(
@@ -551,7 +558,8 @@ class _ComposeTabState extends State<_ComposeTab> {
                                     ? 'No users selected'
                                     : '${_selectedUserIds.length} user(s) selected',
                                 style: TextStyle(
-                                  color: Colors.grey.shade600,
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.6),
                                   fontSize: 13,
                                 ),
                               ),
@@ -564,10 +572,10 @@ class _ComposeTabState extends State<_ComposeTab> {
                                 style: TextStyle(fontSize: 13),
                               ),
                               style: FilledButton.styleFrom(
-                                backgroundColor: Colors.deepPurple.withValues(
+                                backgroundColor: cs.primary.withValues(
                                   alpha: 0.1,
                                 ),
-                                foregroundColor: Colors.deepPurple,
+                                foregroundColor: cs.primary,
                                 visualDensity: VisualDensity.compact,
                               ),
                             ),
@@ -592,7 +600,7 @@ class _ComposeTabState extends State<_ComposeTab> {
                                   });
                                 },
                                 visualDensity: VisualDensity.compact,
-                                backgroundColor: Colors.deepPurple.withValues(
+                                backgroundColor: cs.primary.withValues(
                                   alpha: 0.08,
                                 ),
                                 side: BorderSide.none,
@@ -661,12 +669,12 @@ class _ComposeTabState extends State<_ComposeTab> {
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(14),
-                gradient: const LinearGradient(
-                  colors: [Colors.deepPurple, Color(0xFF7C4DFF)],
+                gradient: LinearGradient(
+                  colors: [cs.primary, const Color(0xFF7C4DFF)],
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.deepPurple.withValues(alpha: 0.35),
+                    color: cs.primary.withValues(alpha: 0.35),
                     blurRadius: 12,
                     offset: const Offset(0, 4),
                   ),
@@ -803,12 +811,17 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
     return AlertDialog(
       title: Row(
         children: [
-          const Icon(Icons.people, color: Colors.deepPurple),
+          Icon(Icons.people, color: Theme.of(context).colorScheme.primary),
           const SizedBox(width: 8),
           const Expanded(child: Text('Select Users')),
           Text(
             '${_selected.length} selected',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 13,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.6),
+            ),
           ),
         ],
       ),
@@ -885,18 +898,22 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
                             user['email'] as String? ?? '',
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade600,
+                              color: Theme.of(
+                                context,
+                              ).colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
                           secondary: CircleAvatar(
                             radius: 16,
-                            backgroundColor: Colors.deepPurple.shade50,
+                            backgroundColor: Theme.of(
+                              context,
+                            ).colorScheme.primary.withValues(alpha: 0.1),
                             child: Text(
                               (user['ownerName'] as String? ?? '?')
                                   .substring(0, 1)
                                   .toUpperCase(),
-                              style: const TextStyle(
-                                color: Colors.deepPurple,
+                              style: TextStyle(
+                                color: Theme.of(context).colorScheme.primary,
                                 fontWeight: FontWeight.bold,
                                 fontSize: 13,
                               ),
@@ -933,7 +950,9 @@ class _UserPickerDialogState extends State<_UserPickerDialog> {
           },
           icon: const Icon(Icons.check, size: 16),
           label: Text('Confirm (${_selected.length})'),
-          style: FilledButton.styleFrom(backgroundColor: Colors.deepPurple),
+          style: FilledButton.styleFrom(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+          ),
         ),
       ],
     );
@@ -964,7 +983,7 @@ class _SectionCard extends StatelessWidget {
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.grey.withValues(alpha: 0.15)),
+        side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
       ),
       child: Padding(
         padding: const EdgeInsets.all(18),
@@ -976,10 +995,16 @@ class _SectionCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.deepPurple.withValues(alpha: 0.1),
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Icon(icon, size: 18, color: Colors.deepPurple),
+                  child: Icon(
+                    icon,
+                    size: 18,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -997,7 +1022,9 @@ class _SectionCard extends StatelessWidget {
                         subtitle,
                         style: TextStyle(
                           fontSize: 12,
-                          color: Colors.grey.shade500,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.5),
                         ),
                       ),
                     ],
@@ -1040,12 +1067,14 @@ class _TemplateChip extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             color: isSelected
-                ? Colors.deepPurple
-                : Colors.deepPurple.withValues(alpha: 0.06),
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.primary.withValues(alpha: 0.06),
             border: Border.all(
               color: isSelected
-                  ? Colors.deepPurple
-                  : Colors.deepPurple.withValues(alpha: 0.2),
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(
+                      context,
+                    ).colorScheme.primary.withValues(alpha: 0.2),
               width: isSelected ? 1.5 : 1,
             ),
           ),
@@ -1055,7 +1084,9 @@ class _TemplateChip extends StatelessWidget {
               Icon(
                 template.icon,
                 size: 16,
-                color: isSelected ? Colors.white : Colors.deepPurple,
+                color: isSelected
+                    ? Colors.white
+                    : Theme.of(context).colorScheme.primary,
               ),
               const SizedBox(width: 6),
               Text(
@@ -1063,7 +1094,9 @@ class _TemplateChip extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: isSelected ? Colors.white : Colors.deepPurple,
+                  color: isSelected
+                      ? Colors.white
+                      : Theme.of(context).colorScheme.primary,
                 ),
               ),
             ],
@@ -1126,15 +1159,33 @@ class _HistoryCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            Text(body, style: TextStyle(color: Colors.grey.shade700)),
+            Text(
+              body,
+              style: TextStyle(
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
+            ),
             const SizedBox(height: 8),
             Row(
               children: [
-                Icon(Icons.person, size: 14, color: Colors.grey.shade500),
+                Icon(
+                  Icons.person,
+                  size: 14,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   sentBy,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
                 ),
                 const SizedBox(width: 12),
                 // Recipient count
@@ -1143,7 +1194,9 @@ class _HistoryCard extends StatelessWidget {
                   size: 14,
                   color: recipientCount != null && recipientCount > 0
                       ? Colors.green.shade400
-                      : Colors.grey.shade500,
+                      : Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.5),
                 ),
                 const SizedBox(width: 4),
                 Text(
@@ -1154,18 +1207,31 @@ class _HistoryCard extends StatelessWidget {
                     fontSize: 12,
                     color: recipientCount != null && recipientCount > 0
                         ? Colors.green.shade400
-                        : Colors.grey.shade500,
+                        : Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.5),
                     fontWeight: recipientCount != null && recipientCount > 0
                         ? FontWeight.w600
                         : FontWeight.normal,
                   ),
                 ),
                 const Spacer(),
-                Icon(Icons.access_time, size: 14, color: Colors.grey.shade500),
+                Icon(
+                  Icons.access_time,
+                  size: 14,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.5),
+                ),
                 const SizedBox(width: 4),
                 Text(
                   dateStr,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.5),
+                  ),
                 ),
               ],
             ),

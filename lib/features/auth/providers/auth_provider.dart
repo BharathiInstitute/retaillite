@@ -18,6 +18,7 @@ import 'package:retaillite/core/config/razorpay_config.dart';
 import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
+import 'package:retaillite/core/services/performance_service.dart';
 import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/firebase_options.dart';
@@ -763,9 +764,15 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
         return await _signInWithRestApi(loginEmail, password);
       }
 
-      final credential = await _auth.signInWithEmailAndPassword(
-        email: loginEmail,
-        password: password,
+      final credential = await PerformanceService.trackOperation(
+        'signIn',
+        'auth',
+        () async {
+          return await _auth.signInWithEmailAndPassword(
+            email: loginEmail,
+            password: password,
+          );
+        },
       );
 
       if (credential.user != null) {

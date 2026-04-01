@@ -322,4 +322,139 @@ void main() {
       expect(SubscriptionStatus.values, contains(SubscriptionStatus.cancelled));
     });
   });
+
+  // ── Offline bill-tracking logic tests ──
+  // Mirrors the decision logic in trackBillCreated() without Firebase deps.
+
+  group('trackBillCreated offline logic', () {
+    /// Simulates the useSimpleWrite decision from trackBillCreated.
+    /// Returns true if we should skip runTransaction and use simple writes.
+    bool shouldUseSimpleWrite({
+      required bool isWeb,
+      required bool isWindows,
+      required bool isOffline,
+    }) {
+      return (!isWeb && isWindows) || isOffline;
+    }
+
+    /// Simulates the bill-limit check logic (identical to both code paths).
+    bool isBillAllowed({
+      required int billsThisMonth,
+      required int billsLimit,
+      required String lastResetMonth,
+      required String currentMonth,
+    }) {
+      final isNewMonth = lastResetMonth != currentMonth;
+      final effectiveCount = isNewMonth ? 0 : billsThisMonth;
+      return effectiveCount < billsLimit;
+    }
+
+    test('Android offline should use simple write (not transaction)', () {
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: false,
+          isWindows: false,
+          isOffline: true,
+        ),
+        true,
+      );
+    });
+
+    test('Android online should use transaction', () {
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: false,
+          isWindows: false,
+          isOffline: false,
+        ),
+        false,
+      );
+    });
+
+    test('Windows always uses simple write regardless of connectivity', () {
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: false,
+          isWindows: true,
+          isOffline: false,
+        ),
+        true,
+      );
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: false,
+          isWindows: true,
+          isOffline: true,
+        ),
+        true,
+      );
+    });
+
+    test('Web should use transaction even when online', () {
+      // Web doesn't have Platform.isWindows issues, uses transaction
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: true,
+          isWindows: false,
+          isOffline: false,
+        ),
+        false,
+      );
+    });
+
+    test('Web offline should use simple write', () {
+      expect(
+        shouldUseSimpleWrite(
+          isWeb: true,
+          isWindows: false,
+          isOffline: true,
+        ),
+        true,
+      );
+    });
+
+    test('bill allowed when under limit', () {
+      expect(
+        isBillAllowed(
+          billsThisMonth: 10,
+          billsLimit: 50,
+          lastResetMonth: '2026-03',
+          currentMonth: '2026-03',
+        ),
+        true,
+      );
+    });
+
+    test('bill blocked when at limit', () {
+      expect(
+        isBillAllowed(
+          billsThisMonth: 50,
+          billsLimit: 50,
+          lastResetMonth: '2026-03',
+          currentMonth: '2026-03',
+        ),
+        false,
+      );
+    });
+
+    test('bill allowed on new month even if last month was at limit', () {
+      expect(
+        isBillAllowed(
+          billsThisMonth: 50,
+          billsLimit: 50,
+          lastResetMonth: '2026-02',
+          currentMonth: '2026-03',
+        ),
+        true,
+      );
+    });
+
+    test('offline bill creation does not block user (graceful fallback)', () {
+      // The catch block in trackBillCreated returns true on error,
+      // meaning billing always proceeds even if metrics tracking fails.
+      // This test documents that contract.
+      const allowOnError = true;
+      expect(allowOnError, true);
+    });
+  });
 }

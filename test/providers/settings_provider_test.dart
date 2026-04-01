@@ -116,8 +116,8 @@ void main() {
   // ── PrinterTypeOption enum ──
 
   group('PrinterTypeOption', () {
-    test('has 4 types', () {
-      expect(PrinterTypeOption.values.length, 4);
+    test('has 6 types', () {
+      expect(PrinterTypeOption.values.length, 6);
     });
 
     test('system is not thermal', () {
@@ -144,6 +144,11 @@ void main() {
       );
       expect(PrinterTypeOption.fromString('usb'), PrinterTypeOption.usb);
       expect(PrinterTypeOption.fromString('wifi'), PrinterTypeOption.wifi);
+      expect(PrinterTypeOption.fromString('sunmi'), PrinterTypeOption.sunmi);
+      expect(
+        PrinterTypeOption.fromString('webBluetooth'),
+        PrinterTypeOption.webBluetooth,
+      );
     });
 
     test('fromString defaults to system for unknown', () {
@@ -197,10 +202,7 @@ void main() {
         const PrinterState(fontSizeIndex: 0).fontSize,
         PrinterFontSize.small,
       );
-      expect(
-        const PrinterState().fontSize,
-        PrinterFontSize.normal,
-      );
+      expect(const PrinterState().fontSize, PrinterFontSize.normal);
       expect(
         const PrinterState(fontSizeIndex: 2).fontSize,
         PrinterFontSize.large,

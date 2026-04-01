@@ -11,6 +11,7 @@ import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/utils/id_generator.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
+import 'package:retaillite/core/services/performance_service.dart';
 import 'package:retaillite/core/services/sync_status_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/models/product_model.dart';
@@ -176,7 +177,13 @@ class ProductsService {
       unit: product.unit,
       createdAt: DateTime.now(),
     );
-    await _collection!.doc(id).set(newProduct.toFirestore());
+    await PerformanceService.trackOperation(
+      'addProduct',
+      'firestore',
+      () async {
+        await _collection!.doc(id).set(newProduct.toFirestore());
+      },
+    );
     unawaited(UserMetricsService.trackProductAdded());
     return id;
   }
@@ -231,7 +238,13 @@ class ProductsService {
       DemoDataService.updateProduct(product);
       return;
     }
-    await _collection!.doc(product.id).update(product.toFirestore());
+    await PerformanceService.trackOperation(
+      'updateProduct',
+      'firestore',
+      () async {
+        await _collection!.doc(product.id).update(product.toFirestore());
+      },
+    );
   }
 
   /// Delete product
@@ -240,7 +253,13 @@ class ProductsService {
       DemoDataService.deleteProduct(productId);
       return;
     }
-    await _collection!.doc(productId).delete();
+    await PerformanceService.trackOperation(
+      'deleteProduct',
+      'firestore',
+      () async {
+        await _collection!.doc(productId).delete();
+      },
+    );
     unawaited(UserMetricsService.trackProductDeleted());
   }
 

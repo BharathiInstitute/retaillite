@@ -63,6 +63,7 @@ class CartNotifier extends StateNotifier<CartState> {
         price: product.price,
         quantity: quantity,
         unit: product.unit.shortName,
+        hsnCode: product.hsnCode,
       );
       state = state.copyWith(items: [...state.items, newItem]);
     }

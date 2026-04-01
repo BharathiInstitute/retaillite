@@ -29,8 +29,8 @@ class AccountSettingsScreen extends ConsumerStatefulWidget {
 }
 
 class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
-  late TextEditingController _emailController;
-  late TextEditingController _phoneController;
+  final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   bool _isUploadingImage = false;
   UserSubscription _subscription = UserSubscription();
   UserLimits _limits = UserLimits();
@@ -41,8 +41,8 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
-    _emailController = TextEditingController(text: user?.email ?? '');
-    _phoneController = TextEditingController(text: user?.phone ?? '');
+    _emailController.text = user?.email ?? '';
+    _phoneController.text = user?.phone ?? '';
     _loadSubscription();
     _loadReferral();
   }

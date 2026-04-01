@@ -7,6 +7,7 @@ import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/utils/formatters.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
 import 'package:retaillite/features/khata/providers/khata_provider.dart';
+import 'package:retaillite/features/khata/providers/khata_stats_provider.dart';
 import 'package:retaillite/models/customer_model.dart';
 import 'package:retaillite/models/transaction_model.dart';
 import 'package:retaillite/shared/widgets/app_button.dart';
@@ -104,6 +105,7 @@ class _GiveUdhaarModalState extends ConsumerState<GiveUdhaarModal> {
       ref.invalidate(customerProvider(widget.customer.id));
       ref.invalidate(customerTransactionsProvider(widget.customer.id));
       ref.invalidate(customersProvider);
+      ref.invalidate(khataStatsProvider);
 
       if (mounted) {
         Navigator.pop(context);

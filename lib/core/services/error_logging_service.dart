@@ -13,6 +13,14 @@ import 'package:retaillite/main.dart';
 /// Error severity levels
 enum ErrorSeverity { warning, error, critical }
 
+/// Resolution lifecycle status for error tracking
+enum ResolutionStatus {
+  unresolved, // Active error (default)
+  resolved, // Admin marked as resolved
+  recurred, // Was resolved, but admin confirmed it came back → Active
+  neverRecurred, // Admin confirmed permanently fixed
+}
+
 /// Error log entry model with full context
 class ErrorLogEntry {
   final String message;
@@ -41,6 +49,10 @@ class ErrorLogEntry {
   final String? shopName;
   final bool resolved;
   final String? errorHash;
+  final DateTime? resolvedAt;
+  final ResolutionStatus resolutionStatus;
+  final bool isRecurring;
+  final DateTime? previouslyResolvedAt;
 
   const ErrorLogEntry({
     required this.message,
@@ -67,6 +79,10 @@ class ErrorLogEntry {
     this.shopName,
     this.resolved = false,
     this.errorHash,
+    this.resolvedAt,
+    this.resolutionStatus = ResolutionStatus.unresolved,
+    this.isRecurring = false,
+    this.previouslyResolvedAt,
   });
 
   Map<String, dynamic> toFirestore() {
@@ -95,6 +111,12 @@ class ErrorLogEntry {
       'shopName': shopName,
       'resolved': resolved,
       'errorHash': errorHash,
+      'resolvedAt': resolvedAt != null ? Timestamp.fromDate(resolvedAt!) : null,
+      'resolutionStatus': resolutionStatus.name,
+      'isRecurring': isRecurring,
+      'previouslyResolvedAt': previouslyResolvedAt != null
+          ? Timestamp.fromDate(previouslyResolvedAt!)
+          : null,
     };
   }
 
@@ -128,6 +150,16 @@ class ErrorLogEntry {
       shopName: data['shopName'] as String?,
       resolved: (data['resolved'] as bool?) ?? false,
       errorHash: data['errorHash'] as String?,
+      resolvedAt: (data['resolvedAt'] as Timestamp?)?.toDate(),
+      resolutionStatus: ResolutionStatus.values.firstWhere(
+        (s) => s.name == data['resolutionStatus'],
+        orElse: () => (data['resolved'] as bool?) == true
+            ? ResolutionStatus.resolved
+            : ResolutionStatus.unresolved,
+      ),
+      isRecurring: (data['isRecurring'] as bool?) ?? false,
+      previouslyResolvedAt: (data['previouslyResolvedAt'] as Timestamp?)
+          ?.toDate(),
     );
   }
 
@@ -159,6 +191,13 @@ class ErrorLogEntry {
     if (connectivity != null) buf.writeln('Connectivity:  $connectivity');
     if (lifecycleState != null) buf.writeln('Lifecycle:     $lifecycleState');
     buf.writeln('Resolved:      ${resolved ? 'Yes' : 'No'}');
+    buf.writeln('Status:        ${resolutionStatus.name}');
+    if (isRecurring) buf.writeln('Recurring:     Yes');
+    if (resolvedAt != null) {
+      buf.writeln(
+        'Resolved At:   ${resolvedAt!.day}/${resolvedAt!.month}/${resolvedAt!.year}',
+      );
+    }
     buf.writeln();
 
     buf.writeln('📍 LOCATION');
@@ -217,6 +256,9 @@ class GroupedError {
   final DateTime firstSeen;
   final DateTime lastSeen;
   final int affectedUsers;
+  final bool isRecurring;
+  final DateTime? resolvedAt;
+  final ResolutionStatus resolutionStatus;
 
   const GroupedError({
     required this.latestEntry,
@@ -225,6 +267,9 @@ class GroupedError {
     required this.firstSeen,
     required this.lastSeen,
     required this.affectedUsers,
+    this.isRecurring = false,
+    this.resolvedAt,
+    this.resolutionStatus = ResolutionStatus.unresolved,
   });
 }
 
@@ -237,6 +282,43 @@ class ErrorLoggingService {
 
   static String? _currentScreen;
   static String? _sessionId;
+
+  // ── Resolved-hashes in-memory cache for recurrence detection ──
+  static Map<String, DateTime>? _resolvedHashesCache;
+  static DateTime? _resolvedHashesCacheTime;
+  static const _cacheTtl = Duration(minutes: 5);
+
+  /// Refresh the resolved-hashes cache from Firestore
+  static Future<Map<String, DateTime>> _getResolvedHashes() async {
+    final now = DateTime.now();
+    if (_resolvedHashesCache != null &&
+        _resolvedHashesCacheTime != null &&
+        now.difference(_resolvedHashesCacheTime!) < _cacheTtl) {
+      return _resolvedHashesCache!;
+    }
+    try {
+      final doc = await _firestore
+          .collection('error_logs_meta')
+          .doc('resolved_hashes')
+          .get();
+      final data = doc.data() ?? {};
+      final result = <String, DateTime>{};
+      for (final entry in data.entries) {
+        if (entry.value is Map) {
+          final ts = (entry.value as Map)['resolvedAt'];
+          if (ts is Timestamp) {
+            result[entry.key] = ts.toDate();
+          }
+        }
+      }
+      _resolvedHashesCache = result;
+      _resolvedHashesCacheTime = now;
+      return result;
+    } catch (e) {
+      debugPrint('⚠️ Failed to load resolved hashes cache: $e');
+      return _resolvedHashesCache ?? {};
+    }
+  }
 
   // ── Pre-Firebase Crash Capture ──
 
@@ -412,6 +494,21 @@ class ErrorLoggingService {
         // Swallow JS interop type errors on web
       }
 
+      final errorHash = _generateErrorHash(message);
+
+      // Recurrence detection: check if this hash was previously resolved
+      bool isRecurring = false;
+      DateTime? previouslyResolvedAt;
+      try {
+        final resolvedHashes = await _getResolvedHashes();
+        if (resolvedHashes.containsKey(errorHash)) {
+          isRecurring = true;
+          previouslyResolvedAt = resolvedHashes[errorHash];
+        }
+      } catch (_) {
+        // Don't block error logging if cache check fails
+      }
+
       final entry = ErrorLogEntry(
         message: message,
         stackTrace: stackTrace?.toString(),
@@ -437,8 +534,9 @@ class ErrorLoggingService {
         sessionId: metadata?['sessionId'] as String? ?? _sessionId,
         userEmail: metadata?['userEmail'] as String? ?? userEmail,
         shopName: metadata?['shopName'] as String? ?? shopName,
-        // resolved defaults to false
-        errorHash: _generateErrorHash(message),
+        errorHash: errorHash,
+        isRecurring: isRecurring,
+        previouslyResolvedAt: previouslyResolvedAt,
       );
 
       // Try to write to Firestore
@@ -567,12 +665,13 @@ class ErrorLoggingService {
     );
   }
 
-  /// Get recent errors grouped by errorHash for deduplication
+  /// Get recent errors grouped by errorHash for deduplication.
+  /// Always fetches all errors (active + resolved) for 3-section UI.
   static Future<List<GroupedError>> getGroupedErrors({
-    int limit = 100,
+    int limit = 50,
     ErrorSeverity? severityFilter,
     String? platformFilter,
-    bool hideResolved = true,
+    bool hideResolved = false,
   }) async {
     try {
       Query query = _firestore
@@ -610,6 +709,7 @@ class ErrorLoggingService {
             .map((e) => e.value.userId)
             .whereType<String>()
             .toSet();
+        final anyRecurring = group.any((e) => e.value.isRecurring);
         return GroupedError(
           latestEntry: latest.value,
           docId: latest.key,
@@ -617,6 +717,9 @@ class ErrorLoggingService {
           firstSeen: group.last.value.timestamp,
           lastSeen: group.first.value.timestamp,
           affectedUsers: userIds.length,
+          isRecurring: anyRecurring,
+          resolvedAt: latest.value.resolvedAt,
+          resolutionStatus: latest.value.resolutionStatus,
         );
       }).toList()..sort((a, b) => b.lastSeen.compareTo(a.lastSeen));
     } catch (e) {
@@ -653,11 +756,26 @@ class ErrorLoggingService {
   }
 
   /// Mark an error as resolved
-  static Future<void> markResolved(String docId) async {
+  static Future<void> markResolved(String docId, {String? errorHash}) async {
     try {
       await _firestore.collection('error_logs').doc(docId).update({
         'resolved': true,
+        'resolvedAt': FieldValue.serverTimestamp(),
+        'resolutionStatus': ResolutionStatus.resolved.name,
       });
+      // Update resolved-hashes meta doc for recurrence detection
+      if (errorHash != null) {
+        await _firestore
+            .collection('error_logs_meta')
+            .doc('resolved_hashes')
+            .set({
+              errorHash: {
+                'resolvedAt': FieldValue.serverTimestamp(),
+                'status': ResolutionStatus.resolved.name,
+              },
+            }, SetOptions(merge: true));
+        _resolvedHashesCache = null; // invalidate cache
+      }
     } catch (e) {
       debugPrint('❌ Failed to mark resolved: $e');
     }
@@ -679,13 +797,147 @@ class ErrorLoggingService {
 
       final batch = _firestore.batch();
       for (final doc in snapshot.docs) {
-        batch.update(doc.reference, {'resolved': true});
+        batch.update(doc.reference, {
+          'resolved': true,
+          'resolvedAt': FieldValue.serverTimestamp(),
+          'resolutionStatus': ResolutionStatus.resolved.name,
+        });
       }
       await batch.commit();
+
+      // Update resolved-hashes meta doc
+      await _firestore.collection('error_logs_meta').doc('resolved_hashes').set(
+        {
+          errorHash: {
+            'resolvedAt': FieldValue.serverTimestamp(),
+            'status': ResolutionStatus.resolved.name,
+          },
+        },
+        SetOptions(merge: true),
+      );
+      _resolvedHashesCache = null; // invalidate cache
+
       return snapshot.docs.length;
     } catch (e) {
       debugPrint('❌ Failed to mark all resolved: $e');
       return 0;
+    }
+  }
+
+  /// Update the resolution status of an error (dropdown action)
+  static Future<void> updateResolutionStatus(
+    String docId,
+    String errorHash,
+    ResolutionStatus status,
+  ) async {
+    try {
+      switch (status) {
+        case ResolutionStatus.recurred:
+          // Move back to active — mark as unresolved + recurring
+          await _firestore.collection('error_logs').doc(docId).update({
+            'resolved': false,
+            'resolutionStatus': ResolutionStatus.recurred.name,
+            'isRecurring': true,
+          });
+          // Also mark all same-hash resolved errors as recurred
+          final snapshot = await _firestore
+              .collection('error_logs')
+              .where('errorHash', isEqualTo: errorHash)
+              .where('resolved', isEqualTo: true)
+              .limit(400)
+              .get();
+          if (snapshot.docs.isNotEmpty) {
+            final batch = _firestore.batch();
+            for (final doc in snapshot.docs) {
+              batch.update(doc.reference, {
+                'resolved': false,
+                'resolutionStatus': ResolutionStatus.recurred.name,
+                'isRecurring': true,
+              });
+            }
+            await batch.commit();
+          }
+          // Remove from resolved-hashes meta
+          await _firestore
+              .collection('error_logs_meta')
+              .doc('resolved_hashes')
+              .update({errorHash: FieldValue.delete()});
+          _resolvedHashesCache = null;
+
+        case ResolutionStatus.neverRecurred:
+          // Confirm permanently fixed
+          await _firestore.collection('error_logs').doc(docId).update({
+            'resolutionStatus': ResolutionStatus.neverRecurred.name,
+          });
+          // Also mark all same-hash errors
+          final nrSnapshot = await _firestore
+              .collection('error_logs')
+              .where('errorHash', isEqualTo: errorHash)
+              .where('resolved', isEqualTo: true)
+              .limit(400)
+              .get();
+          if (nrSnapshot.docs.isNotEmpty) {
+            final batch = _firestore.batch();
+            for (final doc in nrSnapshot.docs) {
+              batch.update(doc.reference, {
+                'resolutionStatus': ResolutionStatus.neverRecurred.name,
+              });
+            }
+            await batch.commit();
+          }
+          // Update meta doc status
+          await _firestore
+              .collection('error_logs_meta')
+              .doc('resolved_hashes')
+              .set({
+                errorHash: {
+                  'resolvedAt': FieldValue.serverTimestamp(),
+                  'status': ResolutionStatus.neverRecurred.name,
+                },
+              }, SetOptions(merge: true));
+          _resolvedHashesCache = null;
+
+        case ResolutionStatus.resolved:
+          // Keep as resolved (default state)
+          await _firestore.collection('error_logs').doc(docId).update({
+            'resolved': true,
+            'resolutionStatus': ResolutionStatus.resolved.name,
+          });
+
+        case ResolutionStatus.unresolved:
+          // Move back to active (unresolved) without the recurring flag
+          await _firestore.collection('error_logs').doc(docId).update({
+            'resolved': false,
+            'resolutionStatus': ResolutionStatus.unresolved.name,
+            'resolvedAt': FieldValue.delete(),
+          });
+          // Also move all same-hash errors back
+          final urSnapshot = await _firestore
+              .collection('error_logs')
+              .where('errorHash', isEqualTo: errorHash)
+              .where('resolved', isEqualTo: true)
+              .limit(400)
+              .get();
+          if (urSnapshot.docs.isNotEmpty) {
+            final batch = _firestore.batch();
+            for (final doc in urSnapshot.docs) {
+              batch.update(doc.reference, {
+                'resolved': false,
+                'resolutionStatus': ResolutionStatus.unresolved.name,
+                'resolvedAt': FieldValue.delete(),
+              });
+            }
+            await batch.commit();
+          }
+          // Remove from resolved-hashes meta
+          await _firestore
+              .collection('error_logs_meta')
+              .doc('resolved_hashes')
+              .update({errorHash: FieldValue.delete()});
+          _resolvedHashesCache = null;
+      }
+    } catch (e) {
+      debugPrint('❌ Failed to update resolution status: $e');
     }
   }
 
@@ -724,30 +976,39 @@ class ErrorLoggingService {
   }
 
   /// Get daily error counts for trend chart (last N days)
+  /// Uses count() aggregation per day — returns integers, not full docs.
   static Future<Map<DateTime, int>> getDailyErrorCounts({int days = 7}) async {
     try {
-      final cutoff = DateTime.now().subtract(Duration(days: days));
-      final snapshot = await _firestore
-          .collection('error_logs')
-          .where('timestamp', isGreaterThan: Timestamp.fromDate(cutoff))
-          .orderBy('timestamp')
-          .limit(5000) // D10: Cap reads for trend chart
-          .get();
-
+      final now = DateTime.now();
       final counts = <DateTime, int>{};
-      // Initialize all days to 0
+
+      // Fire all per-day count() queries in parallel
+      final futures = <Future<MapEntry<DateTime, int>>>[];
       for (var i = 0; i < days; i++) {
-        final day = DateTime.now().subtract(Duration(days: days - 1 - i));
-        final key = DateTime(day.year, day.month, day.day);
-        counts[key] = 0;
+        final dayStart = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: days - 1 - i));
+        final dayEnd = dayStart.add(const Duration(days: 1));
+
+        futures.add(
+          _firestore
+              .collection('error_logs')
+              .where(
+                'timestamp',
+                isGreaterThanOrEqualTo: Timestamp.fromDate(dayStart),
+              )
+              .where('timestamp', isLessThan: Timestamp.fromDate(dayEnd))
+              .count()
+              .get()
+              .then((snap) => MapEntry(dayStart, snap.count ?? 0)),
+        );
       }
-      // Count errors per day
-      for (final doc in snapshot.docs) {
-        final ts = (doc.data()['timestamp'] as Timestamp?)?.toDate();
-        if (ts != null) {
-          final key = DateTime(ts.year, ts.month, ts.day);
-          counts[key] = (counts[key] ?? 0) + 1;
-        }
+
+      final results = await Future.wait(futures);
+      for (final entry in results) {
+        counts[entry.key] = entry.value;
       }
       return counts;
     } catch (e) {

@@ -41,6 +41,7 @@ class ProductModel {
   final String? barcode;
   final String? imageUrl;
   final String? category;
+  final String? hsnCode;
   final ProductUnit unit;
   final DateTime createdAt;
   final DateTime? updatedAt;
@@ -55,6 +56,7 @@ class ProductModel {
     this.barcode,
     this.imageUrl,
     this.category,
+    this.hsnCode,
     this.unit = ProductUnit.piece,
     required this.createdAt,
     this.updatedAt,
@@ -81,11 +83,12 @@ class ProductModel {
       name: (data['name'] as String?) ?? '',
       price: (data['price'] as num?)?.toDouble() ?? 0.0,
       purchasePrice: (data['purchasePrice'] as num?)?.toDouble(),
-      stock: (data['stock'] as int?) ?? 0,
-      lowStockAlert: data['lowStockAlert'] as int?,
+      stock: (data['stock'] as num?)?.toInt() ?? 0,
+      lowStockAlert: (data['lowStockAlert'] as num?)?.toInt(),
       barcode: data['barcode'] as String?,
       imageUrl: data['imageUrl'] as String?,
       category: data['category'] as String?,
+      hsnCode: data['hsnCode'] as String?,
       unit: ProductUnit.fromString((data['unit'] as String?) ?? 'piece'),
       createdAt: (data['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       updatedAt: (data['updatedAt'] as Timestamp?)?.toDate(),
@@ -102,6 +105,7 @@ class ProductModel {
       'barcode': barcode,
       'imageUrl': imageUrl,
       'category': category,
+      'hsnCode': hsnCode,
       'unit': unit.name,
       'createdAt': Timestamp.fromDate(createdAt),
       'updatedAt': updatedAt != null ? Timestamp.fromDate(updatedAt!) : null,
@@ -117,6 +121,7 @@ class ProductModel {
     Object? barcode = _sentinel,
     Object? imageUrl = _sentinel,
     Object? category = _sentinel,
+    Object? hsnCode = _sentinel,
     ProductUnit? unit,
   }) {
     return ProductModel(
@@ -133,6 +138,7 @@ class ProductModel {
       barcode: barcode == _sentinel ? this.barcode : barcode as String?,
       imageUrl: imageUrl == _sentinel ? this.imageUrl : imageUrl as String?,
       category: category == _sentinel ? this.category : category as String?,
+      hsnCode: hsnCode == _sentinel ? this.hsnCode : hsnCode as String?,
       unit: unit ?? this.unit,
       createdAt: createdAt,
       updatedAt: DateTime.now(),

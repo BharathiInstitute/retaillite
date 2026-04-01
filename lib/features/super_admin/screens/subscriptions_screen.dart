@@ -18,11 +18,13 @@ class SubscriptionsScreen extends ConsumerWidget {
     final expiringAsync = ref.watch(expiringSubscriptionsProvider);
     final isWide = MediaQuery.of(context).size.width > 800;
 
+    final cs = Theme.of(context).colorScheme;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Subscriptions'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: cs.primary,
+        foregroundColor: cs.onPrimary,
         leading: MediaQuery.of(context).size.width >= 1024
             ? null
             : IconButton(
@@ -206,13 +208,17 @@ class SubscriptionsScreen extends ConsumerWidget {
                             plan['name'] as String,
                             style: const TextStyle(fontWeight: FontWeight.w600),
                           ),
-                          Text(
-                            (plan['price'] as int) == 0
-                                ? 'Free forever'
-                                : '₹${plan['price']}/month',
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                              fontSize: 12,
+                          Builder(
+                            builder: (context) => Text(
+                              (plan['price'] as int) == 0
+                                  ? 'Free forever'
+                                  : '₹${plan['price']}/month',
+                              style: TextStyle(
+                                color: Theme.of(
+                                  context,
+                                ).colorScheme.onSurface.withValues(alpha: 0.6),
+                                fontSize: 12,
+                              ),
                             ),
                           ),
                         ],
@@ -429,7 +435,12 @@ class SubscriptionsScreen extends ConsumerWidget {
           children: [
             Row(
               children: [
-                const Icon(Icons.manage_accounts, color: Colors.deepPurple),
+                Builder(
+                  builder: (context) => Icon(
+                    Icons.manage_accounts,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ),
                 const SizedBox(width: 8),
                 const Text(
                   'Manage Subscriptions',
@@ -568,11 +579,19 @@ class SubscriptionsScreen extends ConsumerWidget {
                   children: [
                     Text(
                       'Owner: ${user.ownerName}',
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                     Text(
                       'Email: ${user.email}',
-                      style: TextStyle(color: Colors.grey.shade600),
+                      style: TextStyle(
+                        color: Theme.of(
+                          context,
+                        ).colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
                     ),
                     const SizedBox(height: 20),
 
@@ -662,7 +681,9 @@ class SubscriptionsScreen extends ConsumerWidget {
                           vertical: 14,
                         ),
                         decoration: BoxDecoration(
-                          border: Border.all(color: Colors.grey.shade400),
+                          border: Border.all(
+                            color: Theme.of(context).colorScheme.outlineVariant,
+                          ),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Row(
@@ -762,7 +783,14 @@ class _StatCard extends StatelessWidget {
               children: [
                 Icon(icon, color: color, size: 20),
                 const SizedBox(width: 8),
-                Text(title, style: TextStyle(color: Colors.grey.shade600)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 8),
@@ -776,7 +804,12 @@ class _StatCard extends StatelessWidget {
             ),
             Text(
               subtitle,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+              style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(
+                  context,
+                ).colorScheme.onSurface.withValues(alpha: 0.5),
+              ),
             ),
           ],
         ),

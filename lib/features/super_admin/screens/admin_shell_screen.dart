@@ -42,14 +42,15 @@ class AdminShellScreen extends ConsumerWidget {
     String currentPath,
     WidgetRef ref,
   ) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       width: 220,
       decoration: BoxDecoration(
-        color: Colors.grey.shade50,
-        border: Border(right: BorderSide(color: Colors.grey.shade200)),
+        color: cs.surface,
+        border: Border(right: BorderSide(color: cs.outlineVariant)),
       ),
       child: Material(
-        color: Colors.grey.shade50,
+        color: cs.surface,
         child: Column(
           children: [
             // Admin branding
@@ -108,7 +109,7 @@ class AdminShellScreen extends ConsumerWidget {
                   icon: const Icon(Icons.store, size: 18),
                   label: const Text('Back to Store'),
                   style: TextButton.styleFrom(
-                    foregroundColor: Colors.grey.shade700,
+                    foregroundColor: cs.onSurface.withValues(alpha: 0.7),
                   ),
                 ),
               ),
@@ -137,6 +138,7 @@ class AdminShellScreen extends ConsumerWidget {
   }
 
   Widget _buildDrawer(BuildContext context, String currentPath, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
     return Drawer(
       child: Column(
         children: [
@@ -187,22 +189,24 @@ class AdminShellScreen extends ConsumerWidget {
                 return ListTile(
                   leading: Icon(
                     item['icon'] as IconData,
-                    color: isActive ? Colors.deepPurple : Colors.grey.shade600,
+                    color: isActive
+                        ? cs.primary
+                        : cs.onSurface.withValues(alpha: 0.6),
                     size: 22,
                   ),
                   title: Text(
                     item['label'] as String,
                     style: TextStyle(
                       color: isActive
-                          ? Colors.deepPurple
-                          : Colors.grey.shade800,
+                          ? cs.primary
+                          : cs.onSurface.withValues(alpha: 0.8),
                       fontWeight: isActive
                           ? FontWeight.bold
                           : FontWeight.normal,
                     ),
                   ),
                   selected: isActive,
-                  selectedTileColor: Colors.deepPurple.withValues(alpha: 0.08),
+                  selectedTileColor: cs.primary.withValues(alpha: 0.08),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(8),
                   ),
@@ -217,7 +221,12 @@ class AdminShellScreen extends ConsumerWidget {
           const Divider(height: 1),
           // Back to store
           ListTile(
-            leading: Icon(Icons.store, color: Colors.grey.shade700),
+            leading: Icon(
+              Icons.store,
+              color: Theme.of(
+                context,
+              ).colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
             title: const Text('Back to Store'),
             onTap: () {
               Navigator.of(context).pop();
@@ -252,19 +261,27 @@ class AdminShellScreen extends ConsumerWidget {
         dense: true,
         leading: Icon(
           icon,
-          color: isActive ? Colors.deepPurple : Colors.grey.shade600,
+          color: isActive
+              ? Theme.of(context).colorScheme.primary
+              : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
           size: 20,
         ),
         title: Text(
           label,
           style: TextStyle(
-            color: isActive ? Colors.deepPurple : Colors.grey.shade700,
+            color: isActive
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.7),
             fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
             fontSize: 14,
           ),
         ),
         selected: isActive,
-        selectedTileColor: Colors.deepPurple.withValues(alpha: 0.08),
+        selectedTileColor: Theme.of(
+          context,
+        ).colorScheme.primary.withValues(alpha: 0.08),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         onTap: () => context.go(route),
       ),

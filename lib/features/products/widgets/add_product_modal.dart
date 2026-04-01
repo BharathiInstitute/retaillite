@@ -37,6 +37,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
   late final TextEditingController _lowStockController;
   late final TextEditingController _barcodeController;
   late final TextEditingController _categoryController;
+  late final TextEditingController _hsnCodeController;
   late ProductUnit _selectedUnit;
   bool _isLoading = false;
   bool _isLookingUp = false;
@@ -61,6 +62,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     );
     _barcodeController = TextEditingController(text: p?.barcode ?? '');
     _categoryController = TextEditingController(text: p?.category ?? '');
+    _hsnCodeController = TextEditingController(text: p?.hsnCode ?? '');
     _selectedUnit = p?.unit ?? ProductUnit.piece;
     _imageUrl = p?.imageUrl;
   }
@@ -74,6 +76,7 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
     _lowStockController.dispose();
     _barcodeController.dispose();
     _categoryController.dispose();
+    _hsnCodeController.dispose();
     super.dispose();
   }
 
@@ -141,6 +144,9 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
         category: _categoryController.text.trim().isEmpty
             ? null
             : _categoryController.text.trim(),
+        hsnCode: _hsnCodeController.text.trim().isEmpty
+            ? null
+            : _hsnCodeController.text.trim(),
         imageUrl: _imageUrl,
         createdAt: widget.product?.createdAt ?? DateTime.now(),
       );
@@ -486,6 +492,16 @@ class _AddProductModalState extends ConsumerState<AddProductModal> {
                         ),
                       ),
                     ],
+                    SizedBox(height: fieldSpacing),
+
+                    // HSN/SAC Code
+                    AppTextField(
+                      label: 'HSN/SAC Code (Optional)',
+                      hint: 'e.g., 19021030',
+                      controller: _hsnCodeController,
+                      textInputAction: TextInputAction.next,
+                      prefixIcon: const Icon(Icons.tag),
+                    ),
                     SizedBox(height: fieldSpacing),
 
                     // Product Image

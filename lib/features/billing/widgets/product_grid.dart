@@ -26,44 +26,68 @@ class ProductGrid extends StatelessWidget {
           : const _EmptyProducts();
     }
 
-    final spacing = ResponsiveHelper.spacing(context);
-    final cardHeight = ResponsiveHelper.productCardHeight(context);
-    final screenWidth = ResponsiveHelper.screenWidth(context);
-    final cols = ResponsiveHelper.gridColumns(context);
-    final cardWidth = (screenWidth - (cols + 1) * spacing) / cols;
-
     if (isSliver) {
-      return SliverGrid(
-        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: cols,
-          childAspectRatio: cardWidth / cardHeight,
-          crossAxisSpacing: spacing,
-          mainAxisSpacing: spacing,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) => _ProductTile(
-            product: products[index],
-            onTap: () => onProductTap(products[index]),
-          ),
-          childCount: products.length,
-        ),
+      return SliverLayoutBuilder(
+        builder: (context, constraints) {
+          final spacing = ResponsiveHelper.spacing(context);
+          final cardHeight = ResponsiveHelper.productCardHeight(context);
+          final availableWidth = constraints.crossAxisExtent;
+          final cols = _gridColumns(availableWidth);
+          final cardWidth = (availableWidth - (cols + 1) * spacing) / cols;
+
+          return SliverGrid(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: cols,
+              childAspectRatio: cardWidth / cardHeight,
+              crossAxisSpacing: spacing,
+              mainAxisSpacing: spacing,
+            ),
+            delegate: SliverChildBuilderDelegate(
+              (context, index) => _ProductTile(
+                product: products[index],
+                onTap: () => onProductTap(products[index]),
+              ),
+              childCount: products.length,
+            ),
+          );
+        },
       );
     }
 
-    return GridView.builder(
-      padding: EdgeInsets.all(ResponsiveHelper.pagePadding(context)),
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: cols,
-        childAspectRatio: cardWidth / cardHeight,
-        crossAxisSpacing: spacing,
-        mainAxisSpacing: spacing,
-      ),
-      itemCount: products.length,
-      itemBuilder: (context, index) => _ProductTile(
-        product: products[index],
-        onTap: () => onProductTap(products[index]),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final spacing = ResponsiveHelper.spacing(context);
+        final cardHeight = ResponsiveHelper.productCardHeight(context);
+        final availableWidth = constraints.maxWidth;
+        final cols = _gridColumns(availableWidth);
+        final cardWidth = (availableWidth - (cols + 1) * spacing) / cols;
+
+        return GridView.builder(
+          padding: EdgeInsets.all(ResponsiveHelper.pagePadding(context)),
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: cols,
+            childAspectRatio: cardWidth / cardHeight,
+            crossAxisSpacing: spacing,
+            mainAxisSpacing: spacing,
+          ),
+          itemCount: products.length,
+          itemBuilder: (context, index) => _ProductTile(
+            product: products[index],
+            onTap: () => onProductTap(products[index]),
+          ),
+        );
+      },
     );
+  }
+
+  /// Calculate grid columns based on the actual available width
+  /// (not full screen width, which includes sidebar + cart panel).
+  static int _gridColumns(double w) {
+    if (w < 300) return 2;
+    if (w < 450) return 3;
+    if (w < 650) return 4;
+    if (w < 900) return 5;
+    return 6;
   }
 }
 
@@ -93,75 +117,79 @@ class _ProductTile extends StatelessWidget {
                   : Theme.of(context).dividerColor,
             ),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              // Product icon
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isOutOfStock
-                      ? AppColors.error.withValues(alpha: 0.1)
-                      : AppColors.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Center(
-                  child: Text(
-                    _getEmoji(product.name),
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 6),
-
-              // Product name
-              Text(
-                product.name,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  fontWeight: FontWeight.w500,
-                  color: isOutOfStock
-                      ? Theme.of(context).colorScheme.outline
-                      : null,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 2),
-
-              // Price
-              Text(
-                product.price.asCurrency,
-                style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                  color: isOutOfStock
-                      ? Theme.of(context).colorScheme.outline
-                      : AppColors.primary,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-
-              // Out of stock badge
-              if (isOutOfStock)
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Product icon
                 Container(
-                  margin: const EdgeInsets.only(top: 4),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: AppColors.error,
-                    borderRadius: BorderRadius.circular(4),
+                    color: isOutOfStock
+                        ? AppColors.error.withValues(alpha: 0.1)
+                        : AppColors.primary.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: Text(
-                    'OUT',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.white,
-                      fontSize: 8,
+                  child: Center(
+                    child: Text(
+                      _getEmoji(product.name),
+                      style: const TextStyle(fontSize: 20),
                     ),
                   ),
                 ),
-            ],
+                const SizedBox(height: 6),
+
+                // Product name
+                Text(
+                  product.name,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                    color: isOutOfStock
+                        ? Theme.of(context).colorScheme.outline
+                        : null,
+                  ),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 2),
+
+                // Price
+                Text(
+                  product.price.asCurrency,
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: isOutOfStock
+                        ? Theme.of(context).colorScheme.outline
+                        : AppColors.primary,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                // Out of stock badge
+                if (isOutOfStock)
+                  Container(
+                    margin: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 4,
+                      vertical: 1,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.error,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      'OUT',
+                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                        color: Colors.white,
+                        fontSize: 8,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),

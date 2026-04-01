@@ -16,8 +16,8 @@ class CostsScreen extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Revenue & Costs'),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         leading: MediaQuery.of(context).size.width >= 1024
             ? null
             : IconButton(
@@ -64,46 +64,57 @@ class CostsScreen extends ConsumerWidget {
         ? (paidUsers / stats.totalUsers * 100)
         : 0.0;
 
-    return Card(
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(24),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.deepPurple.shade600, Colors.deepPurple.shade400],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            const Icon(Icons.trending_up, size: 40, color: Colors.white70),
-            const SizedBox(height: 12),
-            Text(
-              '₹${stats.mrr.toStringAsFixed(0)}',
-              style: const TextStyle(
-                color: Colors.white,
-                fontSize: 36,
-                fontWeight: FontWeight.bold,
+    return Builder(
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return Card(
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [cs.primary, cs.primary.withValues(alpha: 0.7)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(12),
             ),
-            const Text(
-              'Monthly Recurring Revenue',
-              style: TextStyle(color: Colors.white70, fontSize: 14),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            child: Column(
               children: [
-                _miniStat('Per User', '₹${revenuePerUser.toStringAsFixed(1)}'),
-                _miniStat('Paid Users', '$paidUsers'),
-                _miniStat('Paid %', '${paidUsersRatio.toStringAsFixed(1)}%'),
+                const Icon(Icons.trending_up, size: 40, color: Colors.white70),
+                const SizedBox(height: 12),
+                Text(
+                  '₹${stats.mrr.toStringAsFixed(0)}',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 36,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const Text(
+                  'Monthly Recurring Revenue',
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _miniStat(
+                      'Per User',
+                      '₹${revenuePerUser.toStringAsFixed(1)}',
+                    ),
+                    _miniStat('Paid Users', '$paidUsers'),
+                    _miniStat(
+                      'Paid %',
+                      '${paidUsersRatio.toStringAsFixed(1)}%',
+                    ),
+                  ],
+                ),
               ],
             ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -200,9 +211,16 @@ class CostsScreen extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(plan, style: const TextStyle(fontWeight: FontWeight.w600)),
-            Text(
-              price,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+            Builder(
+              builder: (context) => Text(
+                price,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: Theme.of(
+                    context,
+                  ).colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
             ),
           ],
         ),

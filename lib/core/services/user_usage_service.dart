@@ -132,14 +132,15 @@ class UserUsage {
       odUserId: (data['userId'] as String?) ?? doc.id,
       email: data['email'] as String?,
       isAdmin: (data['isAdmin'] as bool?) ?? false,
-      firestoreReads: (data['firestoreReads'] as int?) ?? 0,
-      firestoreWrites: (data['firestoreWrites'] as int?) ?? 0,
-      firestoreDeletes: (data['firestoreDeletes'] as int?) ?? 0,
-      storageBytes: (data['storageBytes'] as int?) ?? 0,
-      functionCalls: (data['functionCalls'] as int?) ?? 0,
-      networkEgressBytes: (data['networkEgressBytes'] as int?) ?? 0,
-      storageUploadBytes: (data['storageUploadBytes'] as int?) ?? 0,
-      storageDownloadBytes: (data['storageDownloadBytes'] as int?) ?? 0,
+      firestoreReads: (data['firestoreReads'] as num?)?.toInt() ?? 0,
+      firestoreWrites: (data['firestoreWrites'] as num?)?.toInt() ?? 0,
+      firestoreDeletes: (data['firestoreDeletes'] as num?)?.toInt() ?? 0,
+      storageBytes: (data['storageBytes'] as num?)?.toInt() ?? 0,
+      functionCalls: (data['functionCalls'] as num?)?.toInt() ?? 0,
+      networkEgressBytes: (data['networkEgressBytes'] as num?)?.toInt() ?? 0,
+      storageUploadBytes: (data['storageUploadBytes'] as num?)?.toInt() ?? 0,
+      storageDownloadBytes:
+          (data['storageDownloadBytes'] as num?)?.toInt() ?? 0,
       lastUpdated:
           (data['lastUpdated'] as Timestamp?)?.toDate() ?? DateTime.now(),
       periodStart:

@@ -4,6 +4,7 @@ library;
 
 import 'dart:io';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -141,12 +142,12 @@ class UserLimits {
   factory UserLimits.fromMap(Map<String, dynamic>? map) {
     if (map == null) return UserLimits();
     return UserLimits(
-      billsThisMonth: (map['billsThisMonth'] as int?) ?? 0,
-      billsLimit: (map['billsLimit'] as int?) ?? 50,
-      productsCount: (map['productsCount'] as int?) ?? 0,
-      productsLimit: (map['productsLimit'] as int?) ?? 100,
-      customersCount: (map['customersCount'] as int?) ?? 0,
-      customersLimit: (map['customersLimit'] as int?) ?? 10,
+      billsThisMonth: (map['billsThisMonth'] as num?)?.toInt() ?? 0,
+      billsLimit: (map['billsLimit'] as num?)?.toInt() ?? 50,
+      productsCount: (map['productsCount'] as num?)?.toInt() ?? 0,
+      productsLimit: (map['productsLimit'] as num?)?.toInt() ?? 100,
+      customersCount: (map['customersCount'] as num?)?.toInt() ?? 0,
+      customersLimit: (map['customersLimit'] as num?)?.toInt() ?? 10,
     );
   }
 
@@ -229,6 +230,16 @@ class UserMetricsService {
     return _prefs?.getString(_userIdKey);
   }
 
+  /// Quick connectivity check — returns true when device has no network.
+  static Future<bool> _isDeviceOffline() async {
+    try {
+      final result = await Connectivity().checkConnectivity();
+      return result == ConnectivityResult.none;
+    } catch (_) {
+      return false; // Assume online if check fails
+    }
+  }
+
   /// Track user activity (call on app launch and key actions)
   static Future<void> trackActivity() async {
     final userId = _getUserId();
@@ -285,9 +296,13 @@ class UserMetricsService {
       int newCount = 0;
       int limit = 50;
 
-      // On Windows, avoid runTransaction — the C++ Firestore SDK sends
-      // callbacks on non-platform threads, crashing Flutter.
-      final useSimpleWrite = !kIsWeb && Platform.isWindows;
+      // Use simple get+update instead of runTransaction when:
+      // 1. Windows — the C++ Firestore SDK crashes Flutter with transactions
+      // 2. Mobile offline — transactions require a server round-trip and
+      //    throw 'unavailable' when the device is offline. Simple writes
+      //    queue in Firestore's offline cache and sync when back online.
+      final isOffline = !kIsWeb && await _isDeviceOffline();
+      final useSimpleWrite = (!kIsWeb && Platform.isWindows) || isOffline;
 
       if (useSimpleWrite) {
         final snap = await userRef.get();
