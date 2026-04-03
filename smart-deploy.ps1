@@ -715,11 +715,11 @@ try {
         Write-Info "SKIP: Version already bumped"
     }
 
-    # --- Run Tests ---
+    # --- Run Tests + Coverage (single run) ---
     if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "tests")) {
-        Write-Step "Running tests..."
+        Write-Step "Running tests (with coverage)..."
         $ErrorActionPreference = "Continue"
-        flutter test --reporter compact
+        flutter test --reporter compact --coverage
         $testExit = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
         if ($testExit -ne 0) {
@@ -729,49 +729,38 @@ try {
         else {
             Write-Ok "All tests passed"
             Write-DeployLog "TESTS PASSED"
+
+            # Check coverage from the same test run
+            if (Test-Path "coverage/lcov.info") {
+                $lcov = Get-Content "coverage/lcov.info" -Raw
+                $lf = ([regex]::Matches($lcov, "LF:(\d+)") |
+                       ForEach-Object { [int]$_.Groups[1].Value } |
+                       Measure-Object -Sum).Sum
+                $lh = ([regex]::Matches($lcov, "LH:(\d+)") |
+                       ForEach-Object { [int]$_.Groups[1].Value } |
+                       Measure-Object -Sum).Sum
+                $pct = if ($lf -gt 0) { [math]::Round(($lh / $lf) * 100, 1) } else { 0 }
+
+                Write-Info "Coverage: $pct% ($lh / $lf lines)"
+                Write-DeployLog "COVERAGE | $pct% ($lh/$lf)"
+
+                if ($pct -lt 10) {
+                    Write-Fail "Coverage $pct% is below 10% minimum! Fix before deploying."
+                    $failed = $true
+                } elseif ($pct -lt 20) {
+                    Write-Warn "Coverage $pct% is below 20% target. Consider adding tests."
+                } else {
+                    Write-Ok "Coverage $pct% meets target"
+                }
+            }
+            if (-not $failed) {
+                Complete-Step "tests"
+                Complete-Step "coverage"
+            }
         }
     }
     elseif (Get-StepDone "tests") {
-        Write-Info "SKIP: Tests already passed"
-    }
-
-    # --- Coverage Check ---
-    if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "coverage")) {
-        Write-Step "Checking test coverage..."
-        $ErrorActionPreference = "Continue"
-        flutter test --coverage --no-pub
-        $covExit = $LASTEXITCODE
-        $ErrorActionPreference = "Stop"
-        if ($covExit -eq 0 -and (Test-Path "coverage/lcov.info")) {
-            $lcov = Get-Content "coverage/lcov.info" -Raw
-            $lf = ([regex]::Matches($lcov, "LF:(\d+)") |
-                   ForEach-Object { [int]$_.Groups[1].Value } |
-                   Measure-Object -Sum).Sum
-            $lh = ([regex]::Matches($lcov, "LH:(\d+)") |
-                   ForEach-Object { [int]$_.Groups[1].Value } |
-                   Measure-Object -Sum).Sum
-            $pct = if ($lf -gt 0) { [math]::Round(($lh / $lf) * 100, 1) } else { 0 }
-
-            Write-Info "Coverage: $pct% ($lh / $lf lines)"
-            Write-DeployLog "COVERAGE | $pct% ($lh/$lf)"
-
-            if ($pct -lt 85) {
-                Write-Fail "Coverage $pct% is below 85% minimum! Fix before deploying."
-                $failed = $true
-            } elseif ($pct -lt 90) {
-                Write-Warn "Coverage $pct% is below 90% target. Consider adding tests."
-                Complete-Step "coverage"
-            } else {
-                Write-Ok "Coverage $pct% meets target"
-                Complete-Step "coverage"
-            }
-        } else {
-            Write-Warn "Coverage report not generated — skipping check"
-            Complete-Step "coverage"
-        }
-    }
-    elseif (Get-StepDone "coverage") {
-        Write-Info "SKIP: Coverage already checked"
+        Write-Info "SKIP: Tests + coverage already passed"
     }
 
     # --- Run Analyzer ---

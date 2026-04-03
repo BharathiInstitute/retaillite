@@ -122,6 +122,11 @@ class SubscriptionService {
       ExternalWalletResponse response,
     ) {
       debugPrint('External wallet selected: ${response.walletName}');
+      onResult(
+        SubscriptionResult.failure(
+          error: 'External wallets are not supported. Please use UPI or card.',
+        ),
+      );
     });
 
     final options = {

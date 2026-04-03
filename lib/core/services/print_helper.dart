@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
+import 'package:retaillite/core/services/sunmi_printer_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
@@ -73,6 +74,23 @@ class PrintHelper {
               receiptFooter: footer,
             );
           }
+          break;
+
+        case PrinterTypeOption.sunmi:
+          if (await SunmiPrinterService.isAvailable) {
+            directSuccess = await SunmiPrinterService.printReceipt(
+              bill: bill,
+              shopName: user?.shopName,
+              shopAddress: user?.address,
+              shopPhone: user?.phone,
+              gstNumber: user?.gstNumber,
+              receiptFooter: footer,
+            );
+          }
+          break;
+
+        case PrinterTypeOption.webBluetooth:
+          // Web Bluetooth not applicable for native app builds
           break;
 
         case PrinterTypeOption.system:
