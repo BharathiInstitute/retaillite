@@ -1109,18 +1109,18 @@ export const checkLowStock = functions
     });
 
 // ─── Razorpay Plan IDs (created via API) ───
-// TEST pricing: Pro ₹10/₹20, Business ₹20/₹30
-// PRODUCTION pricing (swap back after testing):
-//   pro:      { monthly: "plan_SY9CBfmDTbSXHV", annual: "plan_SY9CPMsAtVz46Z" }
-//   business: { monthly: "plan_SY9CYJ4KOmSdbr", annual: "plan_SY9ChNaBTBBnzj" }
+// LIVE pricing (production):
+// TEST plan IDs (for rzp_test_ key only):
+//   pro:      { monthly: "plan_SY9W1ASLrxRreg", annual: "plan_SY9W1v4s3qPFcH" }
+//   business: { monthly: "plan_SY9W2ApFAYQPYI", annual: "plan_SY9W2Q0ydG6k7G" }
 const RAZORPAY_PLAN_IDS: Record<string, Record<string, string>> = {
     pro: {
-        monthly: "plan_SY9W1ASLrxRreg",
-        annual: "plan_SY9W1v4s3qPFcH",
+        monthly: "plan_SY9CBfmDTbSXHV",
+        annual: "plan_SY9CPMsAtVz46Z",
     },
     business: {
-        monthly: "plan_SY9W2ApFAYQPYI",
-        annual: "plan_SY9W2Q0ydG6k7G",
+        monthly: "plan_SY9CYJ4KOmSdbr",
+        annual: "plan_SY9ChNaBTBBnzj",
     },
 };
 
