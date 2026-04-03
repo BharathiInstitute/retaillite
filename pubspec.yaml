@@ -1,7 +1,7 @@
 name: retaillite
 description: "LITE - Retail Management System"
 publish_to: 'none'
-version: 9.7.0+51
+version: 9.7.0+52
 
 environment:
   sdk: ^3.10.4
