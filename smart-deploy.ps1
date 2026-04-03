@@ -676,6 +676,27 @@ Write-Host "========================================================" -Foregroun
 
 Write-DeployLog "DEPLOY START | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
 
+# --- Razorpay Key (from environment variable) ---
+$razorpayKey = $env:RAZORPAY_KEY_ID
+if (-not $skipBuild -and -not $razorpayKey) {
+    Write-Warn "RAZORPAY_KEY_ID environment variable not set!"
+    $razorpayKey = Read-Host "  Enter Razorpay Key ID (rzp_live_xxx or rzp_test_xxx)"
+    if (-not $razorpayKey) {
+        Write-Fail "Razorpay Key ID is required for builds. Set env var: `$env:RAZORPAY_KEY_ID = 'rzp_live_xxx'"
+        exit 1
+    }
+}
+if ($razorpayKey) {
+    $dartDefines = "--dart-define=RAZORPAY_KEY_ID=$razorpayKey"
+    if ($razorpayKey.StartsWith('rzp_test_')) {
+        Write-Warn "Using TEST Razorpay key - payments will use test mode"
+    } else {
+        Write-Ok "Using LIVE Razorpay key"
+    }
+} else {
+    $dartDefines = ""
+}
+
 # --- Dry-run mode: show plan and exit ---
 if ($DryRun) {
     Write-Host ""
@@ -829,7 +850,7 @@ try {
 
         # Build Windows release
         $ErrorActionPreference = "Continue"
-        flutter build windows --release
+        flutter build windows --release $dartDefines
         $winExit = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
         if ($winExit -ne 0) {
@@ -1074,7 +1095,7 @@ WScript.Quit 0
     if (-not $failed -and $deployAndroid -and -not (Get-StepDone "android")) {
         Write-Step "Building Android APK..."
         $ErrorActionPreference = "Continue"
-        flutter build apk --release
+        flutter build apk --release $dartDefines
         $apkExit = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
         if ($apkExit -ne 0) {
@@ -1148,7 +1169,7 @@ WScript.Quit 0
             # --- Build AAB for Play Store Closed Testing ---
             Write-Step "Building Android App Bundle (AAB) for Play Store..."
             $ErrorActionPreference = "Continue"
-            flutter build appbundle --release
+            flutter build appbundle --release $dartDefines
             $aabExit = $LASTEXITCODE
             $ErrorActionPreference = "Stop"
             $aabPath = Join-Path $root "build\app\outputs\bundle\release\app-release.aab"
@@ -1224,7 +1245,7 @@ WScript.Quit 0
         }
 
         $ErrorActionPreference = "Continue"
-        flutter build web --base-href=/app/ --release
+        flutter build web --base-href=/app/ --release $dartDefines
         $webExit = $LASTEXITCODE
         $ErrorActionPreference = "Stop"
         if ($webExit -ne 0) {

@@ -1137,12 +1137,15 @@ export const createSubscription = functions
     .https.onCall(async (data: {
         plan: "pro" | "business";
         cycle: "monthly" | "annual";
+        customerEmail?: string;
+        customerPhone?: string;
+        customerName?: string;
     }, context) => {
         if (!context.auth) {
             throw new functions.https.HttpsError("unauthenticated", "Login required");
         }
 
-        const { plan, cycle } = data;
+        const { plan, cycle, customerEmail, customerPhone, customerName } = data;
         if (!plan || !cycle || !["pro", "business"].includes(plan) || !["monthly", "annual"].includes(cycle)) {
             throw new functions.https.HttpsError("invalid-argument", "Valid plan and cycle are required");
         }
@@ -1171,11 +1174,20 @@ export const createSubscription = functions
                     plan_id: planId,
                     total_count: totalCount,
                     quantity: 1,
+                    customer_notify: 1,
                     notes: {
                         userId: context.auth.uid,
                         plan,
                         cycle,
+                        customerName: customerName || "",
+                        customerEmail: customerEmail || "",
                     },
+                    ...(customerEmail || customerPhone ? {
+                        notify_info: {
+                            ...(customerEmail ? { notify_email: customerEmail } : {}),
+                            ...(customerPhone ? { notify_phone: customerPhone } : {}),
+                        },
+                    } : {}),
                 }),
             });
 

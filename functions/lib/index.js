@@ -1011,7 +1011,7 @@ exports.createSubscription = functions
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Login required");
     }
-    const { plan, cycle } = data;
+    const { plan, cycle, customerEmail, customerPhone, customerName } = data;
     if (!plan || !cycle || !["pro", "business"].includes(plan) || !["monthly", "annual"].includes(cycle)) {
         throw new functions.https.HttpsError("invalid-argument", "Valid plan and cycle are required");
     }
@@ -1032,16 +1032,15 @@ exports.createSubscription = functions
                 "Authorization": `Basic ${auth}`,
                 "Content-Type": "application/json",
             },
-            body: JSON.stringify({
-                plan_id: planId,
-                total_count: totalCount,
-                quantity: 1,
-                notes: {
+            body: JSON.stringify(Object.assign({ plan_id: planId, total_count: totalCount, quantity: 1, customer_notify: 1, notes: {
                     userId: context.auth.uid,
                     plan,
                     cycle,
-                },
-            }),
+                    customerName: customerName || "",
+                    customerEmail: customerEmail || "",
+                } }, (customerEmail || customerPhone ? {
+                notify_info: Object.assign(Object.assign({}, (customerEmail ? { notify_email: customerEmail } : {})), (customerPhone ? { notify_phone: customerPhone } : {})),
+            } : {}))),
         });
         const result = await response.json();
         if (!response.ok) {

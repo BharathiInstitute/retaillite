@@ -10,6 +10,8 @@ import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 import 'package:retaillite/core/config/razorpay_config.dart';
+import 'package:retaillite/features/subscription/services/razorpay_stub.dart'
+    if (dart.library.js_interop) 'package:retaillite/features/subscription/services/razorpay_web.dart';
 
 class SubscriptionService {
   static SubscriptionService? _instance;
@@ -44,7 +46,13 @@ class SubscriptionService {
       // Step 1: Create subscription on Razorpay via Cloud Function
       final createResult = await _functions
           .httpsCallable('createSubscription')
-          .call({'plan': plan, 'cycle': cycle});
+          .call({
+            'plan': plan,
+            'cycle': cycle,
+            'customerEmail': customerEmail ?? '',
+            'customerPhone': customerPhone ?? '',
+            'customerName': customerName ?? '',
+          });
 
       final data = createResult.data as Map<String, dynamic>;
       if (data['success'] != true) {
@@ -89,6 +97,19 @@ class SubscriptionService {
     String? customerName,
     required void Function(SubscriptionResult) onResult,
   }) {
+    if (kIsWeb) {
+      _openWebCheckout(
+        subscriptionId: subscriptionId,
+        plan: plan,
+        cycle: cycle,
+        customerEmail: customerEmail,
+        customerPhone: customerPhone,
+        customerName: customerName,
+        onResult: onResult,
+      );
+      return;
+    }
+
     _razorpay?.clear();
     _razorpay = Razorpay();
 
@@ -195,6 +216,114 @@ class SubscriptionService {
     } catch (e) {
       // Payment was captured but activation failed — critical state
       debugPrint('Subscription activation error: $e');
+      onResult(
+        SubscriptionResult.failure(
+          error:
+              'Payment received. Activation in progress — this may take a moment. '
+              'If your plan doesn\'t update within 5 minutes, please contact support.',
+        ),
+      );
+    }
+  }
+
+  /// Web-specific checkout using Razorpay Checkout.js via JS interop.
+  void _openWebCheckout({
+    required String subscriptionId,
+    required String plan,
+    required String cycle,
+    String? customerEmail,
+    String? customerPhone,
+    String? customerName,
+    required void Function(SubscriptionResult) onResult,
+  }) {
+    final options = <String, dynamic>{
+      'key': RazorpayConfig.keyId,
+      'subscription_id': subscriptionId,
+      'name': RazorpayConfig.appName,
+      'description':
+          '${plan == 'pro' ? 'Pro' : 'Business'} Plan (${cycle == 'annual' ? 'Annual' : 'Monthly'})',
+      'prefill': <String, dynamic>{
+        'email': customerEmail ?? '',
+        'contact': customerPhone ?? '',
+        'name': customerName ?? '',
+      },
+      'theme': <String, dynamic>{
+        'color': '#${RazorpayConfig.themeColor.toRadixString(16).substring(2)}',
+      },
+      'modal': <String, dynamic>{'confirm_close': true},
+    };
+
+    try {
+      openRazorpayWeb(
+        options: options,
+        onSuccess: (paymentId, subId, signature) {
+          _activateWebSubscription(
+            plan: plan,
+            cycle: cycle,
+            paymentId: paymentId,
+            subscriptionId: subscriptionId,
+            signature: signature,
+            onResult: onResult,
+          );
+        },
+        onError: (code, description) {
+          if (code == 2) {
+            // User cancelled
+            onResult(SubscriptionResult.cancelled());
+          } else {
+            onResult(SubscriptionResult.failure(error: description));
+          }
+        },
+        onDismiss: () {
+          onResult(SubscriptionResult.cancelled());
+        },
+      );
+    } catch (e) {
+      debugPrint('Error opening Razorpay web checkout: $e');
+      onResult(
+        SubscriptionResult.failure(error: 'Failed to open payment gateway'),
+      );
+    }
+  }
+
+  Future<void> _activateWebSubscription({
+    required String plan,
+    required String cycle,
+    required String paymentId,
+    required String subscriptionId,
+    required String signature,
+    required void Function(SubscriptionResult) onResult,
+  }) async {
+    try {
+      final activateResult = await _functions
+          .httpsCallable('activateSubscription')
+          .call({
+            'plan': plan,
+            'cycle': cycle,
+            'razorpayPaymentId': paymentId,
+            'razorpaySubscriptionId': subscriptionId,
+            'razorpaySignature': signature,
+          });
+
+      final data = activateResult.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        onResult(
+          SubscriptionResult.success(
+            plan: plan,
+            cycle: cycle,
+            expiresAt: data['expiresAt'] as String?,
+          ),
+        );
+      } else {
+        onResult(
+          SubscriptionResult.failure(
+            error:
+                'Payment succeeded but activation failed. Please contact support.',
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Web subscription activation error: $e');
       onResult(
         SubscriptionResult.failure(
           error:
