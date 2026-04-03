@@ -4,24 +4,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
-import 'package:retaillite/features/subscription/services/subscription_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// Screen for viewing and managing subscription plans.
 ///
-/// **Google Play Billing Policy Compliance:**
-/// Digital subscriptions on Android MUST use Google Play Billing (IAP).
-/// Razorpay / external payment gateways can only be used for:
-///   - Web platform subscriptions
-///   - Server-side renewals (outside Google Play)
-/// Using external gateways for in-app digital purchases on Android
-/// will cause rejection from the Play Store.
-///
-/// Implementation plan:
-///   - Android: Use `in_app_purchase` package with Google Play Billing
-///   - Web: Use Razorpay or Stripe payment links
-///   - Windows: Use Razorpay or direct bank transfer
-///   - iOS (future): Use StoreKit via `in_app_purchase`
+/// All platforms redirect to the website pricing page for payment via
+/// Razorpay Checkout.js. The app listens for Firestore subscription
+/// changes in real-time, so the UI updates automatically after payment.
 class SubscriptionScreen extends ConsumerStatefulWidget {
   const SubscriptionScreen({super.key});
 
@@ -31,7 +20,7 @@ class SubscriptionScreen extends ConsumerStatefulWidget {
 
 class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   bool _isAnnual = false;
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   String _currentPlan = 'free';
   String _subscriptionStatus = 'active';
@@ -62,12 +51,6 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
   }
 
   @override
-  void dispose() {
-    SubscriptionService.instance.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -95,8 +78,8 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             const SizedBox(height: 8),
             if (_currentPlan != 'free' && _expiresAt != null)
               Text(
-                  'Current: ${_currentPlan[0].toUpperCase()}${_currentPlan.substring(1)} '
-                  '($_subscriptionStatus) — expires ${_expiresAt!.day}/${_expiresAt!.month}/${_expiresAt!.year}',
+                'Current: ${_currentPlan[0].toUpperCase()}${_currentPlan.substring(1)} '
+                '($_subscriptionStatus) — expires ${_expiresAt!.day}/${_expiresAt!.month}/${_expiresAt!.year}',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: Colors.grey[600], fontSize: 13),
               ),
@@ -135,7 +118,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
             if (!kIsWeb) ...[
               const SizedBox(height: 8),
               Text(
-                'You\'ll be redirected to the web app to complete payment',
+                'You\'ll be redirected to the website to complete payment',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: Colors.grey[500]),
               ),
@@ -279,9 +262,7 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
                 child: FilledButton.icon(
                   onPressed: _isLoading ? null : () => _handleUpgrade(planKey),
                   style: FilledButton.styleFrom(backgroundColor: color),
-                  icon: !kIsWeb
-                      ? const Icon(Icons.open_in_browser, size: 18)
-                      : null,
+                  icon: const Icon(Icons.open_in_browser, size: 18),
                   label: _isLoading
                       ? const SizedBox(
                           height: 20,
@@ -300,77 +281,27 @@ class _SubscriptionScreenState extends ConsumerState<SubscriptionScreen> {
     );
   }
 
-  /// Handle subscription upgrade with platform-aware payment flow.
+  /// Handle subscription upgrade — opens the website pricing page.
   ///
-  /// On **web**: Opens Razorpay checkout directly.
-  /// On **Android / Windows / iOS**: Opens the web app subscription page
-  /// in the browser — avoids 15-30% platform store commissions.
-  void _handleUpgrade(String planKey) {
-    if (kIsWeb) {
-      // Web: direct Razorpay checkout
-      _startRazorpayPurchase(planKey);
-    } else {
-      // Android / Windows / iOS: open web app for payment
-      _openWebSubscriptionPage();
-    }
-  }
-
-  Future<void> _openWebSubscriptionPage() async {
-    const webSubscriptionUrl = 'https://app.retaillite.com/app/subscription';
-    final uri = Uri.parse(webSubscriptionUrl);
+  /// All platforms (Android, Web, Windows, iOS) redirect to the website
+  /// pricing page which handles Razorpay Checkout.js payment. The app
+  /// listens for Firestore subscription changes in real-time via
+  /// subscriptionPlanProvider, so the UI updates automatically after payment.
+  Future<void> _handleUpgrade(String planKey) async {
+    final cycle = _isAnnual ? 'annual' : 'monthly';
+    final uri = Uri.parse(
+      'https://stores.tulasierp.com/src/pages/pricing.html?plan=$planKey&cycle=$cycle',
+    );
 
     final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
     if (!launched && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Could not open browser. Please visit app.retaillite.com to upgrade.',
+            'Could not open browser. Please visit stores.tulasierp.com/src/pages/pricing.html to upgrade.',
           ),
         ),
       );
     }
-  }
-
-  Future<void> _startRazorpayPurchase(String planKey) async {
-    setState(() => _isLoading = true);
-
-    final user = ref.read(currentUserProvider);
-    final cycle = _isAnnual ? 'annual' : 'monthly';
-
-    await SubscriptionService.instance.purchaseSubscription(
-      plan: planKey,
-      cycle: cycle,
-      customerEmail: user?.email,
-      customerPhone: user?.phone,
-      customerName: user?.ownerName,
-      onResult: (result) {
-        if (!mounted) return;
-        setState(() => _isLoading = false);
-
-        if (result.isSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                '${planKey == 'pro' ? 'Pro' : 'Business'} plan activated! 🎉',
-              ),
-              backgroundColor: Colors.green,
-            ),
-          );
-          // Reload subscription state
-          _loadCurrentSubscription();
-        } else if (result.isCancelled) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Payment cancelled')));
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result.error ?? 'Payment failed'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      },
-    );
   }
 }

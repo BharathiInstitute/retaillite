@@ -226,6 +226,54 @@ class SubscriptionService {
     }
   }
 
+  /// Activate subscription after a mobile web redirect from Razorpay.
+  ///
+  /// On mobile browsers, UPI payments redirect back to the app URL with
+  /// payment params. This method calls activateSubscription to verify
+  /// and activate the subscription.
+  Future<void> activateAfterRedirect({
+    required String paymentId,
+    required String subscriptionId,
+    required String signature,
+    required void Function(SubscriptionResult) onResult,
+  }) async {
+    try {
+      final activateResult = await _functions
+          .httpsCallable('activateSubscription')
+          .call({
+            'razorpayPaymentId': paymentId,
+            'razorpaySubscriptionId': subscriptionId,
+            'razorpaySignature': signature,
+          });
+
+      final data = activateResult.data as Map<String, dynamic>;
+      if (data['success'] == true) {
+        onResult(
+          SubscriptionResult.success(
+            plan: (data['plan'] as String?) ?? '',
+            cycle: (data['cycle'] as String?) ?? '',
+            expiresAt: data['expiresAt'] as String?,
+          ),
+        );
+      } else {
+        onResult(
+          SubscriptionResult.failure(
+            error: 'Payment verified but activation failed. Contact support.',
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('Redirect activation error: $e');
+      onResult(
+        SubscriptionResult.failure(
+          error:
+              'Payment received. If your plan doesn\'t update within 5 minutes, '
+              'please contact support.',
+        ),
+      );
+    }
+  }
+
   /// Web-specific checkout using Razorpay Checkout.js via JS interop.
   void _openWebCheckout({
     required String subscriptionId,

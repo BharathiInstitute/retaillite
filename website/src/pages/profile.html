@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Account — TULASI STORES</title>
+  <meta name="description" content="Manage your Tulasi Stores account, subscription plan, and billing.">
+  <meta property="og:title" content="My Account — TULASI STORES">
+  <meta property="og:description" content="View your subscription plan and account details.">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="../../assets/images/app_icon.png?v=2">
+  <link rel="icon" type="image/png" sizes="32x32" href="../../favicon.png?v=2">
+  <link rel="apple-touch-icon" href="../../assets/images/app_icon.png?v=2">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="../css/styles.css?v=3">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <style>
+    /* ─── Profile Page Styles ─── */
+    .profile-container {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    .profile-card {
+      background: white;
+      border-radius: var(--radius-xl, 16px);
+      box-shadow: var(--shadow-lg, 0 4px 24px rgba(0,0,0,0.08));
+      padding: 2rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .profile-header {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .profile-avatar {
+      width: 64px;
+      height: 64px;
+      border-radius: 50%;
+      background: var(--color-primary-50, #ecfdf5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.75rem;
+      flex-shrink: 0;
+      overflow: hidden;
+    }
+
+    .profile-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    .profile-name {
+      font-size: 1.375rem;
+      font-weight: 700;
+      color: var(--color-text, #111827);
+    }
+
+    .profile-email {
+      font-size: 0.875rem;
+      color: var(--color-text-light, #6b7280);
+    }
+
+    .profile-section-title {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--color-text-light, #6b7280);
+      margin-bottom: 1rem;
+    }
+
+    .plan-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.375rem;
+      padding: 0.375rem 0.875rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .plan-badge.free {
+      background: #f3f4f6;
+      color: #6b7280;
+    }
+
+    .plan-badge.pro {
+      background: #dbeafe;
+      color: #2563eb;
+    }
+
+    .plan-badge.business {
+      background: #ede9fe;
+      color: #7c3aed;
+    }
+
+    .plan-details {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 1.25rem;
+    }
+
+    .plan-detail {
+      padding: 1rem;
+      background: #f9fafb;
+      border-radius: 12px;
+    }
+
+    .plan-detail-label {
+      font-size: 0.75rem;
+      color: var(--color-text-light, #6b7280);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 0.25rem;
+    }
+
+    .plan-detail-value {
+      font-size: 1.125rem;
+      font-weight: 600;
+      color: var(--color-text, #111827);
+    }
+
+    .usage-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: #e5e7eb;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 0.5rem;
+    }
+
+    .usage-bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      background: var(--color-primary, #10B981);
+      transition: width 0.5s ease;
+    }
+
+    .usage-bar-fill.warn { background: #f59e0b; }
+    .usage-bar-fill.danger { background: #ef4444; }
+
+    .profile-actions {
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+      margin-top: 1.5rem;
+    }
+
+    /* ─── Login prompt ─── */
+    .login-prompt {
+      text-align: center;
+      padding: 4rem 2rem;
+    }
+
+    .login-prompt h2 {
+      margin-bottom: 0.75rem;
+    }
+
+    .login-prompt p {
+      color: var(--color-text-light, #6b7280);
+      margin-bottom: 2rem;
+    }
+
+    /* ─── Loading state ─── */
+    .profile-loading {
+      text-align: center;
+      padding: 4rem 2rem;
+      color: var(--color-text-light, #6b7280);
+    }
+
+    .profile-loading .spinner {
+      width: 40px;
+      height: 40px;
+      border: 3px solid #e5e7eb;
+      border-top-color: var(--color-primary, #10B981);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 1rem;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    @media (max-width: 480px) {
+      .plan-details { grid-template-columns: 1fr; }
+      .profile-header { flex-direction: column; text-align: center; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- NAVBAR -->
+  <nav class="navbar">
+    <div class="navbar-inner">
+      <a href="../../index.html" class="navbar-logo">
+        <img src="../../assets/images/app_icon.png?v=2" alt="TULASI STORES" width="32" height="32">
+        Tulasi Stores
+      </a>
+      <ul class="navbar-links">
+        <li><a href="../../index.html">Home</a></li>
+        <li><a href="features.html">Features</a></li>
+        <li><a href="screenshots.html">Screenshots</a></li>
+        <li><a href="pricing.html">Pricing</a></li>
+        <li><a href="about.html">About</a></li>
+        <li><a href="support.html">Support</a></li>
+      </ul>
+      <div class="navbar-cta">
+        <a href="profile.html" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">My Account</a>
+        <a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">Open App</a>
+        <a href="download.html" class="btn btn-primary btn-sm">Download Now</a>
+      </div>
+      <button class="navbar-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
+    </div>
+    <div class="navbar-mobile">
+      <a href="../../index.html">Home</a>
+      <a href="features.html">Features</a>
+      <a href="screenshots.html">Screenshots</a>
+      <a href="pricing.html">Pricing</a>
+      <a href="about.html">About</a>
+      <a href="support.html">Support</a>
+      <a href="profile.html" style="color: var(--color-primary); font-weight: 700;">My Account</a>
+      <a href="download.html" style="color: var(--color-primary); font-weight: 700;">Download Now</a>
+      <a href="https://stores.tulasierp.com/app/" style="color: var(--color-primary); font-weight: 700;">Open App →</a>
+    </div>
+  </nav>
+
+  <!-- HERO -->
+  <section class="section-gradient" style="padding-top: 7rem;">
+    <div class="container text-center">
+      <div class="badge badge-white" style="margin-bottom: 1rem;">👤 Account</div>
+      <h1>My Account</h1>
+      <p class="section-subtitle">View your subscription plan and account details.</p>
+    </div>
+  </section>
+
+  <!-- PROFILE CONTENT -->
+  <section class="section" style="padding-top: 0; margin-top: -2rem;">
+    <div class="container">
+      <div class="profile-container">
+
+        <!-- Loading -->
+        <div id="profile-loading" class="profile-loading">
+          <div class="spinner"></div>
+          <p>Loading your account...</p>
+        </div>
+
+        <!-- Login prompt (hidden by default) -->
+        <div id="login-prompt" class="profile-card login-prompt" style="display:none;">
+          <div style="font-size:3rem; margin-bottom:1rem;">🔒</div>
+          <h2>Sign in to view your account</h2>
+          <p>Sign in with your Tulasi Stores account to see your subscription details.</p>
+          <button onclick="signInWithGoogle()" class="btn btn-primary btn-lg" style="gap:0.5rem;">
+            <svg width="18" height="18" viewBox="0 0 48 48" style="vertical-align:middle;"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Sign in with Google
+          </button>
+        </div>
+
+        <!-- Profile content (hidden by default) -->
+        <div id="profile-content" style="display:none;">
+
+          <!-- User Info Card -->
+          <div class="profile-card">
+            <div class="profile-header">
+              <div class="profile-avatar" id="profile-avatar">👤</div>
+              <div>
+                <div class="profile-name" id="profile-name">—</div>
+                <div class="profile-email" id="profile-email">—</div>
+              </div>
+            </div>
+            <div class="profile-actions">
+              <a href="https://stores.tulasierp.com/app/" class="btn btn-primary btn-sm">Open App →</a>
+              <button onclick="signOut()" class="btn btn-ghost btn-sm">Sign Out</button>
+            </div>
+          </div>
+
+          <!-- Subscription Card -->
+          <div class="profile-card">
+            <div class="profile-section-title">Subscription</div>
+            <div style="display:flex; align-items:center; gap:0.75rem; flex-wrap:wrap;">
+              <span class="plan-badge free" id="plan-badge">Free</span>
+              <span id="plan-status" style="font-size:0.875rem; color:#6b7280;"></span>
+            </div>
+
+            <div class="plan-details">
+              <div class="plan-detail">
+                <div class="plan-detail-label">Bills / Month</div>
+                <div class="plan-detail-value" id="plan-bills">0 / 50</div>
+                <div class="usage-bar-bg"><div class="usage-bar-fill" id="plan-bills-bar" style="width:0%"></div></div>
+              </div>
+              <div class="plan-detail">
+                <div class="plan-detail-label">Products</div>
+                <div class="plan-detail-value" id="plan-products">0 / 100</div>
+                <div class="usage-bar-bg"><div class="usage-bar-fill" id="plan-products-bar" style="width:0%"></div></div>
+              </div>
+              <div class="plan-detail">
+                <div class="plan-detail-label">Customers</div>
+                <div class="plan-detail-value" id="plan-customers">0 / 10</div>
+                <div class="usage-bar-bg"><div class="usage-bar-fill" id="plan-customers-bar" style="width:0%"></div></div>
+              </div>
+              <div class="plan-detail">
+                <div class="plan-detail-label" id="expiry-label">Expires</div>
+                <div class="plan-detail-value" id="plan-expiry">—</div>
+              </div>
+            </div>
+
+            <div class="profile-actions">
+              <a href="pricing.html" class="btn btn-primary btn-sm" id="upgrade-btn">Upgrade Plan →</a>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+
+  <!-- FOOTER -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-grid">
+        <div class="footer-brand">
+          <a href="../../index.html" class="navbar-logo" style="color:white;"><img
+              src="../../assets/images/app_icon.png?v=2" alt="Tulasi Stores" width="32" height="32"
+              style="border-radius:6px;"> Tulasi Stores</a>
+          <p>India's Easiest Billing App</p>
+        </div>
+        <div class="footer-col">
+          <h4>Product</h4>
+          <ul>
+            <li><a href="features.html">Features</a></li>
+            <li><a href="pricing.html">Pricing</a></li>
+            <li><a href="screenshots.html">Screenshots</a></li>
+            <li><a href="download.html">Download</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Company</h4>
+          <ul>
+            <li><a href="about.html">About</a></li>
+          </ul>
+        </div>
+        <div class="footer-col">
+          <h4>Support</h4>
+          <ul>
+            <li><a href="support.html">Help Center</a></li>
+            <li><a href="support.html#faq">FAQ</a></li>
+            <li><a href="support.html#contact">Contact</a></li>
+            <li><a href="privacy.html">Privacy Policy</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p>© 2026 TULASI STORES. All rights reserved. Made with ❤️ in India.</p>
+        <div class="footer-social"><a href="#">𝕏</a><a href="#">📷</a><a href="#">▶</a><a href="#">💬</a></div>
+      </div>
+    </div>
+  </footer>
+
+  <button class="scroll-top" aria-label="Scroll to top">↑</button>
+  <script src="../js/main.js?v=3"></script>
+  <script>
+    /* ══════════════════════════════════════════════════════
+       Profile Page — Firebase Auth + Firestore
+       ══════════════════════════════════════════════════════ */
+
+    firebase.initializeApp({
+      apiKey: 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48',
+      authDomain: 'login-radha.firebaseapp.com',
+      projectId: 'login-radha',
+      storageBucket: 'login-radha.firebasestorage.app',
+      messagingSenderId: '576503526807',
+      appId: '1:576503526807:web:23cf36d320396b512300d2',
+    });
+
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+    let unsubscribeSnapshot = null;
+
+    auth.onAuthStateChanged(function (user) {
+      document.getElementById('profile-loading').style.display = 'none';
+
+      if (!user) {
+        document.getElementById('login-prompt').style.display = 'block';
+        document.getElementById('profile-content').style.display = 'none';
+        if (unsubscribeSnapshot) { unsubscribeSnapshot(); unsubscribeSnapshot = null; }
+        return;
+      }
+
+      document.getElementById('login-prompt').style.display = 'none';
+      document.getElementById('profile-content').style.display = 'block';
+
+      // Set user info
+      document.getElementById('profile-name').textContent = user.displayName || 'User';
+      document.getElementById('profile-email').textContent = user.email || '';
+
+      const avatarEl = document.getElementById('profile-avatar');
+      if (user.photoURL) {
+        avatarEl.innerHTML = '<img src="' + user.photoURL + '" alt="Avatar" referrerpolicy="no-referrer">';
+      } else {
+        avatarEl.textContent = (user.displayName || 'U').charAt(0).toUpperCase();
+      }
+
+      // Listen for real-time subscription updates
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+      unsubscribeSnapshot = db.collection('users').doc(user.uid).onSnapshot(function (doc) {
+        if (!doc.exists) {
+          renderSubscription(null, null);
+          return;
+        }
+        const data = doc.data();
+        renderSubscription(data.subscription || null, data.limits || null);
+      }, function (err) {
+        console.error('Firestore listen error:', err);
+      });
+    });
+
+    function renderSubscription(sub, limits) {
+      const plan = (sub && sub.plan) || 'free';
+      const status = (sub && sub.status) || 'active';
+      const expiresAt = sub && sub.expiresAt ? sub.expiresAt.toDate() : null;
+
+      // Plan badge
+      const badge = document.getElementById('plan-badge');
+      badge.className = 'plan-badge ' + plan;
+      badge.textContent = plan === 'free' ? 'Free' : plan === 'pro' ? '🚀 Pro' : '🏢 Business';
+
+      // Status
+      const statusEl = document.getElementById('plan-status');
+      if (plan === 'free') {
+        statusEl.textContent = '';
+      } else if (status === 'active') {
+        statusEl.innerHTML = '<span style="color:#10B981;">● Active</span>';
+      } else if (status === 'cancelled') {
+        statusEl.innerHTML = '<span style="color:#f59e0b;">● Cancelled (active until expiry)</span>';
+      } else {
+        statusEl.innerHTML = '<span style="color:#ef4444;">● ' + status.charAt(0).toUpperCase() + status.slice(1) + '</span>';
+      }
+
+      // Limits
+      const billsLimit = (limits && limits.billsLimit) || 50;
+      const productsLimit = (limits && limits.productsLimit) || 100;
+      const customersLimit = (limits && limits.customersLimit) || 10;
+      const billsUsed = (limits && limits.billsThisMonth) || 0;
+      const productsUsed = (limits && limits.productsCount) || 0;
+      const customersUsed = (limits && limits.customersCount) || 0;
+
+      function formatLimit(v) { return v >= 999999 ? '∞' : v.toLocaleString('en-IN'); }
+
+      document.getElementById('plan-bills').textContent = billsUsed.toLocaleString('en-IN') + ' / ' + formatLimit(billsLimit);
+      document.getElementById('plan-products').textContent = productsUsed.toLocaleString('en-IN') + ' / ' + formatLimit(productsLimit);
+      document.getElementById('plan-customers').textContent = customersUsed.toLocaleString('en-IN') + ' / ' + formatLimit(customersLimit);
+
+      // Usage bars
+      setUsageBar('plan-bills-bar', billsUsed, billsLimit);
+      setUsageBar('plan-products-bar', productsUsed, productsLimit);
+      setUsageBar('plan-customers-bar', customersUsed, customersLimit);
+
+      // Expiry
+      const expiryLabel = document.getElementById('expiry-label');
+      const expiryValue = document.getElementById('plan-expiry');
+      if (plan === 'free') {
+        expiryLabel.textContent = 'Plan';
+        expiryValue.textContent = 'Free forever';
+      } else if (expiresAt) {
+        expiryLabel.textContent = 'Expires';
+        expiryValue.textContent = expiresAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+      } else {
+        expiryLabel.textContent = 'Expires';
+        expiryValue.textContent = '—';
+      }
+
+      // Upgrade button
+      const upgradeBtn = document.getElementById('upgrade-btn');
+      if (plan === 'business') {
+        upgradeBtn.style.display = 'none';
+      } else {
+        upgradeBtn.style.display = '';
+        upgradeBtn.textContent = plan === 'free' ? 'Upgrade Plan →' : 'Upgrade to Business →';
+      }
+    }
+
+    function setUsageBar(barId, used, limit) {
+      const bar = document.getElementById(barId);
+      if (limit >= 999999) {
+        bar.style.width = '5%';
+        bar.className = 'usage-bar-fill';
+        return;
+      }
+      const pct = Math.min(100, Math.round((used / limit) * 100));
+      bar.style.width = pct + '%';
+      bar.className = 'usage-bar-fill' + (pct >= 90 ? ' danger' : pct >= 70 ? ' warn' : '');
+    }
+
+    async function signInWithGoogle() {
+      try {
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithPopup(provider);
+      } catch (err) {
+        console.error('Sign-in error:', err);
+        alert('Sign-in failed: ' + (err.message || 'Please try again.'));
+      }
+    }
+
+    function signOut() {
+      auth.signOut();
+    }
+  </script>
+</body>
+
+</html>

@@ -1108,19 +1108,22 @@ export const checkLowStock = functions
             });
     });
 
-// ─── Razorpay Plan IDs (created via API) ───
-// LIVE pricing (production):
+// ─── Razorpay Plan IDs (LIVE mode, ₹10/₹20/₹30 pricing) ───
+// Created via API on 2026-04-03 with rzp_live_ key
 // TEST plan IDs (for rzp_test_ key only):
 //   pro:      { monthly: "plan_SY9W1ASLrxRreg", annual: "plan_SY9W1v4s3qPFcH" }
 //   business: { monthly: "plan_SY9W2ApFAYQPYI", annual: "plan_SY9W2Q0ydG6k7G" }
+// LIVE production pricing (swap when ready for real prices):
+//   pro:      { monthly: "plan_SY9CBfmDTbSXHV", annual: "plan_SY9CPMsAtVz46Z" }
+//   business: { monthly: "plan_SY9CYJ4KOmSdbr", annual: "plan_SY9ChNaBTBBnzj" }
 const RAZORPAY_PLAN_IDS: Record<string, Record<string, string>> = {
     pro: {
-        monthly: "plan_SY9CBfmDTbSXHV",
-        annual: "plan_SY9CPMsAtVz46Z",
+        monthly: "plan_SYyyoXH8w6hPug",
+        annual: "plan_SYyyp9wRAvfWr6",
     },
     business: {
-        monthly: "plan_SY9CYJ4KOmSdbr",
-        annual: "plan_SY9ChNaBTBBnzj",
+        monthly: "plan_SYyypQRjwxYfDS",
+        annual: "plan_SYyypdTKBAPxOh",
     },
 };
 
@@ -1225,8 +1228,8 @@ export const activateSubscription = functions
     .region("asia-south1")
     .runWith({ timeoutSeconds: 60, memory: "256MB", maxInstances: 50 })
     .https.onCall(async (data: {
-        plan: "pro" | "business";
-        cycle: "monthly" | "annual";
+        plan?: "pro" | "business";
+        cycle?: "monthly" | "annual";
         razorpayPaymentId: string;
         razorpayOrderId?: string;
         razorpaySignature?: string;
@@ -1236,11 +1239,12 @@ export const activateSubscription = functions
             throw new functions.https.HttpsError("unauthenticated", "Login required");
         }
 
-        const { plan, cycle, razorpayPaymentId, razorpaySubscriptionId } = data;
+        let { plan, cycle } = data;
+        const { razorpayPaymentId, razorpaySubscriptionId } = data;
         const userId = context.auth.uid;
 
-        if (!plan || !cycle || !razorpayPaymentId) {
-            throw new functions.https.HttpsError("invalid-argument", "plan, cycle and razorpayPaymentId are required");
+        if (!razorpayPaymentId) {
+            throw new functions.https.HttpsError("invalid-argument", "razorpayPaymentId is required");
         }
 
         const razorpayConfig = getRazorpayConfig();
@@ -1248,9 +1252,10 @@ export const activateSubscription = functions
             throw new functions.https.HttpsError("failed-precondition", "Razorpay not configured");
         }
 
+        const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
+
         // Verify payment exists with Razorpay
         try {
-            const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
             const verifyRes = await fetch(
                 `https://api.razorpay.com/v1/payments/${razorpayPaymentId}`,
                 { headers: { Authorization: `Basic ${auth}` } }
@@ -1266,6 +1271,38 @@ export const activateSubscription = functions
             if (err instanceof functions.https.HttpsError) throw err;
             console.error("Razorpay verification error:", err);
             throw new functions.https.HttpsError("internal", "Could not verify payment");
+        }
+
+        // If plan/cycle not provided (redirect flow), look up from subscription
+        if ((!plan || !cycle) && razorpaySubscriptionId) {
+            try {
+                const subRes = await fetch(
+                    `https://api.razorpay.com/v1/subscriptions/${razorpaySubscriptionId}`,
+                    { headers: { Authorization: `Basic ${auth}` } }
+                );
+                if (subRes.ok) {
+                    const sub = await subRes.json() as { notes?: { plan?: string; cycle?: string } };
+                    plan = (sub.notes?.plan as "pro" | "business") || plan;
+                    cycle = (sub.notes?.cycle as "monthly" | "annual") || cycle;
+                }
+            } catch (err) {
+                console.warn("Could not fetch subscription details:", err);
+            }
+        }
+
+        // If still no plan/cycle, try Firestore razorpay_subscriptions mapping
+        if ((!plan || !cycle) && razorpaySubscriptionId) {
+            const db = admin.firestore();
+            const subDoc = await db.collection("razorpay_subscriptions").doc(razorpaySubscriptionId).get();
+            if (subDoc.exists) {
+                const subData = subDoc.data();
+                plan = plan || subData?.plan;
+                cycle = cycle || subData?.cycle;
+            }
+        }
+
+        if (!plan || !cycle) {
+            throw new functions.https.HttpsError("invalid-argument", "Could not determine plan/cycle. Please contact support.");
         }
 
         // Determine plan limits and expiry

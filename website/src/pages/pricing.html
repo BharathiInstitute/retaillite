@@ -19,6 +19,15 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap"
     rel="stylesheet">
   <link rel="stylesheet" href="../css/styles.css?v=3">
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-functions-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+
+  <!-- Razorpay Checkout.js -->
+  <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   <style>
     /* ─── Pricing Grid ─── */
     .pricing-grid {
@@ -401,6 +410,7 @@
         <li><a href="support.html">Support</a></li>
       </ul>
       <div class="navbar-cta">
+        <a href="profile.html" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">My Account</a>
         <a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">Open App</a>
         <a href="download.html" class="btn btn-primary btn-sm">Download Now</a>
       </div>
@@ -413,6 +423,7 @@
       <a href="pricing.html">Pricing</a>
       <a href="about.html">About</a>
       <a href="support.html">Support</a>
+      <a href="profile.html" style="color: var(--color-primary); font-weight: 700;">My Account</a>
       <a href="download.html" style="color: var(--color-primary); font-weight: 700;">Download Now</a>
       <a href="https://stores.tulasierp.com/app/" style="color: var(--color-primary); font-weight: 700;">Open App →</a>
     </div>
@@ -483,7 +494,7 @@
             <li><span class="check">✓</span> Priority support</li>
             <li><span class="check">✓</span> Everything in Free</li>
           </ul>
-          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-primary">Get Pro →</a>
+          <button onclick="handleSubscribe('pro')" class="pricing-cta pricing-cta-primary" id="btn-pro">Get Pro →</button>
         </div>
 
         <!-- BUSINESS -->
@@ -506,7 +517,7 @@
             <li><span class="check">✓</span> Multi-device sync</li>
             <li><span class="check">✓</span> Everything in Pro</li>
           </ul>
-          <a href="https://stores.tulasierp.com/app/" class="pricing-cta pricing-cta-outline">Get Business →</a>
+          <button onclick="handleSubscribe('business')" class="pricing-cta pricing-cta-outline" id="btn-business">Get Business →</button>
         </div>
       </div>
     </div>
@@ -679,6 +690,43 @@
     </div>
   </section>
 
+  <!-- LOGIN MODAL -->
+  <div id="login-modal" style="display:none; position:fixed; inset:0; z-index:9999; background:rgba(0,0,0,0.5); align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:16px; padding:2rem; max-width:400px; width:90%; box-shadow:0 20px 60px rgba(0,0,0,0.3); position:relative;">
+      <button onclick="closeLoginModal()" style="position:absolute; top:1rem; right:1rem; background:none; border:none; font-size:1.5rem; cursor:pointer; color:#666;">✕</button>
+      <h3 style="margin-bottom:0.5rem; font-size:1.25rem;">Sign in to subscribe</h3>
+      <p style="color:#666; font-size:0.875rem; margin-bottom:1.5rem;">Sign in with your Tulasi Stores account to continue.</p>
+      <div id="login-error" style="display:none; background:#fee; color:#c33; padding:0.75rem; border-radius:8px; margin-bottom:1rem; font-size:0.875rem;"></div>
+      <button onclick="signInWithGoogle()" style="width:100%; padding:0.75rem; border:1px solid #ddd; border-radius:8px; background:white; cursor:pointer; font-size:1rem; display:flex; align-items:center; justify-content:center; gap:0.5rem; transition:background 0.2s;">
+        <svg width="18" height="18" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+        Sign in with Google
+      </button>
+    </div>
+  </div>
+
+  <!-- PAYMENT STATUS OVERLAY -->
+  <div id="payment-overlay" style="display:none; position:fixed; inset:0; z-index:9998; background:rgba(0,0,0,0.6); align-items:center; justify-content:center;">
+    <div style="background:white; border-radius:16px; padding:2.5rem; max-width:420px; width:90%; text-align:center; box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+      <div id="payment-spinner" style="margin-bottom:1rem;">
+        <div style="width:48px; height:48px; border:4px solid #e5e7eb; border-top-color:var(--color-primary); border-radius:50%; animation:spin 0.8s linear infinite; margin:0 auto;"></div>
+      </div>
+      <div id="payment-icon" style="display:none; font-size:3rem; margin-bottom:1rem;"></div>
+      <h3 id="payment-title" style="margin-bottom:0.5rem;">Processing payment...</h3>
+      <p id="payment-message" style="color:#666; font-size:0.9375rem;"></p>
+      <div id="payment-actions" style="display:none; margin-top:1.5rem; display:flex; gap:0.75rem; justify-content:center; flex-wrap:wrap;">
+        <a href="https://stores.tulasierp.com/app/" class="btn btn-primary btn-sm" id="payment-open-app" style="display:none;">Open App →</a>
+        <a href="profile.html" class="btn btn-ghost btn-sm" id="payment-view-profile" style="display:none;">View Profile</a>
+        <button onclick="closePaymentOverlay()" class="btn btn-ghost btn-sm" id="payment-close" style="display:none;">Close</button>
+      </div>
+    </div>
+  </div>
+  <style>
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #login-modal[style*="flex"] { display: flex !important; }
+    #payment-overlay[style*="flex"] { display: flex !important; }
+    .pricing-cta[disabled] { opacity: 0.6; pointer-events: none; }
+  </style>
+
   <!-- FOOTER -->
   <footer class="footer">
     <div class="container">
@@ -724,7 +772,30 @@
   <button class="scroll-top" aria-label="Scroll to top">↑</button>
   <script src="../js/main.js?v=3"></script>
   <script>
-    /* ── Billing Toggle (Monthly ↔ Annual) ── */
+    /* ══════════════════════════════════════════════════════
+       Firebase + Razorpay Subscription Payment Flow
+       ══════════════════════════════════════════════════════ */
+
+    // ─── Firebase Init ───
+    firebase.initializeApp({
+      apiKey: 'AIzaSyAA5Y-43RM2IItOsWpbygeHQhVbU2zFe48',
+      authDomain: 'login-radha.firebaseapp.com',
+      projectId: 'login-radha',
+      storageBucket: 'login-radha.firebasestorage.app',
+      messagingSenderId: '576503526807',
+      appId: '1:576503526807:web:23cf36d320396b512300d2',
+    });
+
+    const auth = firebase.auth();
+    const functions = firebase.app().functions('asia-south1');
+    const db = firebase.firestore();
+
+    const RAZORPAY_KEY = 'rzp_live_SY8AxnUQ76sLJj';
+
+    let currentUser = null;
+    let pendingPlan = null; // set when user clicks subscribe before login
+
+    // ─── Billing Toggle (Monthly ↔ Annual) ───
     const toggle = document.getElementById('billing-toggle');
     const monthlyLabel = document.getElementById('toggle-monthly');
     const annualLabel = document.getElementById('toggle-annual');
@@ -747,12 +818,204 @@
     monthlyLabel.addEventListener('click', function () { isAnnual = false; updatePrices(); });
     annualLabel.addEventListener('click', function () { isAnnual = true; updatePrices(); });
 
-    /* ── FAQ Accordion ── */
+    // ─── FAQ Accordion ───
     document.querySelectorAll('.faq-question').forEach(function (q) {
       q.addEventListener('click', function () {
         this.closest('.faq-item').classList.toggle('open');
       });
     });
+
+    // ─── Auth State ───
+    auth.onAuthStateChanged(function (user) {
+      currentUser = user;
+      if (user && pendingPlan) {
+        const plan = pendingPlan;
+        pendingPlan = null;
+        closeLoginModal();
+        startSubscription(plan);
+      }
+    });
+
+    // ─── URL Params (from app deep link) ───
+    (function checkUrlParams() {
+      const params = new URLSearchParams(window.location.search);
+      const plan = params.get('plan');
+      const cycle = params.get('cycle');
+      if (plan && (plan === 'pro' || plan === 'business')) {
+        if (cycle === 'annual') { isAnnual = true; updatePrices(); }
+        // Auto-trigger after a brief delay for page to settle
+        setTimeout(function () { handleSubscribe(plan); }, 500);
+      }
+    })();
+
+    // ─── Subscribe Button Handler ───
+    function handleSubscribe(plan) {
+      if (!currentUser) {
+        pendingPlan = plan;
+        showLoginModal();
+        return;
+      }
+      startSubscription(plan);
+    }
+
+    // ─── Login Modal ───
+    function showLoginModal() {
+      document.getElementById('login-modal').style.display = 'flex';
+      document.getElementById('login-error').style.display = 'none';
+    }
+    function closeLoginModal() {
+      document.getElementById('login-modal').style.display = 'none';
+      pendingPlan = null;
+    }
+
+    async function signInWithGoogle() {
+      try {
+        document.getElementById('login-error').style.display = 'none';
+        const provider = new firebase.auth.GoogleAuthProvider();
+        await auth.signInWithPopup(provider);
+        // onAuthStateChanged will handle the rest
+      } catch (err) {
+        console.error('Sign-in error:', err);
+        const errorEl = document.getElementById('login-error');
+        errorEl.textContent = err.message || 'Sign-in failed. Please try again.';
+        errorEl.style.display = 'block';
+      }
+    }
+
+    // ─── Payment Overlay ───
+    function showPaymentOverlay(title, message) {
+      document.getElementById('payment-spinner').style.display = 'block';
+      document.getElementById('payment-icon').style.display = 'none';
+      document.getElementById('payment-title').textContent = title || 'Processing...';
+      document.getElementById('payment-message').textContent = message || '';
+      document.getElementById('payment-open-app').style.display = 'none';
+      document.getElementById('payment-view-profile').style.display = 'none';
+      document.getElementById('payment-close').style.display = 'none';
+      document.getElementById('payment-overlay').style.display = 'flex';
+    }
+
+    function showPaymentSuccess(plan) {
+      document.getElementById('payment-spinner').style.display = 'none';
+      const icon = document.getElementById('payment-icon');
+      icon.textContent = '🎉';
+      icon.style.display = 'block';
+      document.getElementById('payment-title').textContent = (plan === 'pro' ? 'Pro' : 'Business') + ' Plan Activated!';
+      document.getElementById('payment-message').textContent = 'Your subscription is now active. Enjoy your upgraded features!';
+      document.getElementById('payment-open-app').style.display = 'inline-flex';
+      document.getElementById('payment-view-profile').style.display = 'inline-flex';
+      document.getElementById('payment-close').style.display = 'none';
+    }
+
+    function showPaymentError(message) {
+      document.getElementById('payment-spinner').style.display = 'none';
+      const icon = document.getElementById('payment-icon');
+      icon.textContent = '❌';
+      icon.style.display = 'block';
+      document.getElementById('payment-title').textContent = 'Payment Failed';
+      document.getElementById('payment-message').textContent = message || 'Something went wrong. Please try again.';
+      document.getElementById('payment-open-app').style.display = 'none';
+      document.getElementById('payment-view-profile').style.display = 'none';
+      document.getElementById('payment-close').style.display = 'inline-flex';
+    }
+
+    function closePaymentOverlay() {
+      document.getElementById('payment-overlay').style.display = 'none';
+    }
+
+    // ─── Subscription Flow ───
+    async function startSubscription(plan) {
+      const cycle = isAnnual ? 'annual' : 'monthly';
+      const btn = document.getElementById('btn-' + plan);
+      if (btn) btn.setAttribute('disabled', '');
+
+      showPaymentOverlay('Creating subscription...', 'Please wait while we set up your ' + (plan === 'pro' ? 'Pro' : 'Business') + ' plan.');
+
+      try {
+        // Step 1: Create subscription via Cloud Function
+        const createSub = functions.httpsCallable('createSubscription');
+        const result = await createSub({
+          plan: plan,
+          cycle: cycle,
+          customerEmail: currentUser.email || '',
+          customerPhone: currentUser.phoneNumber || '',
+          customerName: currentUser.displayName || '',
+        });
+
+        const data = result.data;
+        if (!data.success || !data.subscriptionId) {
+          throw new Error(data.error || 'Failed to create subscription');
+        }
+
+        // Step 2: Open Razorpay Checkout
+        closePaymentOverlay();
+        openRazorpayCheckout(data.subscriptionId, plan, cycle);
+
+      } catch (err) {
+        console.error('Subscription error:', err);
+        showPaymentError(err.message || 'Could not create subscription. Please try again.');
+        if (btn) btn.removeAttribute('disabled');
+      }
+    }
+
+    function openRazorpayCheckout(subscriptionId, plan, cycle) {
+      const options = {
+        key: RAZORPAY_KEY,
+        subscription_id: subscriptionId,
+        name: 'Tulasi Stores',
+        description: (plan === 'pro' ? 'Pro' : 'Business') + ' Plan (' + (cycle === 'annual' ? 'Annual' : 'Monthly') + ')',
+        prefill: {
+          email: currentUser.email || '',
+          contact: currentUser.phoneNumber || '',
+          name: currentUser.displayName || '',
+        },
+        theme: { color: '#10B981' },
+        modal: { confirm_close: true },
+        handler: function (response) {
+          // Payment successful — activate subscription
+          activateSubscription(plan, cycle, response.razorpay_payment_id, subscriptionId, response.razorpay_signature);
+        },
+      };
+
+      const rzp = new Razorpay(options);
+
+      rzp.on('payment.failed', function (response) {
+        console.error('Payment failed:', response.error);
+        showPaymentError(response.error.description || 'Payment failed. Please try again.');
+        const btn = document.getElementById('btn-' + plan);
+        if (btn) btn.removeAttribute('disabled');
+      });
+
+      rzp.open();
+    }
+
+    async function activateSubscription(plan, cycle, paymentId, subscriptionId, signature) {
+      showPaymentOverlay('Activating your plan...', 'Payment received! Setting up your ' + (plan === 'pro' ? 'Pro' : 'Business') + ' plan.');
+
+      const btn = document.getElementById('btn-' + plan);
+
+      try {
+        const activate = functions.httpsCallable('activateSubscription');
+        const result = await activate({
+          plan: plan,
+          cycle: cycle,
+          razorpayPaymentId: paymentId,
+          razorpaySubscriptionId: subscriptionId,
+          razorpaySignature: signature || '',
+        });
+
+        if (result.data.success) {
+          showPaymentSuccess(plan);
+        } else {
+          showPaymentError('Payment received but activation failed. Your plan will activate automatically within 5 minutes.');
+        }
+      } catch (err) {
+        console.error('Activation error:', err);
+        // Payment was captured — webhook will handle activation
+        showPaymentError('Payment received. Your plan will activate automatically within a few minutes. If not, please contact support.');
+      } finally {
+        if (btn) btn.removeAttribute('disabled');
+      }
+    }
   </script>
 </body>
 

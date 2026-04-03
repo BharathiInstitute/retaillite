@@ -1,7 +1,7 @@
 ﻿# Smart Deploy Agent v4.0 - Tulasi Stores
 # Asks smart questions first, then runs everything automatically
 #
-# Usage: .\smart-deploy.ps1
+# Usage:  
 #        .\smart-deploy.ps1 -Rollback                    # Rollback all platforms
 #        .\smart-deploy.ps1 -Rollback -RollbackTarget web  # Rollback web only
 #        .\smart-deploy.ps1 -DryRun                      # Preview without deploying
@@ -676,15 +676,12 @@ Write-Host "========================================================" -Foregroun
 
 Write-DeployLog "DEPLOY START | Type: $($typeNames[$updateType]) | Version: $newVersion+$newBuild"
 
-# --- Razorpay Key (from environment variable) ---
+# --- Razorpay Key (optional — only needed for in-app payment collection) ---
 $razorpayKey = $env:RAZORPAY_KEY_ID
 if (-not $skipBuild -and -not $razorpayKey) {
-    Write-Warn "RAZORPAY_KEY_ID environment variable not set!"
-    $razorpayKey = Read-Host "  Enter Razorpay Key ID (rzp_live_xxx or rzp_test_xxx)"
-    if (-not $razorpayKey) {
-        Write-Fail "Razorpay Key ID is required for builds. Set env var: `$env:RAZORPAY_KEY_ID = 'rzp_live_xxx'"
-        exit 1
-    }
+    Write-Warn "RAZORPAY_KEY_ID not set. In-app payment collection will be disabled."
+    Write-Info "Subscriptions use the website pricing page and don't need this key."
+    Write-Info "To set: `$env:RAZORPAY_KEY_ID = 'rzp_live_xxx'"
 }
 if ($razorpayKey) {
     $dartDefines = "--dart-define=RAZORPAY_KEY_ID=$razorpayKey"

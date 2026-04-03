@@ -981,19 +981,22 @@ exports.checkLowStock = functions
         },
     });
 });
-// ─── Razorpay Plan IDs (created via API) ───
-// LIVE pricing (production):
+// ─── Razorpay Plan IDs (LIVE mode, ₹10/₹20/₹30 pricing) ───
+// Created via API on 2026-04-03 with rzp_live_ key
 // TEST plan IDs (for rzp_test_ key only):
 //   pro:      { monthly: "plan_SY9W1ASLrxRreg", annual: "plan_SY9W1v4s3qPFcH" }
 //   business: { monthly: "plan_SY9W2ApFAYQPYI", annual: "plan_SY9W2Q0ydG6k7G" }
+// LIVE production pricing (swap when ready for real prices):
+//   pro:      { monthly: "plan_SY9CBfmDTbSXHV", annual: "plan_SY9CPMsAtVz46Z" }
+//   business: { monthly: "plan_SY9CYJ4KOmSdbr", annual: "plan_SY9ChNaBTBBnzj" }
 const RAZORPAY_PLAN_IDS = {
     pro: {
-        monthly: "plan_SY9CBfmDTbSXHV",
-        annual: "plan_SY9CPMsAtVz46Z",
+        monthly: "plan_SYyyoXH8w6hPug",
+        annual: "plan_SYyyp9wRAvfWr6",
     },
     business: {
-        monthly: "plan_SY9CYJ4KOmSdbr",
-        annual: "plan_SY9ChNaBTBBnzj",
+        monthly: "plan_SYyypQRjwxYfDS",
+        annual: "plan_SYyypdTKBAPxOh",
     },
 };
 /**
@@ -1074,21 +1077,23 @@ exports.activateSubscription = functions
     .region("asia-south1")
     .runWith({ timeoutSeconds: 60, memory: "256MB", maxInstances: 50 })
     .https.onCall(async (data, context) => {
+    var _a, _b;
     if (!context.auth) {
         throw new functions.https.HttpsError("unauthenticated", "Login required");
     }
-    const { plan, cycle, razorpayPaymentId, razorpaySubscriptionId } = data;
+    let { plan, cycle } = data;
+    const { razorpayPaymentId, razorpaySubscriptionId } = data;
     const userId = context.auth.uid;
-    if (!plan || !cycle || !razorpayPaymentId) {
-        throw new functions.https.HttpsError("invalid-argument", "plan, cycle and razorpayPaymentId are required");
+    if (!razorpayPaymentId) {
+        throw new functions.https.HttpsError("invalid-argument", "razorpayPaymentId is required");
     }
     const razorpayConfig = getRazorpayConfig();
     if (!razorpayConfig.keyId || !razorpayConfig.keySecret) {
         throw new functions.https.HttpsError("failed-precondition", "Razorpay not configured");
     }
+    const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
     // Verify payment exists with Razorpay
     try {
-        const auth = Buffer.from(`${razorpayConfig.keyId}:${razorpayConfig.keySecret}`).toString("base64");
         const verifyRes = await fetch(`https://api.razorpay.com/v1/payments/${razorpayPaymentId}`, { headers: { Authorization: `Basic ${auth}` } });
         if (!verifyRes.ok) {
             throw new functions.https.HttpsError("not-found", "Payment not found in Razorpay");
@@ -1103,6 +1108,33 @@ exports.activateSubscription = functions
             throw err;
         console.error("Razorpay verification error:", err);
         throw new functions.https.HttpsError("internal", "Could not verify payment");
+    }
+    // If plan/cycle not provided (redirect flow), look up from subscription
+    if ((!plan || !cycle) && razorpaySubscriptionId) {
+        try {
+            const subRes = await fetch(`https://api.razorpay.com/v1/subscriptions/${razorpaySubscriptionId}`, { headers: { Authorization: `Basic ${auth}` } });
+            if (subRes.ok) {
+                const sub = await subRes.json();
+                plan = ((_a = sub.notes) === null || _a === void 0 ? void 0 : _a.plan) || plan;
+                cycle = ((_b = sub.notes) === null || _b === void 0 ? void 0 : _b.cycle) || cycle;
+            }
+        }
+        catch (err) {
+            console.warn("Could not fetch subscription details:", err);
+        }
+    }
+    // If still no plan/cycle, try Firestore razorpay_subscriptions mapping
+    if ((!plan || !cycle) && razorpaySubscriptionId) {
+        const db = admin.firestore();
+        const subDoc = await db.collection("razorpay_subscriptions").doc(razorpaySubscriptionId).get();
+        if (subDoc.exists) {
+            const subData = subDoc.data();
+            plan = plan || (subData === null || subData === void 0 ? void 0 : subData.plan);
+            cycle = cycle || (subData === null || subData === void 0 ? void 0 : subData.cycle);
+        }
+    }
+    if (!plan || !cycle) {
+        throw new functions.https.HttpsError("invalid-argument", "Could not determine plan/cycle. Please contact support.");
     }
     // Determine plan limits and expiry
     const daysToAdd = cycle === "annual" ? 365 : 30;

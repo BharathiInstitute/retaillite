@@ -14,3 +14,5 @@ void openRazorpayWeb({
 }) {
   throw UnsupportedError('Razorpay web checkout is only available on web');
 }
+
+Map<String, String>? checkPaymentRedirectParams() => null;
