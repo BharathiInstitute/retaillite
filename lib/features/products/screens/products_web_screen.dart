@@ -24,6 +24,20 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
   int _currentPage = 0;
   static const int _pageSize = 20;
   bool _isGridView = false;
+  final ScrollController _scrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _changePage(int newPage) {
+    setState(() => _currentPage = newPage);
+    if (_scrollController.hasClients) {
+      _scrollController.jumpTo(0);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -250,11 +264,16 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                           // Mobile: Grid or Card list
                           if (_isGridView)
                             Expanded(
-                              child: _buildProductGrid(pageItems, syncStatus),
+                              child: _buildProductGrid(
+                                pageItems,
+                                syncStatus,
+                                controller: _scrollController,
+                              ),
                             )
                           else
                             Expanded(
                               child: ListView.separated(
+                                controller: _scrollController,
                                 itemCount: pageItems.length,
                                 separatorBuilder: (_, _) =>
                                     const SizedBox(height: 8),
@@ -292,7 +311,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                   children: [
                                     OutlinedButton(
                                       onPressed: _currentPage > 0
-                                          ? () => setState(() => _currentPage--)
+                                          ? () => _changePage(_currentPage - 1)
                                           : null,
                                       style: OutlinedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
@@ -309,7 +328,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                     const SizedBox(width: 8),
                                     OutlinedButton(
                                       onPressed: _currentPage < totalPages - 1
-                                          ? () => setState(() => _currentPage++)
+                                          ? () => _changePage(_currentPage + 1)
                                           : null,
                                       style: OutlinedButton.styleFrom(
                                         padding: const EdgeInsets.symmetric(
@@ -332,12 +351,17 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                           // Desktop: Grid or Table
                           if (_isGridView) ...[
                             Expanded(
-                              child: _buildProductGrid(pageItems, syncStatus),
+                              child: _buildProductGrid(
+                                pageItems,
+                                syncStatus,
+                                controller: _scrollController,
+                              ),
                             ),
                           ] else ...[
                             // Desktop: DataTable
                             Expanded(
                               child: SingleChildScrollView(
+                                controller: _scrollController,
                                 padding: const EdgeInsets.all(0),
                                 child: SizedBox(
                                   width: double.infinity,
@@ -618,7 +642,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 const Spacer(),
                                 OutlinedButton(
                                   onPressed: _currentPage > 0
-                                      ? () => setState(() => _currentPage--)
+                                      ? () => _changePage(_currentPage - 1)
                                       : null,
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
@@ -631,7 +655,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
                                 const SizedBox(width: 8),
                                 OutlinedButton(
                                   onPressed: _currentPage < totalPages - 1
-                                      ? () => setState(() => _currentPage++)
+                                      ? () => _changePage(_currentPage + 1)
                                       : null,
                                   style: OutlinedButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(
@@ -688,8 +712,9 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
 
   Widget _buildProductGrid(
     List<ProductModel> products,
-    Map<String, bool> syncStatus,
-  ) {
+    Map<String, bool> syncStatus, {
+    ScrollController? controller,
+  }) {
     final width = MediaQuery.of(context).size.width;
     final crossAxisCount = width < 600
         ? 2
@@ -700,6 +725,7 @@ class _ProductsWebScreenState extends ConsumerState<ProductsWebScreen> {
         : 5;
 
     return GridView.builder(
+      controller: controller,
       padding: const EdgeInsets.all(12),
       gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: crossAxisCount,

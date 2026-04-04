@@ -59,6 +59,21 @@
             ]
         },
         {
+            "__comment": "transactions: today's payments — type == payment + createdAt range",
+            "collectionGroup": "transactions",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "type",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "createdAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
             "__comment": "users: subscription.plan filter + orderBy(createdAt, desc) — admin_firestore_service.getAllUsers()",
             "collectionGroup": "users",
             "queryScope": "COLLECTION",

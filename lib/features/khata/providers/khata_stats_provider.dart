@@ -33,14 +33,45 @@ class KhataStats {
   );
 }
 
-/// Provider for khata statistics — derives from customers stream
-final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
+/// Real-time stream of today's collected payment total.
+/// Uses a Firestore stream on non-demo, DemoDataService on demo.
+final _todayPaymentTotalProvider = StreamProvider<double>((ref) {
+  final isDemoMode = ref.watch(isDemoModeProvider);
+  if (isDemoMode) {
+    final today = DateTime.now();
+    final startOfDay = DateTime(today.year, today.month, today.day);
+    final customers = ref.watch(customersProvider).valueOrNull ?? [];
+    double total = 0;
+    for (final customer in customers) {
+      for (final tx in DemoDataService.getCustomerTransactions(customer.id)) {
+        if (tx.type == TransactionType.payment &&
+            tx.createdAt.isAfter(startOfDay)) {
+          total += tx.amount;
+        }
+      }
+    }
+    return Stream.value(total);
+  }
+  return OfflineStorageService.todayPaymentTotalStream();
+});
+
+/// Provider for khata statistics — derives from customers + payments streams
+final khataStatsProvider = Provider<AsyncValue<KhataStats>>((ref) {
   final isDemoMode = ref.watch(isDemoModeProvider);
   debugPrint('📊 khataStatsProvider: isDemoMode=$isDemoMode');
 
   // Watch the customers stream — this auto-updates when customers change
   final customersAsync = ref.watch(customersProvider);
+  final collectedAsync = ref.watch(_todayPaymentTotalProvider);
+
+  // Combine: both must be loaded
   final customers = customersAsync.valueOrNull ?? [];
+  final collectedToday = collectedAsync.valueOrNull ?? 0.0;
+
+  // If either is still loading for the first time, propagate loading
+  if (customersAsync is AsyncLoading && !customersAsync.hasValue) {
+    return const AsyncValue.loading();
+  }
 
   // Calculate total outstanding (sum of positive balances)
   final totalOutstanding = customers.fold<double>(
@@ -51,35 +82,17 @@ final khataStatsProvider = FutureProvider<KhataStats>((ref) async {
   // Count customers with due
   final customersWithDue = customers.where((c) => c.balance > 0).length;
 
-  // Calculate collected today — single query instead of N+1 per customer
-  double collectedToday = 0;
-  if (isDemoMode) {
-    // Demo mode: iterate in-memory (no Firestore cost)
-    final today = DateTime.now();
-    final startOfDay = DateTime(today.year, today.month, today.day);
-    for (final customer in customers) {
-      final transactions = DemoDataService.getCustomerTransactions(customer.id);
-      for (final tx in transactions) {
-        if (tx.type == TransactionType.payment &&
-            tx.createdAt.isAfter(startOfDay)) {
-          collectedToday += tx.amount;
-        }
-      }
-    }
-  } else {
-    // Production: single Firestore query (was N+1 before)
-    collectedToday = await OfflineStorageService.getTodayPaymentTotal();
-  }
-
   debugPrint(
-    '📊 KhataStats: ${customers.length} customers, outstanding: $totalOutstanding',
+    '📊 KhataStats: ${customers.length} customers, outstanding: $totalOutstanding, collected: $collectedToday',
   );
 
-  return KhataStats(
-    totalOutstanding: totalOutstanding,
-    collectedToday: collectedToday,
-    activeCustomers: customers.length,
-    customersWithDue: customersWithDue,
+  return AsyncValue.data(
+    KhataStats(
+      totalOutstanding: totalOutstanding,
+      collectedToday: collectedToday,
+      activeCustomers: customers.length,
+      customersWithDue: customersWithDue,
+    ),
   );
 });
 

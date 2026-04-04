@@ -1114,16 +1114,17 @@ class OfflineStorageService {
     try {
       final now = DateTime.now();
       final startOfDay = DateTime(now.year, now.month, now.day);
+      // Use only createdAt range (single-field index, auto-created) and
+      // filter type client-side.  Avoids composite-index requirement that
+      // can silently fail on the Windows/macOS desktop Firestore SDK.
       final query = _firestore
           .collection('$_basePath/transactions')
-          .where('type', isEqualTo: 'payment')
           .where(
             'createdAt',
             isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
           )
           .orderBy('createdAt', descending: true);
 
-      // Force server read to avoid stale cache; fall back to cache if offline
       QuerySnapshot<Map<String, dynamic>> snapshot;
       try {
         snapshot = await query.get(const GetOptions(source: Source.server));
@@ -1134,6 +1135,8 @@ class OfflineStorageService {
 
       UserUsageService.trackRead(count: snapshot.docs.length);
       final total = snapshot.docs.fold<double>(0, (total, doc) {
+        final type = doc.data()['type'] as String?;
+        if (type != 'payment') return total;
         final amount = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
         return total + amount;
       });
@@ -1145,6 +1148,34 @@ class OfflineStorageService {
       debugPrint('[KhataStats] getTodayPaymentTotal error: $e');
       return 0;
     }
+  }
+
+  /// Real-time stream of today's collected payment total.
+  ///
+  /// Uses only a single-field index on `createdAt` (auto-created) and filters
+  /// for `type == payment` client-side.  Works identically on Web, Windows,
+  /// macOS, and mobile — no composite index required.
+  static Stream<double> todayPaymentTotalStream() {
+    if (_basePath.isEmpty) return Stream.value(0);
+    final now = DateTime.now();
+    final startOfDay = DateTime(now.year, now.month, now.day);
+    return _firestore
+        .collection('$_basePath/transactions')
+        .where(
+          'createdAt',
+          isGreaterThanOrEqualTo: Timestamp.fromDate(startOfDay),
+        )
+        .orderBy('createdAt', descending: true)
+        .snapshots()
+        .map((snapshot) {
+          UserUsageService.trackRead(count: snapshot.docs.length);
+          return snapshot.docs.fold<double>(0, (total, doc) {
+            final type = doc.data()['type'] as String?;
+            if (type != 'payment') return total;
+            final amount = (doc.data()['amount'] as num?)?.toDouble() ?? 0;
+            return total + amount;
+          });
+        });
   }
 
   /// Stream of customer transactions (real-time)

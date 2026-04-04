@@ -4,7 +4,7 @@ publish_to: 'none'
 version: 9.7.0+54
 
 environment:
-  sdk: ^3.10.4
+  sdk: ^3.9.0
 
 dependencies:
   flutter:
@@ -89,6 +89,12 @@ dependencies:
   in_app_update: ^4.2.5
   in_app_review: ^2.0.9
   sunmi_printer_plus: ^4.1.1
+
+  # Sunmi POS built-in printer
+  sunmi_printer_plus: ^4.1.1
+
+  # Web platform interop
+  web: ^1.1.1
 
 
 dev_dependencies:

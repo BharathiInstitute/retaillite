@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:retaillite/core/services/receipt_service.dart';
 import 'package:retaillite/core/services/sunmi_printer_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
+import 'package:retaillite/core/services/web_bluetooth_printer_service.dart';
 import 'package:retaillite/features/settings/providers/settings_provider.dart';
 import 'package:retaillite/models/bill_model.dart';
 import 'package:retaillite/models/user_model.dart';
@@ -90,7 +91,17 @@ class PrintHelper {
           break;
 
         case PrinterTypeOption.webBluetooth:
-          // Web Bluetooth not applicable for native app builds
+          if (WebBluetoothPrinterService.isSupported &&
+              WebBluetoothPrinterService.isConnected) {
+            directSuccess = await WebBluetoothPrinterService.printReceipt(
+              bill: bill,
+              shopName: user?.shopName,
+              shopAddress: user?.address,
+              shopPhone: user?.phone,
+              gstNumber: user?.gstNumber,
+              receiptFooter: footer,
+            );
+          }
           break;
 
         case PrinterTypeOption.system:

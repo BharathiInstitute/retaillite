@@ -158,6 +158,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "576503526807-6jq87jepms5tq1vtranucuf3ca8qc5df.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "in.liteapp.retaillite",
+            "certificate_hash": "aa313893f96785ab18c045cd6115a8e7823f9d53"
+          }
+        },
+        {
           "client_id": "576503526807-v6sj9niq1ps2d454d85v38gv47nj994q.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {

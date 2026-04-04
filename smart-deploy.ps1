@@ -1,4 +1,4 @@
-﻿# Smart Deploy Agent v4.0 - Tulasi Stores
+# Smart Deploy Agent v4.0 - Tulasi Stores
 # Asks smart questions first, then runs everything automatically
 #
 # Usage:  
@@ -46,6 +46,43 @@ function Write-DeployLog {
     $logPath = Join-Path $root "deploy-history.log"
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Add-Content -Path $logPath -Value "[$timestamp] $Entry" -Encoding UTF8
+}
+
+# --- Firebase Storage REST API upload (fallback when gsutil is unavailable) ---
+function Get-FirebaseAccessToken {
+    $configPath = Join-Path $env:USERPROFILE ".config\configstore\firebase-tools.json"
+    if (-not (Test-Path $configPath)) { return $null }
+    $config = Get-Content $configPath -Raw | ConvertFrom-Json
+    if (-not $config.tokens.refresh_token) { return $null }
+    try {
+        $body = "grant_type=refresh_token&refresh_token=$($config.tokens.refresh_token)&client_id=563584335869-fgrhgmd47bqnekij5i8b5pr03ho849e6.apps.googleusercontent.com&client_secret=j9iVZfS8kkCEFUPaAeJV0sAi"
+        $r = Invoke-RestMethod -Uri "https://oauth2.googleapis.com/token" -Method Post -Body $body -ContentType "application/x-www-form-urlencoded" -TimeoutSec 15
+        return $r.access_token
+    } catch { return $null }
+}
+
+function Send-ToFirebaseStorage {
+    param([string]$LocalFile, [string]$StoragePath, [string]$ContentType = "application/json", [string]$AccessToken)
+    $bucket = "login-radha.firebasestorage.app"
+    $encodedPath = [System.Uri]::EscapeDataString($StoragePath)
+    $url = "https://firebasestorage.googleapis.com/v0/b/$bucket/o?uploadType=media&name=$encodedPath"
+    $headers = @{ "Authorization" = "Bearer $AccessToken"; "Content-Type" = $ContentType }
+    try {
+        if ($ContentType -eq "application/octet-stream") {
+            $fileBytes = [System.IO.File]::ReadAllBytes($LocalFile)
+            Invoke-RestMethod -Uri $url -Method Post -Body $fileBytes -Headers $headers -TimeoutSec 300 | Out-Null
+        } else {
+            $fileContent = [System.IO.File]::ReadAllText($LocalFile)
+            Invoke-RestMethod -Uri $url -Method Post -Body $fileContent -Headers $headers -TimeoutSec 60 | Out-Null
+        }
+        # Set cache-control
+        $metaUrl = "https://firebasestorage.googleapis.com/v0/b/$bucket/o/$encodedPath"
+        Invoke-RestMethod -Uri $metaUrl -Method Patch -Body '{"cacheControl":"no-cache,max-age=0"}' -Headers @{ "Authorization" = "Bearer $AccessToken"; "Content-Type" = "application/json" } -TimeoutSec 15 | Out-Null
+        return $true
+    } catch {
+        Write-Warn "REST upload failed: $($_.Exception.Message)"
+        return $false
+    }
 }
 
 function Invoke-WithRetry {
@@ -194,7 +231,7 @@ if ($SetupMonitoring) {
     Write-Step "Budget alert setup instructions..."
     Write-Host ""
     Write-Host "  +-------------------------------------------------+" -ForegroundColor Yellow
-    Write-Host "  |  GCP Budget Alerts (manual — requires billing    |" -ForegroundColor Yellow
+    Write-Host "  |  GCP Budget Alerts (manual � requires billing    |" -ForegroundColor Yellow
     Write-Host "  |  admin access via console):                      |" -ForegroundColor Yellow
     Write-Host "  |                                                  |" -ForegroundColor Yellow
     Write-Host "  |  1. Go to: console.cloud.google.com/billing     |" -ForegroundColor White
@@ -215,7 +252,7 @@ if ($SetupMonitoring) {
     Write-Host "  - Backup retention: 30 days auto-delete" -ForegroundColor Green
     Write-Host "  - Budget alerts: follow instructions above" -ForegroundColor Yellow
     Write-Host ""
-    Write-DeployLog "MONITORING | Setup complete — uptime checks + backup retention"
+    Write-DeployLog "MONITORING | Setup complete � uptime checks + backup retention"
     exit 0
 }
 
@@ -297,7 +334,7 @@ if ($Rollback) {
                     Write-DeployLog "ROLLBACK | Windows version.json restored from $($latestWinBackup.Name)"
                     $rollbackPerformed = $true
                 } else {
-                    Write-Warn "gsutil not found — upload installer/version.json manually"
+                    Write-Warn "gsutil not found � upload installer/version.json manually"
                 }
             }
         } else {
@@ -328,7 +365,7 @@ if ($Rollback) {
                     Write-DeployLog "ROLLBACK | Android version.json restored from $($latestAndBackup.Name)"
                     $rollbackPerformed = $true
                 } else {
-                    Write-Warn "gsutil not found — upload installer/android-version.json manually"
+                    Write-Warn "gsutil not found � upload installer/android-version.json manually"
                 }
             }
         } else {
@@ -778,7 +815,46 @@ try {
         }
     }
     elseif (Get-StepDone "tests") {
-        Write-Info "SKIP: Tests + coverage already passed"
+        Write-Info "SKIP: Tests already passed"
+    }
+
+    # --- Coverage Check ---
+    if (-not $skipBuild -and -not $failed -and -not (Get-StepDone "coverage")) {
+        Write-Step "Checking test coverage..."
+        $ErrorActionPreference = "Continue"
+        flutter test --coverage --no-pub
+        $covExit = $LASTEXITCODE
+        $ErrorActionPreference = "Stop"
+        if ($covExit -eq 0 -and (Test-Path "coverage/lcov.info")) {
+            $lcov = Get-Content "coverage/lcov.info" -Raw
+            $lf = ([regex]::Matches($lcov, "LF:(\d+)") |
+                   ForEach-Object { [int]$_.Groups[1].Value } |
+                   Measure-Object -Sum).Sum
+            $lh = ([regex]::Matches($lcov, "LH:(\d+)") |
+                   ForEach-Object { [int]$_.Groups[1].Value } |
+                   Measure-Object -Sum).Sum
+            $pct = if ($lf -gt 0) { [math]::Round(($lh / $lf) * 100, 1) } else { 0 }
+
+            Write-Info "Coverage: $pct% ($lh / $lf lines)"
+            Write-DeployLog "COVERAGE | $pct% ($lh/$lf)"
+
+            if ($pct -lt 85) {
+                Write-Fail "Coverage $pct% is below 85% minimum! Fix before deploying."
+                $failed = $true
+            } elseif ($pct -lt 90) {
+                Write-Warn "Coverage $pct% is below 90% target. Consider adding tests."
+                Complete-Step "coverage"
+            } else {
+                Write-Ok "Coverage $pct% meets target"
+                Complete-Step "coverage"
+            }
+        } else {
+            Write-Warn "Coverage report not generated - skipping check"
+            Complete-Step "coverage"
+        }
+    }
+    elseif (Get-StepDone "coverage") {
+        Write-Info "SKIP: Coverage already checked"
     }
 
     # --- Run Analyzer ---
@@ -1049,9 +1125,23 @@ WScript.Quit 0
                     Write-DeployLog "FIREBASE UPLOAD | Windows EXE + version.json"
                 }
                 else {
-                    Write-Warn "gsutil not found - upload EXE manually:"
-                    Write-Info "  Firebase Console > Storage > updates/windows/"
-                    Write-Info "  Upload: version.json + $exeStorageName"
+                    Write-Step "Uploading via Firebase REST API (gsutil not found)..."
+                    $fbToken = Get-FirebaseAccessToken
+                    if ($fbToken) {
+                        $ok1 = Send-ToFirebaseStorage -LocalFile $winVersionPath -StoragePath "downloads/windows/version.json" -AccessToken $fbToken
+                        if ($ok1) { Write-Ok "Windows version.json uploaded via REST API" }
+
+                        if ($exeFile -and (Test-Path $exeFile)) {
+                            Write-Info "Uploading EXE ($([math]::Round((Get-Item $exeFile).Length/1MB,1)) MB)... this may take a few minutes"
+                            $ok2 = Send-ToFirebaseStorage -LocalFile $exeFile -StoragePath "downloads/windows/$exeStorageName" -ContentType "application/octet-stream" -AccessToken $fbToken
+                            if ($ok2) { Write-Ok "EXE uploaded: $exeStorageName" }
+                        }
+                        Write-DeployLog "FIREBASE UPLOAD | Windows via REST API"
+                    } else {
+                        Write-Warn "No Firebase auth found - upload manually:"
+                        Write-Info "  Firebase Console > Storage > downloads/windows/"
+                        Write-Info "  Upload: version.json + $exeStorageName"
+                    }
                 }
 
                 # Remind to upload MSIX to Microsoft Store
@@ -1158,9 +1248,23 @@ WScript.Quit 0
                 Write-DeployLog "FIREBASE UPLOAD | Android APK + version.json"
             }
             else {
-                Write-Warn "gsutil not found - upload APK manually:"
-                Write-Info "  Firebase Console > Storage > updates/android/"
-                Write-Info "  Upload: version.json + $apkStorageName"
+                Write-Step "Uploading via Firebase REST API (gsutil not found)..."
+                $fbToken = Get-FirebaseAccessToken
+                if ($fbToken) {
+                    $ok1 = Send-ToFirebaseStorage -LocalFile $androidVersionPath -StoragePath "downloads/android/version.json" -AccessToken $fbToken
+                    if ($ok1) { Write-Ok "Android version.json uploaded via REST API" }
+
+                    if (Test-Path $apkPath) {
+                        Write-Info "Uploading APK ($([math]::Round((Get-Item $apkPath).Length/1MB,1)) MB)... this may take a few minutes"
+                        $ok2 = Send-ToFirebaseStorage -LocalFile $apkPath -StoragePath "downloads/android/$apkStorageName" -ContentType "application/octet-stream" -AccessToken $fbToken
+                        if ($ok2) { Write-Ok "APK uploaded: $apkStorageName" }
+                    }
+                    Write-DeployLog "FIREBASE UPLOAD | Android via REST API"
+                } else {
+                    Write-Warn "No Firebase auth found - upload manually:"
+                    Write-Info "  Firebase Console > Storage > downloads/android/"
+                    Write-Info "  Upload: version.json + $apkStorageName"
+                }
             }
 
             # --- Build AAB for Play Store Closed Testing ---
@@ -1210,12 +1314,12 @@ WScript.Quit 0
                     Write-DeployLog "PLAY STORE | AAB v$newVersion uploaded to closed testing"
                 }
                 else {
-                    Write-Warn "Skipped Play Store upload — remember to upload manually!"
+                    Write-Warn "Skipped Play Store upload � remember to upload manually!"
                     Write-DeployLog "PLAY STORE | AAB v$newVersion built but upload skipped"
                 }
             }
             else {
-                Write-Warn "AAB build failed — APK was uploaded to Firebase Storage, but Play Store upload skipped"
+                Write-Warn "AAB build failed � APK was uploaded to Firebase Storage, but Play Store upload skipped"
                 Write-DeployLog "ANDROID AAB FAILED | APK upload OK, AAB failed"
             }
 
