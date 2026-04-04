@@ -276,8 +276,8 @@ export const razorpayWebhook = functions
                 // ─── Subscription lifecycle events ───
 
                 case "subscription.activated": {
-                    // First payment succeeded — plan already activated by activateSubscription()
-                    // Update subscription ID mapping for future webhook lookups
+                    // First payment succeeded — activate plan in user doc
+                    // This is the FALLBACK for mobile payments where the JS callback was lost
                     const subId = event.payload.subscription?.entity?.id;
                     if (subId) {
                         const subSnap = await admin.firestore()
@@ -285,6 +285,50 @@ export const razorpayWebhook = functions
                             .doc(subId)
                             .get();
                         if (subSnap.exists) {
+                            const subData = subSnap.data()!;
+                            const activatedUserId = subData.userId;
+                            const activatedPlan = subData.plan;
+                            const activatedCycle = subData.cycle;
+
+                            if (activatedUserId && activatedPlan) {
+                                // Check if plan is already activated (activateSubscription may have run first)
+                                const userDoc = await admin.firestore().collection("users").doc(activatedUserId).get();
+                                const currentSub = userDoc.data()?.subscription;
+                                const alreadyActive = currentSub?.plan === activatedPlan && currentSub?.status === "active";
+
+                                if (!alreadyActive) {
+                                    const daysToAdd = activatedCycle === "annual" ? 365 : 30;
+                                    const expiresAt = new Date();
+                                    expiresAt.setDate(expiresAt.getDate() + daysToAdd);
+
+                                    const billsLimit = activatedPlan === "pro" ? 500 : 999999;
+
+                                    await admin.firestore().collection("users").doc(activatedUserId).update({
+                                        "subscription.plan": activatedPlan,
+                                        "subscription.status": "active",
+                                        "subscription.startedAt": admin.firestore.FieldValue.serverTimestamp(),
+                                        "subscription.expiresAt": admin.firestore.Timestamp.fromDate(expiresAt),
+                                        "subscription.razorpaySubscriptionId": subId,
+                                        "limits.billsLimit": billsLimit,
+                                        "limits.productsLimit": 999999,
+                                        "limits.customersLimit": 999999,
+                                    });
+
+                                    // Welcome notification
+                                    await admin.firestore().collection("users").doc(activatedUserId)
+                                        .collection("notifications").add({
+                                            title: `Welcome to ${activatedPlan === "pro" ? "Pro" : "Business"} Plan! 🎉`,
+                                            body: `Your ${activatedPlan === "pro" ? "Pro" : "Business"} plan is now active. Enjoy ${activatedPlan === "pro" ? "500 bills/month" : "unlimited billing"}!`,
+                                            type: "subscription",
+                                            read: false,
+                                            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                                        });
+
+                                    console.log(`subscription.activated (webhook fallback): activated ${activatedPlan} for user ${activatedUserId}`);
+                                } else {
+                                    console.log(`subscription.activated: user ${activatedUserId} already on ${activatedPlan}, skipping`);
+                                }
+                            }
                             await subSnap.ref.update({ status: "active" });
                             console.log("Subscription activated:", subId);
                         }
@@ -1203,6 +1247,17 @@ export const createSubscription = functions
 
             console.log(`✅ createSubscription: ${result.id} for user ${context.auth.uid} (${plan}/${cycle})`);
 
+            // Save subscription→user mapping so the webhook can activate the plan
+            // even if the JS callback never fires (e.g. mobile UPI redirect)
+            await admin.firestore().collection("razorpay_subscriptions").doc(result.id).set({
+                userId: context.auth.uid,
+                plan,
+                cycle,
+                planId,
+                status: "created",
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
             return {
                 success: true,
                 subscriptionId: result.id,
@@ -2028,8 +2083,8 @@ export const redeemReferralCode = functions
         }
 
         const code = String(data.code || "").toUpperCase().trim();
-        if (code.length !== 8) {
-            throw new functions.https.HttpsError("invalid-argument", "Code must be 8 characters");
+        if (code.length < 4 || code.length > 16) {
+            throw new functions.https.HttpsError("invalid-argument", "Invalid code length");
         }
 
         const db = admin.firestore();
@@ -2040,6 +2095,45 @@ export const redeemReferralCode = functions
             throw new functions.https.HttpsError("already-exists", "You have already applied a referral code");
         }
 
+        // ── Check admin-generated promo codes first ──
+        const promoDoc = await db.collection("promo_codes").doc(code).get();
+        if (promoDoc.exists) {
+            const promoData = promoDoc.data()!;
+            if (promoData.usedBy) {
+                throw new functions.https.HttpsError("already-exists", "This promo code has already been used");
+            }
+
+            const rewardDays: number = (promoData.rewardDays as number) || 30;
+            const plan: string = (promoData.plan as string) || "pro";
+
+            // Mark promo code as used (lifetime — never reusable)
+            await db.collection("promo_codes").doc(code).update({
+                usedBy: uid,
+                usedAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            // Apply plan + days to user
+            const currentSub = userDoc.data()?.subscription || {};
+            const currentExpiry: FirebaseFirestore.Timestamp | undefined = currentSub.expiresAt;
+            const baseDate = currentExpiry
+                ? new Date(Math.max(currentExpiry.toDate().getTime(), Date.now()))
+                : new Date();
+            const newExpiry = new Date(baseDate.getTime() + rewardDays * 24 * 60 * 60 * 1000);
+
+            await db.collection("users").doc(uid).update({
+                referredBy: "promo",
+                referralCodeUsed: code,
+                referralCodeAppliedAt: admin.firestore.FieldValue.serverTimestamp(),
+                "subscription.plan": plan,
+                "subscription.status": "active",
+                "subscription.expiresAt": admin.firestore.Timestamp.fromDate(newExpiry),
+            });
+
+            console.log(`🎟️ Promo code ${code} redeemed by ${uid}: ${plan} +${rewardDays}d`);
+            return { success: true, type: "promo", plan, rewardDays };
+        }
+
+        // ── Fallback: check user-to-user referral codes ──
         const referrerSnap = await db.collection("users")
             .where("referralCode", "==", code)
             .limit(1)
@@ -2061,7 +2155,7 @@ export const redeemReferralCode = functions
         });
 
         console.log(`🎁 Referral code ${code} redeemed by ${uid} (referrer: ${referrerId})`);
-        return { success: true };
+        return { success: true, type: "referral" };
     });
 
 /**
@@ -2079,6 +2173,12 @@ export const processReferralReward = functions
 
         const db = admin.firestore();
 
+        // Hardcoded referral reward settings
+        const referrerDays: number = 30;
+        const refereeDays: number = 30;
+        const rewardBoth: boolean = true;
+        const maxReferrals: number = 0; // 0 = unlimited
+
         const userDoc = await db.collection("users").doc(userId).get();
         const referrerId: string | undefined = userDoc.data()?.referredBy;
         if (!referrerId) return;
@@ -2093,22 +2193,34 @@ export const processReferralReward = functions
             return;
         }
 
-        // Extend referrer subscription by 30 days
+        // Check max referrals per user
+        if (maxReferrals > 0) {
+            const referrerRewards = await db.collection("referral_rewards")
+                .where("referrerId", "==", referrerId)
+                .count()
+                .get();
+            if ((referrerRewards.data().count || 0) >= maxReferrals) {
+                console.log(`⚠️ Referrer ${referrerId} has reached max referrals (${maxReferrals})`);
+                return;
+            }
+        }
+
+        // Extend referrer subscription
         const referrerDoc = await db.collection("users").doc(referrerId).get();
         const currentExpiry: FirebaseFirestore.Timestamp | undefined =
             referrerDoc.data()?.subscription?.expiresAt;
         const baseDate = currentExpiry
             ? new Date(Math.max(currentExpiry.toDate().getTime(), Date.now()))
             : new Date();
-        const newExpiry = new Date(baseDate.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const newExpiry = new Date(baseDate.getTime() + referrerDays * 24 * 60 * 60 * 1000);
 
-        // Extend referee (subscriber) subscription by 30 days too
+        // Extend referee subscription
         const refereeSub: FirebaseFirestore.Timestamp | undefined =
             userDoc.data()?.subscription?.expiresAt;
         const refereeBase = refereeSub
             ? new Date(Math.max(refereeSub.toDate().getTime(), Date.now()))
             : new Date();
-        const refereeNewExpiry = new Date(refereeBase.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const refereeNewExpiry = new Date(refereeBase.getTime() + (rewardBoth ? refereeDays : 0) * 24 * 60 * 60 * 1000);
 
         const batch = db.batch();
 
@@ -2117,43 +2229,50 @@ export const processReferralReward = functions
             "subscription.expiresAt": admin.firestore.Timestamp.fromDate(newExpiry),
         });
 
-        // Update referee
-        batch.update(db.collection("users").doc(userId), {
-            "subscription.expiresAt": admin.firestore.Timestamp.fromDate(refereeNewExpiry),
-        });
+        // Update referee (only if rewardBoth is enabled)
+        if (rewardBoth) {
+            batch.update(db.collection("users").doc(userId), {
+                "subscription.expiresAt": admin.firestore.Timestamp.fromDate(refereeNewExpiry),
+            });
+        }
 
         // Audit trail
         const rewardRef = db.collection("referral_rewards").doc();
         batch.set(rewardRef, {
             referrerId,
             refereeId: userId,
-            rewardDays: 30,
-            bothRewarded: true,
+            rewardDays: referrerDays,
+            refereRewardDays: rewardBoth ? refereeDays : 0,
+            bothRewarded: rewardBoth,
             rewardedAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // In-app notification for referrer
         const notifRef = db.collection("users").doc(referrerId).collection("notifications").doc();
         batch.set(notifRef, {
-            title: "🎁 Referral Reward! +30 Days Free",
-            body: "Your friend just upgraded! You both get 30 extra days of Pro.",
+            title: `🎁 Referral Reward! +${referrerDays} Days Free`,
+            body: rewardBoth
+                ? `Your friend just upgraded! You both get extra days of Pro.`
+                : `Your friend just upgraded! You get +${referrerDays} extra days of Pro.`,
             type: "referral",
             read: false,
             createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
 
         // In-app notification for referee
-        const refereeNotifRef = db.collection("users").doc(userId).collection("notifications").doc();
-        batch.set(refereeNotifRef, {
-            title: "🎁 Welcome Bonus! +30 Days Free",
-            body: "Thanks for using a referral code! You got 30 extra days of Pro.",
-            type: "referral",
-            read: false,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        });
+        if (rewardBoth) {
+            const refereeNotifRef = db.collection("users").doc(userId).collection("notifications").doc();
+            batch.set(refereeNotifRef, {
+                title: `🎁 Welcome Bonus! +${refereeDays} Days Free`,
+                body: `Thanks for using a referral code! You got ${refereeDays} extra days of Pro.`,
+                type: "referral",
+                read: false,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+        }
 
         await batch.commit();
-        console.log(`🎁 Referral reward granted: both ${referrerId} and ${userId} get +30 days`);
+        console.log(`🎁 Referral reward granted: referrer ${referrerId} +${referrerDays}d, referee ${userId} +${rewardBoth ? refereeDays : 0}d`);
     });
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -2834,4 +2953,101 @@ export const seedUserUsage = functions
 
         console.log(`✅ seedUserUsage: Seeded ${seeded} users`);
         return { success: true, seeded };
+    });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// SUPPORT TICKET NOTIFICATIONS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * onSupportMessage — When a new chat message is created in a support ticket,
+ * send an FCM push notification to the other party (admin or store).
+ */
+export const onSupportMessage = functions
+    .region("asia-south1")
+    .firestore.document("support_tickets/{ticketId}/messages/{messageId}")
+    .onCreate(async (snapshot, context) => {
+        const data = snapshot.data();
+        if (!data || data.type === "system") return;
+
+        const ticketId = context.params.ticketId;
+        const senderRole = data.senderRole as string;
+        const senderName = data.senderName as string;
+        const text = data.text as string;
+        const db = admin.firestore();
+
+        // Get the ticket to determine who to notify
+        const ticketDoc = await db.collection("support_tickets").doc(ticketId).get();
+        if (!ticketDoc.exists) return;
+
+        const ticket = ticketDoc.data()!;
+
+        if (senderRole === "store") {
+            // Store sent message → notify admins
+            const adminsSnap = await db.collection("admins").get();
+            const adminUids: string[] = adminsSnap.docs.map(d => d.id);
+
+            for (const adminUid of adminUids) {
+                const adminDoc = await db.collection("users").doc(adminUid).get();
+                const fcmTokens = adminDoc.data()?.fcmTokens as string[] | undefined;
+                if (!fcmTokens || fcmTokens.length === 0) continue;
+
+                const message: admin.messaging.MulticastMessage = {
+                    tokens: fcmTokens,
+                    notification: {
+                        title: `💬 ${ticket.storeName}: ${ticket.subject}`,
+                        body: text.length > 120 ? text.substring(0, 120) + "…" : text,
+                    },
+                    data: {
+                        type: "support",
+                        ticketId: ticketId,
+                    },
+                };
+
+                try {
+                    await admin.messaging().sendEachForMulticast(message);
+                } catch (e) {
+                    console.error(`❌ FCM to admin ${adminUid}:`, e);
+                }
+            }
+        } else if (senderRole === "admin") {
+            // Admin sent message → notify store owner
+            const storeId = ticket.storeId as string;
+            const userDoc = await db.collection("users").doc(storeId).get();
+            const fcmTokens = userDoc.data()?.fcmTokens as string[] | undefined;
+
+            if (!fcmTokens || fcmTokens.length === 0) {
+                console.log(`📱 No FCM tokens for store ${storeId}`);
+                return;
+            }
+
+            // Also create an in-app notification for the store
+            const notifRef = db.collection("users").doc(storeId).collection("notifications").doc();
+            await notifRef.set({
+                title: "💬 Support Reply",
+                body: `${senderName}: ${text.length > 80 ? text.substring(0, 80) + "…" : text}`,
+                type: "support",
+                read: false,
+                createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            });
+
+            const message: admin.messaging.MulticastMessage = {
+                tokens: fcmTokens,
+                notification: {
+                    title: "💬 Support Reply",
+                    body: `${senderName}: ${text.length > 120 ? text.substring(0, 120) + "…" : text}`,
+                },
+                data: {
+                    type: "support",
+                    ticketId: ticketId,
+                },
+            };
+
+            try {
+                const response = await admin.messaging().sendEachForMulticast(message);
+                console.log(`📱 Support push to ${storeId}: ${response.successCount} sent`);
+            } catch (e) {
+                console.error(`❌ FCM to store ${storeId}:`, e);
+            }
+        }
     });

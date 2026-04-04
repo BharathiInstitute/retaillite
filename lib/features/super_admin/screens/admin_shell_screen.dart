@@ -89,16 +89,23 @@ class AdminShellScreen extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 8),
-            ..._navItems.map(
-              (item) => _buildNavItem(
-                context,
-                item['icon'] as IconData,
-                item['label'] as String,
-                item['route'] as String,
-                currentPath == item['route'],
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: _navItems
+                      .map(
+                        (item) => _buildNavItem(
+                          context,
+                          item['icon'] as IconData,
+                          item['label'] as String,
+                          item['route'] as String,
+                          currentPath == item['route'],
+                        ),
+                      )
+                      .toList(),
+                ),
               ),
             ),
-            const Spacer(),
             // Back to store
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
@@ -325,6 +332,16 @@ class AdminShellScreen extends ConsumerWidget {
       'icon': Icons.notifications,
       'label': 'Notifications',
       'route': '/super-admin/notifications',
+    },
+    {
+      'icon': Icons.card_giftcard,
+      'label': 'Referrals',
+      'route': '/super-admin/referrals',
+    },
+    {
+      'icon': Icons.support_agent,
+      'label': 'Support',
+      'route': '/super-admin/support',
     },
   ];
 }

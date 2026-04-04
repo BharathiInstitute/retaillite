@@ -60,8 +60,9 @@ class ReferralService {
 
   static String _generateCode(String uid) {
     final random = Random();
+    // Default: first 4 chars of uid + 4-digit random
+    final uidPrefix = uid.substring(0, 4).toUpperCase();
     final suffix = random.nextInt(9999).toString().padLeft(4, '0');
-    final prefix = uid.substring(0, 4).toUpperCase();
-    return '$prefix$suffix';
+    return '$uidPrefix$suffix';
   }
 }

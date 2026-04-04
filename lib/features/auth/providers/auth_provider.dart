@@ -19,7 +19,6 @@ import 'package:retaillite/core/constants/app_constants.dart';
 import 'package:retaillite/core/services/demo_data_service.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
 import 'package:retaillite/core/services/performance_service.dart';
-import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
 import 'package:retaillite/firebase_options.dart';
 import 'package:retaillite/features/settings/providers/theme_settings_provider.dart';
@@ -1378,9 +1377,6 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
           .doc(user.uid)
           .set(data, SetOptions(merge: true));
 
-      // Generate referral code for this new user (idempotent — skips if exists)
-      unawaited(ReferralService.getOrCreateCode());
-
       state = state.copyWith(
         isShopSetupComplete: true,
         user: state.user?.copyWith(
@@ -1829,10 +1825,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
       // Clear pending state
       _pendingGoogleCredential = null;
-      state = state.copyWith(
-        pendingAccountLink: false,
-        pendingLinkEmail: null,
-      );
+      state = state.copyWith(pendingAccountLink: false, pendingLinkEmail: null);
 
       // Update Firestore doc (mark emailVerified, add photoUrl if available)
       await _ensureFirestoreDoc(user);
@@ -1883,10 +1876,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
   /// Cancel the pending account link dialog
   void cancelPendingLink() {
     _pendingGoogleCredential = null;
-    state = state.copyWith(
-      pendingAccountLink: false,
-      pendingLinkEmail: null,
-    );
+    state = state.copyWith(pendingAccountLink: false, pendingLinkEmail: null);
   }
 
   /// Link Google to the currently signed-in email/password account.
@@ -1972,9 +1962,7 @@ class FirebaseAuthNotifier extends StateNotifier<AuthState> {
 
   /// Get list of linked provider IDs for the current user
   List<String> get linkedProviders {
-    return _auth.currentUser?.providerData
-            .map((p) => p.providerId)
-            .toList() ??
+    return _auth.currentUser?.providerData.map((p) => p.providerId).toList() ??
         [];
   }
 

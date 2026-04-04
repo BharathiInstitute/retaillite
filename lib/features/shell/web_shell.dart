@@ -327,6 +327,15 @@ class _WebSidebar extends ConsumerWidget {
                     },
                   ),
 
+                // Support Chat
+                _SidebarItem(
+                  icon: Icons.support_agent,
+                  label: 'Support',
+                  isSelected: false,
+                  isCollapsed: isCollapsed,
+                  onTap: () => GoRouter.of(context).push('/support'),
+                ),
+
                 // "Visit Website" — web only, hidden on Android/Windows
                 if (showWebsiteLink)
                   _SidebarItem(

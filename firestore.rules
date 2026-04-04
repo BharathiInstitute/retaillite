@@ -420,6 +420,40 @@ service cloud.firestore {
       allow read: if isAuthenticated() && resource.data.referrerId == request.auth.uid;
       allow write: if false;
     }
+
+    // ===================
+    // SUPPORT TICKETS
+    // Store owners can CRUD their own tickets; admins can read/write all
+    // ===================
+    match /support_tickets/{ticketId} {
+      // Store can read own ticket, admin can read all
+      allow read: if isAuthenticated()
+        && (resource.data.storeId == request.auth.uid || isAdmin());
+      
+      // Store can create ticket for themselves
+      allow create: if isAuthenticated()
+        && request.resource.data.storeId == request.auth.uid;
+      
+      // Store can update own (markRead, close), admin can update any
+      allow update: if isAuthenticated()
+        && (resource.data.storeId == request.auth.uid || isAdmin());
+      
+      // Only admin can delete
+      allow delete: if isAdmin();
+
+      // Messages subcollection
+      match /messages/{messageId} {
+        // Store can read own ticket messages, admin can read all
+        allow read: if isAuthenticated()
+          && (get(/databases/$(database)/documents/support_tickets/$(ticketId)).data.storeId == request.auth.uid
+              || isAdmin());
+        
+        // Store can send messages on own ticket, admin can send on any
+        allow create: if isAuthenticated()
+          && (get(/databases/$(database)/documents/support_tickets/$(ticketId)).data.storeId == request.auth.uid
+              || isAdmin());
+      }
+    }
     
     // Deny all other access by default
     match /{document=**} {

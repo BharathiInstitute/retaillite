@@ -5,6 +5,7 @@ library;
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:retaillite/features/super_admin/models/admin_user_model.dart';
+import 'package:retaillite/features/support/models/support_ticket.dart';
 
 class AdminFirestoreService {
   AdminFirestoreService._();
@@ -628,5 +629,493 @@ class AdminFirestoreService {
       debugPrint('❌ AdminFirestore: Failed to remove admin: $e');
       return false;
     }
+  }
+
+  // =====================
+  // REFERRAL ANALYTICS
+  // =====================
+
+  /// Get referral program statistics
+  static Future<ReferralStats> getReferralStats() async {
+    try {
+      final results = await Future.wait([
+        _firestore.collection('referral_rewards').count().get(),
+        _firestore
+            .collection('users')
+            .where('referredBy', isNull: false)
+            .count()
+            .get(),
+        _firestore.collection('referral_rewards').get(),
+      ]);
+
+      final totalRewards = (results[0] as AggregateQuerySnapshot).count ?? 0;
+      final totalReferred = (results[1] as AggregateQuerySnapshot).count ?? 0;
+
+      // Sum total days gifted from reward docs
+      int totalDaysGifted = 0;
+      final rewardDocs = (results[2] as QuerySnapshot).docs;
+      for (final doc in rewardDocs) {
+        final data = doc.data() as Map<String, dynamic>;
+        final days = (data['rewardDays'] as num?)?.toInt() ?? 30;
+        final both = data['bothRewarded'] as bool? ?? false;
+        totalDaysGifted += both ? days * 2 : days;
+      }
+
+      return ReferralStats(
+        totalReferrals: totalReferred,
+        totalRewardsIssued: totalRewards,
+        totalDaysGifted: totalDaysGifted,
+      );
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to get referral stats: $e');
+      return const ReferralStats();
+    }
+  }
+
+  /// Get top referrers (leaderboard)
+  static Future<List<ReferrerInfo>> getTopReferrers({int limit = 10}) async {
+    try {
+      final rewardsSnap = await _firestore.collection('referral_rewards').get();
+
+      // Group by referrerId and count
+      final Map<String, int> counts = {};
+      for (final doc in rewardsSnap.docs) {
+        final data = doc.data();
+        final referrerId = data['referrerId'] as String? ?? '';
+        if (referrerId.isNotEmpty) {
+          counts[referrerId] = (counts[referrerId] ?? 0) + 1;
+        }
+      }
+
+      // Sort by count descending, take top N
+      final sorted = counts.entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final topEntries = sorted.take(limit).toList();
+
+      // Fetch user details for top referrers
+      final List<ReferrerInfo> results = [];
+      for (final entry in topEntries) {
+        try {
+          final userDoc = await _firestore
+              .collection('users')
+              .doc(entry.key)
+              .get();
+          final data = userDoc.data() ?? {};
+          results.add(
+            ReferrerInfo(
+              userId: entry.key,
+              shopName: data['shopName'] as String? ?? 'Unknown',
+              ownerName: data['ownerName'] as String? ?? '',
+              email: data['email'] as String? ?? '',
+              referralCount: entry.value,
+              daysEarned: entry.value * 30,
+            ),
+          );
+        } catch (_) {
+          results.add(
+            ReferrerInfo(
+              userId: entry.key,
+              shopName: 'Unknown',
+              referralCount: entry.value,
+              daysEarned: entry.value * 30,
+            ),
+          );
+        }
+      }
+
+      return results;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to get top referrers: $e');
+      return [];
+    }
+  }
+
+  /// Get recent referral activity
+  static Future<List<ReferralActivity>> getRecentReferrals({
+    int limit = 20,
+  }) async {
+    try {
+      final snap = await _firestore
+          .collection('referral_rewards')
+          .orderBy('rewardedAt', descending: true)
+          .limit(limit)
+          .get();
+
+      final List<ReferralActivity> activities = [];
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        final referrerId = data['referrerId'] as String? ?? '';
+        final refereeId = data['refereeId'] as String? ?? '';
+        final rewardDays = (data['rewardDays'] as num?)?.toInt() ?? 30;
+        final rewardedAt = (data['rewardedAt'] as Timestamp?)?.toDate();
+        final bothRewarded = data['bothRewarded'] as bool? ?? false;
+
+        // Fetch names
+        String referrerName = 'Unknown';
+        String refereeName = 'Unknown';
+        try {
+          final refs = await Future.wait([
+            _firestore.collection('users').doc(referrerId).get(),
+            _firestore.collection('users').doc(refereeId).get(),
+          ]);
+          referrerName = (refs[0].data()?['shopName'] as String?) ?? 'Unknown';
+          refereeName = (refs[1].data()?['shopName'] as String?) ?? 'Unknown';
+        } catch (_) {}
+
+        activities.add(
+          ReferralActivity(
+            referrerId: referrerId,
+            referrerName: referrerName,
+            refereeId: refereeId,
+            refereeName: refereeName,
+            rewardDays: rewardDays,
+            bothRewarded: bothRewarded,
+            rewardedAt: rewardedAt,
+          ),
+        );
+      }
+
+      return activities;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to get recent referrals: $e');
+      return [];
+    }
+  }
+
+  // =====================
+  // PROMO REFERRAL CODES
+  // =====================
+
+  /// Generate a unique promo referral code and store it in Firestore.
+  /// Returns the code string, or null on failure.
+  static Future<String?> createPromoCode({
+    required String code,
+    required int rewardDays,
+    required String plan,
+    String? note,
+  }) async {
+    try {
+      final normalized = code.toUpperCase().trim();
+      if (normalized.isEmpty) return null;
+
+      // Check uniqueness against promo_codes collection
+      final existing = await _firestore
+          .collection('promo_codes')
+          .doc(normalized)
+          .get();
+      if (existing.exists) return null; // duplicate
+
+      // Also check against user referral codes
+      final userMatch = await _firestore
+          .collection('users')
+          .where('referralCode', isEqualTo: normalized)
+          .limit(1)
+          .get();
+      if (userMatch.docs.isNotEmpty) return null; // conflicts with user code
+
+      await _firestore.collection('promo_codes').doc(normalized).set({
+        'code': normalized,
+        'rewardDays': rewardDays,
+        'plan': plan,
+        'note': note ?? '',
+        'usedBy': null,
+        'usedAt': null,
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      return normalized;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to create promo code: $e');
+      return null;
+    }
+  }
+
+  /// Get all promo codes (most recent first)
+  static Future<List<PromoCode>> getPromoCodes({int limit = 50}) async {
+    try {
+      final snap = await _firestore
+          .collection('promo_codes')
+          .orderBy('createdAt', descending: true)
+          .limit(limit)
+          .get();
+
+      return snap.docs.map((doc) => PromoCode.fromFirestore(doc)).toList();
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to get promo codes: $e');
+      return [];
+    }
+  }
+
+  /// Delete an unused promo code
+  static Future<bool> deletePromoCode(String code) async {
+    try {
+      final doc = await _firestore.collection('promo_codes').doc(code).get();
+      if (!doc.exists) return false;
+      if (doc.data()?['usedBy'] != null) return false; // already used
+      await _firestore.collection('promo_codes').doc(code).delete();
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to delete promo code: $e');
+      return false;
+    }
+  }
+
+  // =====================
+  // SUPPORT TICKETS
+  // =====================
+
+  /// Get all support tickets (admin view), ordered by updatedAt desc
+  static Stream<List<SupportTicket>> getAllTicketsStream() {
+    return _firestore
+        .collection('support_tickets')
+        .orderBy('updatedAt', descending: true)
+        .limit(200)
+        .snapshots()
+        .map(
+          (snap) =>
+              snap.docs.map((d) => SupportTicket.fromFirestore(d)).toList(),
+        );
+  }
+
+  /// Get total unread tickets count for admin badge
+  static Stream<int> getAdminUnreadTicketsStream() {
+    return _firestore
+        .collection('support_tickets')
+        .where('unreadAdmin', isGreaterThan: 0)
+        .snapshots()
+        .map((snap) => snap.docs.length);
+  }
+
+  /// Send a message as admin
+  static Future<bool> sendAdminMessage({
+    required String ticketId,
+    required String text,
+    required String adminName,
+  }) async {
+    try {
+      final batch = _firestore.batch();
+
+      final msgRef = _firestore
+          .collection('support_tickets')
+          .doc(ticketId)
+          .collection('messages')
+          .doc();
+
+      batch.set(msgRef, {
+        'senderId': 'admin',
+        'senderName': adminName,
+        'senderRole': 'admin',
+        'text': text,
+        'type': 'text',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      batch.update(_firestore.collection('support_tickets').doc(ticketId), {
+        'lastMessage': text,
+        'lastSenderRole': 'admin',
+        'updatedAt': FieldValue.serverTimestamp(),
+        'unreadStore': FieldValue.increment(1),
+        'unreadAdmin': 0,
+      });
+
+      await batch.commit();
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to send admin message: $e');
+      return false;
+    }
+  }
+
+  /// Update ticket status (with system message)
+  static Future<bool> updateTicketStatus(
+    String ticketId,
+    String newStatus,
+  ) async {
+    try {
+      final batch = _firestore.batch();
+
+      final updates = <String, dynamic>{
+        'status': newStatus,
+        'updatedAt': FieldValue.serverTimestamp(),
+      };
+      if (newStatus == 'closed') {
+        updates['closedAt'] = FieldValue.serverTimestamp();
+      }
+
+      batch.update(
+        _firestore.collection('support_tickets').doc(ticketId),
+        updates,
+      );
+
+      // System message
+      final msgRef = _firestore
+          .collection('support_tickets')
+          .doc(ticketId)
+          .collection('messages')
+          .doc();
+      final label = switch (newStatus) {
+        'inProgress' => 'In Progress',
+        'resolved' => 'Resolved',
+        'closed' => 'Closed',
+        _ => 'Open',
+      };
+      batch.set(msgRef, {
+        'senderId': 'system',
+        'senderName': 'System',
+        'senderRole': 'system',
+        'text': 'Ticket status changed to $label.',
+        'type': 'system',
+        'createdAt': FieldValue.serverTimestamp(),
+      });
+
+      await batch.commit();
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to update ticket status: $e');
+      return false;
+    }
+  }
+
+  /// Update ticket priority
+  static Future<bool> updateTicketPriority(
+    String ticketId,
+    String priority,
+  ) async {
+    try {
+      await _firestore.collection('support_tickets').doc(ticketId).update({
+        'priority': priority,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to update priority: $e');
+      return false;
+    }
+  }
+
+  /// Update ticket tags
+  static Future<bool> updateTicketTags(
+    String ticketId,
+    List<String> tags,
+  ) async {
+    try {
+      await _firestore.collection('support_tickets').doc(ticketId).update({
+        'tags': tags,
+      });
+      return true;
+    } catch (e) {
+      debugPrint('❌ AdminFirestore: Failed to update tags: $e');
+      return false;
+    }
+  }
+
+  /// Mark ticket as read by admin
+  static Future<void> markTicketReadAdmin(String ticketId) async {
+    try {
+      await _firestore.collection('support_tickets').doc(ticketId).update({
+        'unreadAdmin': 0,
+      });
+    } catch (_) {}
+  }
+
+  /// Get messages stream for a ticket (admin view)
+  static Stream<List<ChatMessage>> getTicketMessagesStream(String ticketId) {
+    return _firestore
+        .collection('support_tickets')
+        .doc(ticketId)
+        .collection('messages')
+        .orderBy('createdAt', descending: false)
+        .snapshots()
+        .map(
+          (snap) => snap.docs.map((d) => ChatMessage.fromFirestore(d)).toList(),
+        );
+  }
+}
+
+/// Referral program statistics
+class ReferralStats {
+  final int totalReferrals;
+  final int totalRewardsIssued;
+  final int totalDaysGifted;
+
+  const ReferralStats({
+    this.totalReferrals = 0,
+    this.totalRewardsIssued = 0,
+    this.totalDaysGifted = 0,
+  });
+}
+
+/// Top referrer info
+class ReferrerInfo {
+  final String userId;
+  final String shopName;
+  final String ownerName;
+  final String email;
+  final int referralCount;
+  final int daysEarned;
+
+  const ReferrerInfo({
+    required this.userId,
+    this.shopName = '',
+    this.ownerName = '',
+    this.email = '',
+    required this.referralCount,
+    required this.daysEarned,
+  });
+}
+
+/// Single referral activity event
+class ReferralActivity {
+  final String referrerId;
+  final String referrerName;
+  final String refereeId;
+  final String refereeName;
+  final int rewardDays;
+  final bool bothRewarded;
+  final DateTime? rewardedAt;
+
+  const ReferralActivity({
+    required this.referrerId,
+    required this.referrerName,
+    required this.refereeId,
+    required this.refereeName,
+    required this.rewardDays,
+    required this.bothRewarded,
+    this.rewardedAt,
+  });
+}
+
+/// Admin-generated promo referral code
+class PromoCode {
+  final String code;
+  final int rewardDays;
+  final String plan;
+  final String note;
+  final String? usedBy;
+  final DateTime? usedAt;
+  final DateTime? createdAt;
+
+  bool get isUsed => usedBy != null;
+
+  const PromoCode({
+    required this.code,
+    required this.rewardDays,
+    required this.plan,
+    this.note = '',
+    this.usedBy,
+    this.usedAt,
+    this.createdAt,
+  });
+
+  factory PromoCode.fromFirestore(DocumentSnapshot doc) {
+    final data = doc.data() as Map<String, dynamic>? ?? {};
+    return PromoCode(
+      code: data['code'] as String? ?? doc.id,
+      rewardDays: (data['rewardDays'] as num?)?.toInt() ?? 0,
+      plan: data['plan'] as String? ?? 'pro',
+      note: data['note'] as String? ?? '',
+      usedBy: data['usedBy'] as String?,
+      usedAt: (data['usedAt'] as Timestamp?)?.toDate(),
+      createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
+    );
   }
 }

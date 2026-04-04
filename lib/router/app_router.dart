@@ -35,7 +35,12 @@ import 'package:retaillite/features/super_admin/screens/manage_admins_screen.dar
 import 'package:retaillite/features/super_admin/screens/admin_shell_screen.dart';
 import 'package:retaillite/features/super_admin/screens/super_admin_login_screen.dart';
 import 'package:retaillite/features/super_admin/screens/notifications_admin_screen.dart';
+import 'package:retaillite/features/super_admin/screens/referrals_admin_screen.dart';
+import 'package:retaillite/features/super_admin/screens/support_admin_screen.dart';
+import 'package:retaillite/features/super_admin/screens/admin_chat_screen.dart';
 import 'package:retaillite/features/super_admin/providers/super_admin_provider.dart';
+import 'package:retaillite/features/support/screens/my_tickets_screen.dart';
+import 'package:retaillite/features/support/screens/ticket_chat_screen.dart';
 import 'package:retaillite/features/notifications/screens/notifications_screen.dart';
 import 'package:retaillite/features/subscription/screens/subscription_screen.dart';
 import 'package:retaillite/core/services/offline_storage_service.dart';
@@ -76,6 +81,11 @@ class AppRoutes {
   static const String superAdminUserCosts = '/super-admin/user-costs';
   static const String superAdminManageAdmins = '/super-admin/manage-admins';
   static const String superAdminNotifications = '/super-admin/notifications';
+  static const String superAdminReferrals = '/super-admin/referrals';
+  static const String superAdminSupport = '/super-admin/support';
+  static const String superAdminSupportChat = '/super-admin/support/:ticketId';
+  static const String support = '/support';
+  static const String supportChat = '/support/:ticketId';
   static const String notifications = '/notifications';
 }
 
@@ -346,6 +356,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         builder: (context, state) => const NotificationsScreen(),
       ),
 
+      // Store-side support tickets
+      GoRoute(
+        path: AppRoutes.support,
+        builder: (context, state) => const MyTicketsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.supportChat,
+        builder: (context, state) {
+          final ticketId = state.pathParameters['ticketId']!;
+          return TicketChatScreen(ticketId: ticketId);
+        },
+      ),
+
       // Super Admin login (outside shell)
       GoRoute(
         path: AppRoutes.superAdminLogin,
@@ -407,6 +430,25 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: AppRoutes.superAdminNotifications,
             pageBuilder: (context, state) =>
                 const NoTransitionPage(child: NotificationsAdminScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminReferrals,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: ReferralsAdminScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminSupport,
+            pageBuilder: (context, state) =>
+                const NoTransitionPage(child: SupportAdminScreen()),
+          ),
+          GoRoute(
+            path: AppRoutes.superAdminSupportChat,
+            pageBuilder: (context, state) {
+              final ticketId = state.pathParameters['ticketId']!;
+              return NoTransitionPage(
+                child: AdminChatScreen(ticketId: ticketId),
+              );
+            },
           ),
         ],
       ),

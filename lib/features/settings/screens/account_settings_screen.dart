@@ -15,7 +15,6 @@ import 'package:retaillite/core/services/image_service.dart';
 import 'package:retaillite/core/services/privacy_consent_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/features/auth/providers/auth_provider.dart';
-import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/router/app_router.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -34,8 +33,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
   bool _isUploadingImage = false;
   UserSubscription _subscription = UserSubscription();
   UserLimits _limits = UserLimits();
-  String _referralCode = '';
-  int _referralCount = 0;
 
   @override
   void initState() {
@@ -44,18 +41,6 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
     _emailController.text = user?.email ?? '';
     _phoneController.text = user?.phone ?? '';
     _loadSubscription();
-    _loadReferral();
-  }
-
-  Future<void> _loadReferral() async {
-    try {
-      final code = await ReferralService.getOrCreateCode();
-      if (mounted) setState(() => _referralCode = code);
-    } catch (_) {}
-    try {
-      final count = await ReferralService.getReferralCount();
-      if (mounted) setState(() => _referralCount = count);
-    } catch (_) {}
   }
 
   Future<void> _loadSubscription() async {
@@ -288,13 +273,12 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
           ),
           const SizedBox(height: 24),
 
-          // ── Referral Section ──
-          _buildSectionHeader(theme, 'Invite Friends'),
+          // ── Promo Code Section ──
+          _buildSectionHeader(theme, 'Promo Code'),
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(
                     children: [
@@ -304,104 +288,32 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                           color: AppColors.primary.withAlpha(25),
                           shape: BoxShape.circle,
                         ),
-                        child: Icon(
-                          Icons.card_giftcard,
-                          color: AppColors.primary,
-                        ),
+                        child: Icon(Icons.redeem, color: AppColors.primary),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'Invite & Earn 1 Month Free',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                            Text(
-                              'Share your code. When a friend upgrades, you both earn a free month.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: theme.colorScheme.onSurface.withAlpha(
-                                  153,
-                                ),
-                              ),
-                            ),
-                          ],
+                        child: Text(
+                          'Have a promo code? Redeem it to get free days!',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: theme.colorScheme.onSurface.withAlpha(153),
+                          ),
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 16),
-                  // Referral code box
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          _referralCode.isEmpty ? 'Loading…' : _referralCode,
-                          style: const TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            letterSpacing: 4,
-                          ),
-                        ),
-                        Text(
-                          '$_referralCount referred',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
                   const SizedBox(height: 12),
                   SizedBox(
                     width: double.infinity,
-                    child: FilledButton.icon(
-                      onPressed: _referralCode.isEmpty
-                          ? null
-                          : () async {
-                              final messenger = ScaffoldMessenger.of(context);
-                              final copied = await ReferralService.share(
-                                _referralCode,
-                              );
-                              if (copied && mounted) {
-                                messenger.showSnackBar(
-                                  const SnackBar(
-                                    content: Text(
-                                      'Referral link copied to clipboard!',
-                                    ),
-                                    duration: Duration(seconds: 2),
-                                  ),
-                                );
-                              }
-                            },
-                      icon: const Icon(Icons.share, size: 18),
-                      label: const Text('Share Invite Link'),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.primary,
+                    child: OutlinedButton.icon(
+                      onPressed: _showRedeemDialog,
+                      icon: const Icon(Icons.redeem, size: 18),
+                      label: const Text('Redeem Promo Code'),
+                      style: OutlinedButton.styleFrom(
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Center(
-                    child: TextButton(
-                      onPressed: _showRedeemDialog,
-                      child: const Text('Have a friend’s code? Enter it here'),
                     ),
                   ),
                 ],
@@ -479,12 +391,12 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Enter Referral Code'),
+        title: const Text('Enter Promo Code'),
         content: TextField(
           controller: controller,
           textCapitalization: TextCapitalization.characters,
-          maxLength: 8,
-          decoration: const InputDecoration(hintText: 'e.g. ABCD1234'),
+          maxLength: 16,
+          decoration: const InputDecoration(hintText: 'e.g. DIWALI2026'),
         ),
         actions: [
           TextButton(
@@ -500,7 +412,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
       ),
     );
     controller.dispose();
-    if (result == null || result.length != 8 || !mounted) return;
+    if (result == null || result.isEmpty || !mounted) return;
     try {
       final fn = FirebaseFunctions.instanceFor(region: 'asia-south1');
       await fn.httpsCallable('redeemReferralCode').call({'code': result});
@@ -556,10 +468,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
             subtitle: Text(hasGoogle ? 'Linked' : 'Not linked'),
             trailing: hasGoogle
                 ? const Icon(Icons.check_circle, color: Colors.green)
-                : TextButton(
-                    onPressed: _linkGoogle,
-                    child: const Text('Link'),
-                  ),
+                : TextButton(onPressed: _linkGoogle, child: const Text('Link')),
           ),
           const Divider(height: 1),
           // Email/Password provider
@@ -655,8 +564,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                           ? Icons.visibility_off_outlined
                           : Icons.visibility_outlined,
                     ),
-                    onPressed: () =>
-                        setDialogState(() => obscure = !obscure),
+                    onPressed: () => setDialogState(() => obscure = !obscure),
                   ),
                 ),
               ),
@@ -701,9 +609,7 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                       setDialogState(() => saving = true);
                       final success = await ref
                           .read(authNotifierProvider.notifier)
-                          .linkEmailPasswordToCurrentAccount(
-                            passwordCtrl.text,
-                          );
+                          .linkEmailPasswordToCurrentAccount(passwordCtrl.text);
                       if (ctx.mounted) Navigator.pop(ctx);
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -713,8 +619,9 @@ class _AccountSettingsScreenState extends ConsumerState<AccountSettingsScreen> {
                                   ? 'Password set! You can now sign in with email & password.'
                                   : 'Failed to set password.',
                             ),
-                            backgroundColor:
-                                success ? Colors.green : AppColors.error,
+                            backgroundColor: success
+                                ? Colors.green
+                                : AppColors.error,
                           ),
                         );
                         if (success) setState(() {});

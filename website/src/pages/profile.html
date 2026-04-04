@@ -200,6 +200,183 @@
       .plan-details { grid-template-columns: 1fr; }
       .profile-header { flex-direction: column; text-align: center; }
     }
+
+    /* ─── Navbar Profile Dropdown ─── */
+    .navbar-profile-trigger {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      cursor: pointer;
+      padding: 0.25rem 0.625rem 0.25rem 0.25rem;
+      border-radius: 999px;
+      border: 2px solid var(--color-primary-100, #d1fae5);
+      background: white;
+      transition: all 0.2s;
+      position: relative;
+    }
+    .navbar-profile-trigger:hover {
+      border-color: var(--color-primary, #10B981);
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+    }
+    .navbar-profile-trigger img {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      object-fit: cover;
+    }
+    .navbar-profile-trigger .avatar-initial {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--color-primary, #10B981);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 0.875rem;
+    }
+    .navbar-profile-trigger .trigger-name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-text, #111827);
+      max-width: 100px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .navbar-profile-trigger .trigger-arrow {
+      font-size: 0.625rem;
+      color: #9ca3af;
+      transition: transform 0.2s;
+    }
+    .navbar-profile-wrap.open .trigger-arrow {
+      transform: rotate(180deg);
+    }
+
+    .navbar-profile-wrap {
+      position: relative;
+    }
+
+    .navbar-profile-dropdown {
+      display: none;
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      right: 0;
+      width: 280px;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+      padding: 0;
+      z-index: 1000;
+      overflow: hidden;
+      border: 1px solid #e5e7eb;
+      animation: dropIn 0.15s ease-out;
+    }
+    .navbar-profile-wrap.open .navbar-profile-dropdown {
+      display: block;
+    }
+    @keyframes dropIn {
+      from { opacity: 0; transform: translateY(-8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .np-header {
+      padding: 1.25rem 1rem 1rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      border-bottom: 1px solid #f3f4f6;
+      background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+    }
+    .np-header img, .np-header .np-avatar-init {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+    .np-header .np-avatar-init {
+      background: var(--color-primary, #10B981);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 1.125rem;
+    }
+    .np-info { overflow: hidden; }
+    .np-name {
+      font-weight: 700;
+      font-size: 0.9375rem;
+      color: var(--color-text, #111827);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .np-email {
+      font-size: 0.75rem;
+      color: var(--color-text-light, #6b7280);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .np-plan-row {
+      padding: 0.75rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid #f3f4f6;
+    }
+    .np-plan-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.25rem 0.625rem;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.75rem;
+    }
+    .np-plan-badge.free { background: #f3f4f6; color: #6b7280; }
+    .np-plan-badge.pro { background: #dbeafe; color: #2563eb; }
+    .np-plan-badge.business { background: #ede9fe; color: #7c3aed; }
+    .np-plan-manage {
+      font-size: 0.75rem;
+      color: var(--color-primary, #10B981);
+      text-decoration: none;
+      font-weight: 600;
+    }
+    .np-plan-manage:hover { text-decoration: underline; }
+    .np-actions {
+      padding: 0.5rem;
+    }
+    .np-action-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.625rem 0.75rem;
+      border: none;
+      background: none;
+      border-radius: 10px;
+      font-size: 0.8125rem;
+      font-weight: 500;
+      color: var(--color-text, #111827);
+      cursor: pointer;
+      transition: background 0.15s;
+      text-decoration: none;
+    }
+    .np-action-btn:hover {
+      background: #f3f4f6;
+    }
+    .np-action-btn.danger { color: #ef4444; }
+    .np-action-btn.danger:hover { background: #fef2f2; }
+    .np-action-icon { font-size: 1rem; width: 1.25rem; text-align: center; }
+
+    @media (max-width: 768px) {
+      .navbar-profile-trigger .trigger-name { display: none; }
+      .navbar-profile-dropdown { right: -1rem; width: 260px; }
+    }
   </style>
 </head>
 
@@ -221,9 +398,41 @@
         <li><a href="support.html">Support</a></li>
       </ul>
       <div class="navbar-cta">
-        <a href="profile.html" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">My Account</a>
-        <a href="https://stores.tulasierp.com/app/" class="btn btn-ghost btn-sm" style="margin-right: 0.5rem;">Open App</a>
         <a href="download.html" class="btn btn-primary btn-sm">Download Now</a>
+        <!-- Before auth loads: static link -->
+        <a href="profile.html" class="btn btn-ghost btn-sm" id="navbar-signin-btn">My Account</a>
+        <!-- After auth: profile dropdown (hidden until JS) -->
+        <div class="navbar-profile-wrap" id="navbar-profile-wrap" style="display:none;">
+          <div class="navbar-profile-trigger" id="navbar-profile-trigger" onclick="toggleProfileDropdown()">
+            <span class="avatar-initial" id="nav-avatar">U</span>
+            <span class="trigger-name" id="nav-trigger-name">Account</span>
+            <span class="trigger-arrow">▼</span>
+          </div>
+          <div class="navbar-profile-dropdown" id="navbar-profile-dropdown">
+            <div class="np-header">
+              <span class="np-avatar-init" id="nav-dd-avatar">U</span>
+              <div class="np-info">
+                <div class="np-name" id="nav-dd-name">User</div>
+                <div class="np-email" id="nav-dd-email">email@example.com</div>
+              </div>
+            </div>
+            <div class="np-plan-row">
+              <span class="np-plan-badge free" id="nav-dd-plan">Free</span>
+              <a href="pricing.html" class="np-plan-manage" id="nav-dd-manage">Upgrade →</a>
+            </div>
+            <div class="np-actions">
+              <a href="https://stores.tulasierp.com/app/" class="np-action-btn">
+                <span class="np-action-icon">🚀</span> Open App
+              </a>
+              <a href="profile.html" class="np-action-btn">
+                <span class="np-action-icon">👤</span> My Account
+              </a>
+              <button class="np-action-btn danger" onclick="signOut(); toggleProfileDropdown();">
+                <span class="np-action-icon">🚪</span> Sign Out
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
       <button class="navbar-toggle" aria-label="Toggle menu"><span></span><span></span><span></span></button>
     </div>
@@ -265,10 +474,80 @@
           <div style="font-size:3rem; margin-bottom:1rem;">🔒</div>
           <h2>Sign in to view your account</h2>
           <p>Sign in with your Tulasi Stores account to see your subscription details.</p>
-          <button onclick="signInWithGoogle()" class="btn btn-primary btn-lg" style="gap:0.5rem;">
-            <svg width="18" height="18" viewBox="0 0 48 48" style="vertical-align:middle;"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
-            Sign in with Google
+          <div id="login-error-profile" style="display:none; background:#fef2f2; color:#dc2626; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:0.875rem; text-align:left; display:flex; align-items:center; gap:0.5rem;"></div>
+
+          <!-- Google Sign-In -->
+          <button onclick="signInWithGoogle()" style="width:100%; max-width:360px; margin:0 auto; padding:0.75rem; border:1.5px solid #e5e7eb; border-radius:10px; background:white; cursor:pointer; font-size:0.9375rem; font-weight:500; display:flex; align-items:center; justify-content:center; gap:0.625rem; transition:all 0.2s; color:#374151;"
+            onmouseover="this.style.borderColor='#10B981'; this.style.boxShadow='0 0 0 3px rgba(16,185,129,0.08)'" onmouseout="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Continue with Google
           </button>
+
+          <!-- Divider -->
+          <div style="display:flex; align-items:center; gap:0.75rem; margin:1.25rem 0; max-width:360px; margin-left:auto; margin-right:auto;">
+            <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+            <span style="font-size:0.75rem; color:#9ca3af; font-weight:500;">OR</span>
+            <div style="flex:1; height:1px; background:#e5e7eb;"></div>
+          </div>
+
+          <!-- Email/Password -->
+          <form onsubmit="signInWithEmailProfile(event)" style="display:flex; flex-direction:column; gap:0.75rem; max-width:360px; margin:0 auto;">
+            <div style="position:relative;">
+              <span style="position:absolute; left:0.75rem; top:50%; transform:translateY(-50%); color:#9ca3af; font-size:1.125rem;">✉</span>
+              <input type="email" id="profile-login-email" placeholder="Email address" required autocomplete="email"
+                style="width:100%; padding:0.75rem 0.75rem 0.75rem 2.5rem; border:1.5px solid #e5e7eb; border-radius:10px; font-size:0.9375rem; outline:none; transition:all 0.2s; box-sizing:border-box;"
+                onfocus="this.style.borderColor='#10B981'; this.style.boxShadow='0 0 0 3px rgba(16,185,129,0.08)'" onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+            </div>
+            <div style="position:relative;">
+              <span style="position:absolute; left:0.75rem; top:50%; transform:translateY(-50%); color:#9ca3af; font-size:1.125rem;">🔒</span>
+              <input type="password" id="profile-login-password" placeholder="Password" required autocomplete="current-password"
+                style="width:100%; padding:0.75rem 0.75rem 0.75rem 2.5rem; border:1.5px solid #e5e7eb; border-radius:10px; font-size:0.9375rem; outline:none; transition:all 0.2s; box-sizing:border-box;"
+                onfocus="this.style.borderColor='#10B981'; this.style.boxShadow='0 0 0 3px rgba(16,185,129,0.08)'" onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+              <button type="button" onclick="togglePasswordVisibility('profile-login-password', this)" style="position:absolute; right:0.75rem; top:50%; transform:translateY(-50%); background:none; border:none; cursor:pointer; color:#9ca3af; font-size:1rem; padding:0;">👁</button>
+            </div>
+            <div style="text-align:right; margin-top:-0.25rem;">
+              <button type="button" onclick="showForgotPassword('profile')" style="background:none; border:none; color:#10B981; font-size:0.8125rem; font-weight:600; cursor:pointer; padding:0;">Forgot Password?</button>
+            </div>
+            <button type="submit" id="profile-email-login-btn"
+              style="width:100%; padding:0.75rem; border:none; border-radius:10px; background:#10B981; color:white; font-size:1rem; font-weight:600; cursor:pointer; transition:background 0.2s; display:flex; align-items:center; justify-content:center; gap:0.5rem;"
+              onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10B981'">
+              🔐 Sign In
+            </button>
+          </form>
+
+          <!-- Register + App links -->
+          <div style="max-width:360px; margin:1.25rem auto 0; text-align:center;">
+            <p style="font-size:0.875rem; color:#6b7280; margin-bottom:0.25rem;">
+              Don't have an account?
+              <a href="https://stores.tulasierp.com/app/" style="color:#10B981; font-weight:600; text-decoration:none;">Create Free Account →</a>
+            </p>
+            <p style="font-size:0.75rem; color:#9ca3af;">You'll be taken to the app to set up your store</p>
+          </div>
+        </div>
+
+        <!-- Forgot Password prompt (hidden by default) -->
+        <div id="forgot-password-prompt" class="profile-card login-prompt" style="display:none;">
+          <div style="font-size:3rem; margin-bottom:1rem;">📧</div>
+          <h2>Reset Your Password</h2>
+          <p>Enter your email and we'll send a password reset link.</p>
+          <div id="forgot-error" style="display:none; background:#fef2f2; color:#dc2626; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:0.875rem;"></div>
+          <div id="forgot-success" style="display:none; background:#ecfdf5; color:#059669; padding:0.75rem 1rem; border-radius:8px; margin-bottom:1rem; font-size:0.875rem;"></div>
+          <form onsubmit="sendPasswordReset(event)" style="display:flex; flex-direction:column; gap:0.75rem; max-width:360px; margin:0 auto;">
+            <div style="position:relative;">
+              <span style="position:absolute; left:0.75rem; top:50%; transform:translateY(-50%); color:#9ca3af; font-size:1.125rem;">✉</span>
+              <input type="email" id="forgot-email" placeholder="Email address" required autocomplete="email"
+                style="width:100%; padding:0.75rem 0.75rem 0.75rem 2.5rem; border:1.5px solid #e5e7eb; border-radius:10px; font-size:0.9375rem; outline:none; transition:all 0.2s; box-sizing:border-box;"
+                onfocus="this.style.borderColor='#10B981'; this.style.boxShadow='0 0 0 3px rgba(16,185,129,0.08)'" onblur="this.style.borderColor='#e5e7eb'; this.style.boxShadow='none'">
+            </div>
+            <button type="submit" id="forgot-submit-btn"
+              style="width:100%; padding:0.75rem; border:none; border-radius:10px; background:#10B981; color:white; font-size:1rem; font-weight:600; cursor:pointer; transition:background 0.2s;"
+              onmouseover="this.style.background='#059669'" onmouseout="this.style.background='#10B981'">
+              Send Reset Link
+            </button>
+          </form>
+          <p style="margin-top:1rem;">
+            <button type="button" onclick="hideForgotPassword()" style="background:none; border:none; color:#10B981; font-size:0.875rem; font-weight:600; cursor:pointer;">← Back to Sign In</button>
+          </p>
         </div>
 
         <!-- Profile content (hidden by default) -->
@@ -518,9 +797,205 @@
       }
     }
 
+    async function signInWithEmailProfile(e) {
+      e.preventDefault();
+      var email = document.getElementById('profile-login-email').value.trim();
+      var password = document.getElementById('profile-login-password').value;
+      var btn = document.getElementById('profile-email-login-btn');
+      var errorEl = document.getElementById('login-error-profile');
+      errorEl.style.display = 'none';
+
+      if (!email || !password) {
+        errorEl.textContent = 'Please enter both email and password.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<div style="width:20px;height:20px;border:2px solid rgba(255,255,255,0.3);border-top-color:white;border-radius:50%;animation:spin 0.8s linear infinite;"></div> Signing in...';
+      try {
+        await auth.signInWithEmailAndPassword(email, password);
+      } catch (err) {
+        console.error('Email sign-in error:', err);
+        var msg = 'Sign-in failed. Please try again.';
+        if (err.code === 'auth/user-not-found') msg = 'No account found with this email. Register in the app first.';
+        else if (err.code === 'auth/wrong-password' || err.code === 'auth/invalid-credential') msg = 'Wrong password. Please try again.';
+        else if (err.code === 'auth/invalid-email') msg = 'Invalid email address.';
+        else if (err.code === 'auth/too-many-requests') msg = 'Too many attempts. Please wait a moment and try again.';
+        errorEl.textContent = '❌ ' + msg;
+        errorEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '🔐 Sign In';
+      }
+    }
+
+    function togglePasswordVisibility(inputId, btn) {
+      var input = document.getElementById(inputId);
+      if (input.type === 'password') {
+        input.type = 'text';
+        btn.textContent = '🙈';
+      } else {
+        input.type = 'password';
+        btn.textContent = '👁';
+      }
+    }
+
+    function showForgotPassword(source) {
+      document.getElementById('login-prompt').style.display = 'none';
+      document.getElementById('forgot-password-prompt').style.display = 'block';
+      document.getElementById('forgot-error').style.display = 'none';
+      document.getElementById('forgot-success').style.display = 'none';
+      // Pre-fill email if available
+      var emailInput = document.getElementById('profile-login-email');
+      if (emailInput && emailInput.value) {
+        document.getElementById('forgot-email').value = emailInput.value;
+      }
+    }
+
+    function hideForgotPassword() {
+      document.getElementById('forgot-password-prompt').style.display = 'none';
+      document.getElementById('login-prompt').style.display = 'block';
+    }
+
+    var forgotCooldown = 0;
+    async function sendPasswordReset(e) {
+      e.preventDefault();
+      if (forgotCooldown > 0) return;
+      var email = document.getElementById('forgot-email').value.trim();
+      var btn = document.getElementById('forgot-submit-btn');
+      var errorEl = document.getElementById('forgot-error');
+      var successEl = document.getElementById('forgot-success');
+      errorEl.style.display = 'none';
+      successEl.style.display = 'none';
+
+      if (!email) {
+        errorEl.textContent = 'Please enter your email address.';
+        errorEl.style.display = 'block';
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Sending...';
+      try {
+        await auth.sendPasswordResetEmail(email);
+        successEl.textContent = '✅ Password reset email sent! Check your inbox (and spam folder).';
+        successEl.style.display = 'block';
+        // Start 60-second cooldown
+        forgotCooldown = 60;
+        var interval = setInterval(function() {
+          forgotCooldown--;
+          btn.textContent = 'Resend (' + forgotCooldown + 's)';
+          if (forgotCooldown <= 0) {
+            clearInterval(interval);
+            btn.textContent = 'Send Reset Link';
+            btn.disabled = false;
+          }
+        }, 1000);
+      } catch (err) {
+        console.error('Password reset error:', err);
+        var msg = 'Failed to send reset email. Please try again.';
+        if (err.code === 'auth/user-not-found') msg = 'No account found with this email.';
+        else if (err.code === 'auth/invalid-email') msg = 'Invalid email address.';
+        errorEl.textContent = msg;
+        errorEl.style.display = 'block';
+        btn.disabled = false;
+        btn.textContent = 'Send Reset Link';
+      }
+    }
+
     function signOut() {
       auth.signOut();
     }
+
+    /* ─── Navbar Profile Dropdown Logic ─── */
+    function toggleProfileDropdown() {
+      const wrap = document.getElementById('navbar-profile-wrap');
+      wrap.classList.toggle('open');
+    }
+    // Close dropdown on outside click
+    document.addEventListener('click', function(e) {
+      const wrap = document.getElementById('navbar-profile-wrap');
+      if (wrap && !wrap.contains(e.target)) {
+        wrap.classList.remove('open');
+      }
+    });
+
+    function updateNavbarProfile(user, sub) {
+      const signinBtn = document.getElementById('navbar-signin-btn');
+      const profileWrap = document.getElementById('navbar-profile-wrap');
+
+      if (!user) {
+        signinBtn.style.display = '';
+        profileWrap.style.display = 'none';
+        return;
+      }
+
+      signinBtn.style.display = 'none';
+      profileWrap.style.display = '';
+
+      const name = user.displayName || 'User';
+      const email = user.email || '';
+      const initial = name.charAt(0).toUpperCase();
+      const plan = (sub && sub.plan) || 'free';
+
+      // Trigger avatar
+      const navAvatar = document.getElementById('nav-avatar');
+      if (user.photoURL) {
+        navAvatar.outerHTML = '<img src="' + user.photoURL + '" alt="" referrerpolicy="no-referrer" id="nav-avatar" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">';
+      } else {
+        navAvatar.className = 'avatar-initial';
+        navAvatar.textContent = initial;
+      }
+
+      document.getElementById('nav-trigger-name').textContent = name.split(' ')[0];
+
+      // Dropdown header avatar
+      const ddAvatar = document.getElementById('nav-dd-avatar');
+      if (user.photoURL) {
+        ddAvatar.outerHTML = '<img src="' + user.photoURL + '" alt="" referrerpolicy="no-referrer" id="nav-dd-avatar" style="width:44px;height:44px;border-radius:50%;object-fit:cover;flex-shrink:0;">';
+      } else {
+        ddAvatar.className = 'np-avatar-init';
+        ddAvatar.textContent = initial;
+      }
+
+      document.getElementById('nav-dd-name').textContent = name;
+      document.getElementById('nav-dd-email').textContent = email;
+
+      // Plan badge
+      const badge = document.getElementById('nav-dd-plan');
+      badge.className = 'np-plan-badge ' + plan;
+      badge.textContent = plan === 'free' ? 'Free' : plan === 'pro' ? '🚀 Pro' : '🏢 Business';
+
+      // Manage link
+      const manage = document.getElementById('nav-dd-manage');
+      if (plan === 'business') {
+        manage.textContent = 'Manage →';
+        manage.href = 'profile.html';
+      } else {
+        manage.textContent = 'Upgrade →';
+        manage.href = 'pricing.html';
+      }
+    }
+
+    // Hook into existing auth listener to also update navbar
+    let _currentUser = null;
+    const origAuthStateChanged = auth.onAuthStateChanged;
+
+    // We need a second listener for navbar (runs after the main one)
+    auth.onAuthStateChanged(function(user) {
+      _currentUser = user;
+      updateNavbarProfile(user, null);
+    });
+
+    // Patch renderSubscription to also update navbar
+    const _origRenderSubscription = renderSubscription;
+    renderSubscription = function(sub, limits) {
+      _origRenderSubscription(sub, limits);
+      if (_currentUser) {
+        updateNavbarProfile(_currentUser, sub);
+      }
+    };
   </script>
 </body>
 

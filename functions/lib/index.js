@@ -192,7 +192,7 @@ exports.razorpayWebhook = functions
     .region("asia-south1")
     .runWith({ timeoutSeconds: 30, memory: "256MB", maxInstances: 10 })
     .https.onRequest(async (req, res) => {
-    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m;
+    var _a, _b, _c, _d, _e, _f, _g, _h, _j, _k, _l, _m, _o;
     if (req.method !== "POST") {
         res.status(405).send("Method not allowed");
         return;
@@ -252,8 +252,8 @@ exports.razorpayWebhook = functions
                 break;
             // ─── Subscription lifecycle events ───
             case "subscription.activated": {
-                // First payment succeeded — plan already activated by activateSubscription()
-                // Update subscription ID mapping for future webhook lookups
+                // First payment succeeded — activate plan in user doc
+                // This is the FALLBACK for mobile payments where the JS callback was lost
                 const subId = (_f = (_e = event.payload.subscription) === null || _e === void 0 ? void 0 : _e.entity) === null || _f === void 0 ? void 0 : _f.id;
                 if (subId) {
                     const subSnap = await admin.firestore()
@@ -261,6 +261,45 @@ exports.razorpayWebhook = functions
                         .doc(subId)
                         .get();
                     if (subSnap.exists) {
+                        const subData = subSnap.data();
+                        const activatedUserId = subData.userId;
+                        const activatedPlan = subData.plan;
+                        const activatedCycle = subData.cycle;
+                        if (activatedUserId && activatedPlan) {
+                            // Check if plan is already activated (activateSubscription may have run first)
+                            const userDoc = await admin.firestore().collection("users").doc(activatedUserId).get();
+                            const currentSub = (_g = userDoc.data()) === null || _g === void 0 ? void 0 : _g.subscription;
+                            const alreadyActive = (currentSub === null || currentSub === void 0 ? void 0 : currentSub.plan) === activatedPlan && (currentSub === null || currentSub === void 0 ? void 0 : currentSub.status) === "active";
+                            if (!alreadyActive) {
+                                const daysToAdd = activatedCycle === "annual" ? 365 : 30;
+                                const expiresAt = new Date();
+                                expiresAt.setDate(expiresAt.getDate() + daysToAdd);
+                                const billsLimit = activatedPlan === "pro" ? 500 : 999999;
+                                await admin.firestore().collection("users").doc(activatedUserId).update({
+                                    "subscription.plan": activatedPlan,
+                                    "subscription.status": "active",
+                                    "subscription.startedAt": admin.firestore.FieldValue.serverTimestamp(),
+                                    "subscription.expiresAt": admin.firestore.Timestamp.fromDate(expiresAt),
+                                    "subscription.razorpaySubscriptionId": subId,
+                                    "limits.billsLimit": billsLimit,
+                                    "limits.productsLimit": 999999,
+                                    "limits.customersLimit": 999999,
+                                });
+                                // Welcome notification
+                                await admin.firestore().collection("users").doc(activatedUserId)
+                                    .collection("notifications").add({
+                                    title: `Welcome to ${activatedPlan === "pro" ? "Pro" : "Business"} Plan! 🎉`,
+                                    body: `Your ${activatedPlan === "pro" ? "Pro" : "Business"} plan is now active. Enjoy ${activatedPlan === "pro" ? "500 bills/month" : "unlimited billing"}!`,
+                                    type: "subscription",
+                                    read: false,
+                                    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+                                });
+                                console.log(`subscription.activated (webhook fallback): activated ${activatedPlan} for user ${activatedUserId}`);
+                            }
+                            else {
+                                console.log(`subscription.activated: user ${activatedUserId} already on ${activatedPlan}, skipping`);
+                            }
+                        }
                         await subSnap.ref.update({ status: "active" });
                         console.log("Subscription activated:", subId);
                     }
@@ -269,7 +308,7 @@ exports.razorpayWebhook = functions
             }
             case "subscription.charged": {
                 // Auto-renewal payment succeeded — extend expiry and reset monthly counter
-                const chargedSubId = (_h = (_g = event.payload.subscription) === null || _g === void 0 ? void 0 : _g.entity) === null || _h === void 0 ? void 0 : _h.id;
+                const chargedSubId = (_j = (_h = event.payload.subscription) === null || _h === void 0 ? void 0 : _h.entity) === null || _j === void 0 ? void 0 : _j.id;
                 if (!chargedSubId)
                     break;
                 const chargedSnap = await admin.firestore()
@@ -304,7 +343,7 @@ exports.razorpayWebhook = functions
             }
             case "subscription.halted": {
                 // Payment failed 3 times — downgrade user to free
-                const haltedSubId = (_k = (_j = event.payload.subscription) === null || _j === void 0 ? void 0 : _j.entity) === null || _k === void 0 ? void 0 : _k.id;
+                const haltedSubId = (_l = (_k = event.payload.subscription) === null || _k === void 0 ? void 0 : _k.entity) === null || _l === void 0 ? void 0 : _l.id;
                 if (!haltedSubId)
                     break;
                 const haltedSnap = await admin.firestore()
@@ -336,7 +375,7 @@ exports.razorpayWebhook = functions
             }
             case "subscription.cancelled": {
                 // User cancelled — keep access till expiresAt, then it expires naturally
-                const cancelledSubId = (_m = (_l = event.payload.subscription) === null || _l === void 0 ? void 0 : _l.entity) === null || _m === void 0 ? void 0 : _m.id;
+                const cancelledSubId = (_o = (_m = event.payload.subscription) === null || _m === void 0 ? void 0 : _m.entity) === null || _o === void 0 ? void 0 : _o.id;
                 if (!cancelledSubId)
                     break;
                 const cancelledSnap = await admin.firestore()
@@ -1051,6 +1090,16 @@ exports.createSubscription = functions
             throw new functions.https.HttpsError("internal", ((_b = result === null || result === void 0 ? void 0 : result.error) === null || _b === void 0 ? void 0 : _b.description) || "Failed to create subscription");
         }
         console.log(`✅ createSubscription: ${result.id} for user ${context.auth.uid} (${plan}/${cycle})`);
+        // Save subscription→user mapping so the webhook can activate the plan
+        // even if the JS callback never fires (e.g. mobile UPI redirect)
+        await admin.firestore().collection("razorpay_subscriptions").doc(result.id).set({
+            userId: context.auth.uid,
+            plan,
+            cycle,
+            planId,
+            status: "created",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
         return {
             success: true,
             subscriptionId: result.id,

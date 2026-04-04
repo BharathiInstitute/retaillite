@@ -308,12 +308,7 @@ class AppShell extends ConsumerWidget {
                 ),
                 onTap: () {
                   Navigator.pop(ctx);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Contact us at support@retaillite.app'),
-                      duration: Duration(seconds: 3),
-                    ),
-                  );
+                  context.push('/support');
                 },
               ),
 
@@ -519,8 +514,15 @@ class AppShell extends ConsumerWidget {
             child: GlobalSyncIndicator(),
           ),
 
-          // Settings at bottom
+          // Support & Settings at bottom
           const Divider(height: 1),
+          _NavItem(
+            icon: Icons.support_agent,
+            label: 'Support',
+            isSelected: false,
+            isExpanded: isExpanded,
+            onTap: () => context.push('/support'),
+          ),
           _NavItem(
             icon: Icons.settings,
             label: l10n.settings,

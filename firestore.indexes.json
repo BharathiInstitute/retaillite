@@ -294,6 +294,36 @@
                     "order": "DESCENDING"
                 }
             ]
+        },
+        {
+            "__comment": "support_tickets: status+updatedAt — admin filtered ticket list",
+            "collectionGroup": "support_tickets",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "status",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "updatedAt",
+                    "order": "DESCENDING"
+                }
+            ]
+        },
+        {
+            "__comment": "support_tickets: storeId+updatedAt — store's own tickets list",
+            "collectionGroup": "support_tickets",
+            "queryScope": "COLLECTION",
+            "fields": [
+                {
+                    "fieldPath": "storeId",
+                    "order": "ASCENDING"
+                },
+                {
+                    "fieldPath": "updatedAt",
+                    "order": "DESCENDING"
+                }
+            ]
         }
     ],
     "fieldOverrides": [

@@ -20,7 +20,6 @@ import 'package:retaillite/core/design/design_system.dart';
 import 'package:retaillite/core/services/privacy_consent_service.dart';
 import 'package:retaillite/core/services/user_metrics_service.dart';
 import 'package:retaillite/core/services/payment_link_service.dart';
-import 'package:retaillite/features/referral/services/referral_service.dart';
 import 'package:retaillite/core/services/thermal_printer_service.dart';
 import 'package:retaillite/main.dart' show appVersion, appBuildNumber;
 import 'package:retaillite/router/app_router.dart';
@@ -52,8 +51,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   String _selectedCurrency = 'INR';
   String _selectedTimezone = 'Asia/Kolkata';
 
-  String _referralCode = '';
-  int _referralCount = 0;
   UserSubscription _subscription = UserSubscription();
   UserLimits _limits = UserLimits();
 
@@ -65,7 +62,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
   void initState() {
     super.initState();
     final user = ref.read(currentUserProvider);
-    _loadReferral();
     _loadSubscription();
     _loadAvailablePrinters();
     _shopNameController = TextEditingController(text: user?.shopName ?? '');
@@ -150,17 +146,6 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
             .connectPrinter('USB: $printerName', printerName);
       }
     }
-  }
-
-  Future<void> _loadReferral() async {
-    try {
-      final code = await ReferralService.getOrCreateCode();
-      if (mounted) setState(() => _referralCode = code);
-    } catch (_) {}
-    try {
-      final count = await ReferralService.getReferralCount();
-      if (mounted) setState(() => _referralCount = count);
-    } catch (_) {}
   }
 
   Future<void> _loadSubscription() async {
@@ -321,12 +306,12 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Enter Referral Code'),
+        title: const Text('Enter Promo Code'),
         content: TextField(
           controller: controller,
           textCapitalization: TextCapitalization.characters,
-          maxLength: 8,
-          decoration: const InputDecoration(hintText: 'e.g. ABCD1234'),
+          maxLength: 16,
+          decoration: const InputDecoration(hintText: 'e.g. DIWALI2026'),
         ),
         actions: [
           TextButton(
@@ -342,7 +327,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       ),
     );
     controller.dispose();
-    if (result == null || result.length != 8 || !mounted) return;
+    if (result == null || result.isEmpty || !mounted) return;
     try {
       final fn = FirebaseFunctions.instanceFor(region: 'asia-south1');
       await fn.httpsCallable('redeemReferralCode').call({'code': result});
@@ -1376,9 +1361,9 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               const Divider(height: 24),
               _buildClickableActionRow(
                 'Help Center',
-                'Get support and contact us',
-                Icons.help_outline,
-                () => _showHelpDialog(context),
+                'Chat with support & manage tickets',
+                Icons.support_agent,
+                () => context.push('/support'),
               ),
               const Divider(height: 24),
               _buildClickableActionRow(
@@ -1594,86 +1579,21 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
       ),
     );
 
-    // Invite Friends (Referral)
+    // Promo Code
     leftChildren.add(const SizedBox(height: 20));
     leftChildren.add(
       _SectionCard(
-        icon: Icons.card_giftcard,
+        icon: Icons.redeem,
         iconColor: AppColors.accent,
-        title: 'Invite & Earn 1 Month Free',
+        title: 'Promo Code',
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Share your referral code with fellow shop owners. '
-              'When they sign up, you both get 1 month of Pro for free!',
+              'Have a promo code? Redeem it to get free days added to your subscription!',
               style: TextStyle(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              decoration: BoxDecoration(
-                color: Theme.of(
-                  context,
-                ).colorScheme.surfaceContainerHighest.withAlpha(80),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: AppColors.primary.withAlpha(40)),
-              ),
-              child: Column(
-                children: [
-                  Text(
-                    _referralCode.isEmpty ? '...' : _referralCode,
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      letterSpacing: 6,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '$_referralCount referred',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppColors.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: _referralCode.isEmpty
-                    ? null
-                    : () async {
-                        final copied = await ReferralService.share(
-                          _referralCode,
-                        );
-                        if (copied && mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text(
-                                'Referral link copied to clipboard!',
-                              ),
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-                        }
-                      },
-                icon: const Icon(Icons.share, size: 18),
-                label: const Text('Share Invite Link'),
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppColors.primary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
               ),
             ),
             const SizedBox(height: 12),
@@ -1682,7 +1602,7 @@ class _SettingsWebScreenState extends ConsumerState<SettingsWebScreen> {
               child: OutlinedButton.icon(
                 onPressed: _showRedeemDialog,
                 icon: const Icon(Icons.redeem, size: 18),
-                label: const Text('Have a Referral Code?'),
+                label: const Text('Redeem Promo Code'),
                 style: OutlinedButton.styleFrom(
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),

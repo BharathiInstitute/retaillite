@@ -162,3 +162,29 @@ final featureUsageProvider = FutureProvider<Map<String, double>>((ref) async {
   await ref.watch(analyticsRecalcProvider.future);
   return AdminFirestoreService.getFeatureUsageStats();
 });
+
+/// Referral program statistics
+final referralStatsProvider = FutureProvider<ReferralStats>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
+  return AdminFirestoreService.getReferralStats();
+});
+
+/// Top referrers leaderboard
+final topReferrersProvider = FutureProvider<List<ReferrerInfo>>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
+  return AdminFirestoreService.getTopReferrers();
+});
+
+/// Recent referral activity feed
+final recentReferralsProvider = FutureProvider<List<ReferralActivity>>((
+  ref,
+) async {
+  await ref.watch(_adminSeedProvider.future);
+  return AdminFirestoreService.getRecentReferrals();
+});
+
+/// Admin-generated promo codes
+final promoCodesProvider = FutureProvider<List<PromoCode>>((ref) async {
+  await ref.watch(_adminSeedProvider.future);
+  return AdminFirestoreService.getPromoCodes();
+});
